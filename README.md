@@ -42,7 +42,31 @@ cd ~/attendance-bot
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+## Прод-режим на Mac mini
+
+Проект рассчитан на два `launchd`-сервиса:
+
+- `com.gooc.attendancebot.backend` — backend на `uvicorn`
+- `com.gooc.attendancebot.tunnel` — tunnel в `localhost.run` с автоперерегистрацией webhook
+
+Установка:
+
+```bash
+cd ~/attendance-bot
+chmod +x scripts/*.sh
+./scripts/install_launchd.sh
+```
+
+Проверка:
+
+```bash
+launchctl list | grep attendancebot
+tail -f ~/attendance-bot/logs/backend.stderr.log
+tail -f ~/attendance-bot/logs/localhostrun.log
+cat ~/attendance-bot/run/localhostrun.url
 ```
 
 ## Регистрация webhook в MAX
@@ -147,6 +171,8 @@ python3 scripts/register_max_webhook.py
 - сценарий `Назначить замещение` с пошаговым состоянием в памяти
 - кнопочные разделы `Замещения`, `Согласования`, `Отчеты`
 - сохранение шагов диалога и черновиков замещений в БД
+- demo-согласования с inline-кнопками в MAX
+- прод-скрипты для `launchd` и tunnel
 
 Следующий этап:
 

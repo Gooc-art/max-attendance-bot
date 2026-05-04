@@ -22,6 +22,13 @@ def main() -> None:
     if not client.is_configured():
         raise SystemExit("MAX_BOT_TOKEN is empty")
 
+    subscriptions = client.get_subscriptions().get("subscriptions", [])
+    for subscription in subscriptions:
+        url = subscription.get("url")
+        if url and url != settings.max_bot_webhook_url:
+            print("Removing stale subscription:", url)
+            print(client.unsubscribe_webhook(url))
+
     result = client.register_webhook(
         url=settings.max_bot_webhook_url,
         update_types=["message_created", "message_callback", "bot_started"],

@@ -85,7 +85,8 @@ class MaxApiClient:
                 "status": "not_configured",
                 "body": body.model_dump(exclude_none=True),
             }
-        return self._post(
+        return self._request(
+            "POST",
             "messages",
             params={
                 "chat_id": chat_id,
@@ -112,7 +113,8 @@ class MaxApiClient:
                 "callback_id": callback_id,
                 "body": answer.model_dump(exclude_none=True),
             }
-        return self._post(
+        return self._request(
+            "POST",
             "answers",
             params={"callback_id": callback_id},
             body=answer.model_dump(exclude_none=True),
@@ -129,9 +131,25 @@ class MaxApiClient:
                 "status": "not_configured",
                 "body": body,
             }
-        return self._post("subscriptions", params={}, body=body)
+        return self._request("POST", "subscriptions", params={}, body=body)
 
-    def _post(self, path: str, params: Dict[str, Optional[object]], body: Dict[str, object]) -> Dict[str, object]:
+    def get_subscriptions(self) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured"}
+        return self._request("GET", "subscriptions", params={}, body=None)
+
+    def unsubscribe_webhook(self, url: str) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "url": url}
+        return self._request("DELETE", "subscriptions", params={"url": url}, body=None)
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: Dict[str, Optional[object]],
+        body: Optional[Dict[str, object]] = None,
+    ) -> Dict[str, object]:
         query = {
             "v": self.version,
         }
@@ -139,7 +157,7 @@ class MaxApiClient:
             if value is not None:
                 query[key] = str(value)
 
-        encoded = json.dumps(body).encode("utf-8")
+        encoded = json.dumps(body).encode("utf-8") if body is not None else None
         request = Request(
             url="{base}{path}?{query}".format(
                 base=self.base_url,
@@ -147,13 +165,14 @@ class MaxApiClient:
                 query=urlencode(query),
             ),
             data=encoded,
-            method="POST",
+            method=method,
             headers={
-                "Content-Type": "application/json",
                 "Authorization": self.token,
                 "User-Agent": "attendance-bot/0.1.0",
             },
         )
+        if body is not None:
+            request.add_header("Content-Type", "application/json")
         with urlopen(request, timeout=30) as response:
             raw = response.read().decode("utf-8")
             if not raw:

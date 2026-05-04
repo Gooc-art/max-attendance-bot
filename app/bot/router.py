@@ -77,6 +77,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.WHOAMI or user_text == "Кто я" or user_text == "/whoami":
+            response = self._whoami(role, event["user_id"], event["chat_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action in {"/manager", "/employee", "/security", "/hr", "/admin", "/top"}:
             target_role = {
                 "/manager": Role.MANAGER.value,
@@ -203,6 +208,16 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_ADMIN_PANEL or user_text == "Админ-панель":
             response = self._admin_panel_menu(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_MY_ROW or user_text == "Моя строка":
+            response = self._my_row(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_BINDING_CHECK or user_text == "Проверить привязку":
+            response = self._binding_check(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -983,6 +998,134 @@ class MaxWebhookRouter:
                 buttons=[
                     MaxOutboundButton(title="Права доступа", action=BotAction.MENU_ACCESS_RIGHTS),
                     MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _whoami(self, role: str, user_id: str, chat_id: str) -> MaxWebhookResponse:
+        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        if sheet_record is not None:
+            sheet_status = (
+                "Найдено в Google Sheets.\n"
+                "ФИО: {name}\n"
+                "Роль в таблице: {sheet_role}\n"
+                "Активен: {active}\n"
+                "Руководитель: {manager}\n"
+                "Подразделение: {department}"
+            ).format(
+                name=sheet_record.employee_name or "-",
+                sheet_role=sheet_record.role or "-",
+                active="Да" if sheet_record.is_active else "Нет",
+                manager=sheet_record.manager_name or "-",
+                department=sheet_record.department_name or "-",
+            )
+            needed_id = sheet_record.employee_user_id or user_id
+        else:
+            sheet_status = "В Google Sheets по этому user_id запись не найдена."
+            needed_id = user_id
+
+        text = (
+            "Кто я:\n\n"
+            "user_id из MAX: {user_id}\n"
+            "chat_id: {chat_id}\n"
+            "Роль, которую видит бот: {role}\n\n"
+            "{sheet_status}\n\n"
+            "Чтобы показать админ-панель, в таблице `Сотрудники` поле `ID_пользователя_MAX` должно быть равно этому user_id.\n"
+            "Нужный ID: {needed_id}"
+        ).format(
+            user_id=user_id,
+            chat_id=chat_id,
+            role=role,
+            sheet_status=sheet_status,
+            needed_id=needed_id,
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _my_row(self, role: str, user_id: str) -> MaxWebhookResponse:
+        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        if sheet_record is None:
+            text = (
+                "Твоя строка в Google Sheets не найдена.\n\n"
+                "Проверь, что в листе `Сотрудники` поле `ID_пользователя_MAX` совпадает с текущим `user_id`."
+            )
+        else:
+            text = (
+                "Моя строка:\n\n"
+                "ФИО: {name}\n"
+                "ID_пользователя_MAX: {user_id}\n"
+                "Роль: {role}\n"
+                "Подразделение: {department}\n"
+                "Руководитель: {manager}\n"
+                "Активен: {active}"
+            ).format(
+                name=sheet_record.employee_name or "-",
+                user_id=sheet_record.employee_user_id or "-",
+                role=sheet_record.role or "-",
+                department=sheet_record.department_name or "-",
+                manager=sheet_record.manager_name or "-",
+                active="Да" if sheet_record.is_active else "Нет",
+            )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Кто я", action=BotAction.WHOAMI),
+                    MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _binding_check(self, role: str, user_id: str) -> MaxWebhookResponse:
+        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        if sheet_record is None:
+            text = (
+                "Привязка не найдена.\n\n"
+                "Нужен exact match по `ID_пользователя_MAX` в листе `Сотрудники`.\n"
+                "Сейчас: {user_id}"
+            ).format(user_id=user_id)
+        else:
+            text = (
+                "Привязка найдена.\n\n"
+                "MAX user_id: {user_id}\n"
+                "Sheet user_id: {sheet_user_id}\n"
+                "Роль: {role}\n"
+                "ФИО: {name}\n"
+                "Совпадение: {match}"
+            ).format(
+                user_id=user_id,
+                sheet_user_id=sheet_record.employee_user_id,
+                role=sheet_record.role or "-",
+                name=sheet_record.employee_name or "-",
+                match="Да" if sheet_record.employee_user_id == user_id else "Нет",
+            )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Моя строка", action=BotAction.MENU_MY_ROW),
+                    MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),

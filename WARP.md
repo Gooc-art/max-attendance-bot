@@ -12,6 +12,7 @@
 3. Render role-based MAX menus.
 4. Import SKUD files and create attendance cases.
 5. Save runtime cases and approvals in SQLite.
+6. Expose a visible `Старт` button in every role menu; `/start` remains the underlying command.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

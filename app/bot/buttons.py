@@ -14,6 +14,7 @@ def btn(title: str, action: str) -> MaxOutboundButton:
 def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.MANAGER.value:
         return [
+            btn("Старт", BotAction.START),
             btn("Мои сотрудники", BotAction.MENU_EMPLOYEES),
             btn("Согласования", BotAction.MENU_APPROVALS),
             btn("Опоздания отдела", BotAction.MENU_DEPARTMENT_LATES),
@@ -23,6 +24,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         ]
     if role == Role.SECURITY.value:
         return [
+            btn("Старт", BotAction.START),
             btn("Загрузить выгрузку СКУД", BotAction.MENU_SECURITY_IMPORT),
             btn("История импортов", BotAction.MENU_IMPORT_HISTORY),
             btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS),
@@ -30,6 +32,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         ]
     if role == Role.HR.value:
         return [
+            btn("Старт", BotAction.START),
             btn("Сотрудники", BotAction.MENU_STAFF),
             btn("Подразделения", BotAction.MENU_DEPARTMENTS),
             btn("Графики", BotAction.MENU_SCHEDULES),
@@ -41,6 +44,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         ]
     if role == Role.ADMIN.value:
         return [
+            btn("Старт", BotAction.START),
             btn("Права доступа", BotAction.MENU_ACCESS_RIGHTS),
             btn("Сводка", BotAction.MENU_SUMMARY),
             btn("Отчеты", BotAction.MENU_REPORTS),
@@ -68,12 +72,14 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         ]
     if role == Role.TOP_MANAGER.value:
         return [
+            btn("Старт", BotAction.START),
             btn("Сводка", BotAction.MENU_SUMMARY),
             btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS),
             btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS),
         ]
     return [
+        btn("Старт", BotAction.START),
         btn("Мои уведомления", BotAction.MENU_MY_NOTIFICATIONS),
         btn("Мои опоздания", BotAction.MENU_MY_LATES),
         btn("Указать причину", BotAction.MENU_SUBMIT_REASON),

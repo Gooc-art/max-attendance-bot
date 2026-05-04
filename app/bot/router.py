@@ -24,6 +24,7 @@ from app.repositories.user_role_override_repository import UserRoleOverrideRepos
 from app.schemas.max import MaxOutboundButton, MaxOutboundMessage, MaxUpdate, MaxWebhookResponse
 from app.services.demo_data import ensure_demo_approvals_for_manager, ensure_demo_cases_for_employee
 from app.services.dialog_state import dialog_state_store
+from app.services.max_file_import import MaxFileImportService
 from app.services.role_resolver import RoleResolver
 from app.services.substitution_flow import SubstitutionFlowService
 
@@ -38,6 +39,7 @@ class MaxWebhookRouter:
         self.skud_import_repository = SkudImportRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
+        self.max_file_import_service = MaxFileImportService()
 
     def handle_event(self, payload: MaxUpdate) -> MaxWebhookResponse:
         event = self._normalize_event(payload)
@@ -48,6 +50,12 @@ class MaxWebhookRouter:
         action = event["action"]
         user_text = event["text"]
         active_state = dialog_state_store.get(event["user_id"])
+
+        if payload.message and payload.message.body.attachments:
+            response = self._handle_attachments(role, event["user_id"], payload.message.body.attachments)
+            if response is not None:
+                self._send_outbound(payload, response.outbound)
+                return response
 
         if active_state and active_state.flow == DialogFlow.SUBSTITUTION.value:
             result = self.substitution_flow.handle_input(event["user_id"], role, user_text, action, active_state)
@@ -341,6 +349,42 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=text,
                 buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+            ),
+            active_flow=None,
+        )
+
+    def _handle_attachments(self, role: str, user_id: str, attachments: list) -> MaxWebhookResponse | None:
+        file_attachments = [attachment for attachment in attachments if getattr(attachment, "type", "") == "file"]
+        if not file_attachments:
+            return None
+
+        if role != Role.SECURITY.value:
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Файлы СКУД может загружать только роль безопасности.",
+                    buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+                ),
+                active_flow=None,
+            )
+
+        results = self.max_file_import_service.import_attachments(file_attachments, created_by_user_id=user_id)
+        if not results:
+            return None
+
+        text = "Результат обработки вложений:\n\n" + "\n\n".join(result.message for result in results)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
             ),
             active_flow=None,
         )

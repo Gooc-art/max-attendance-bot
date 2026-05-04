@@ -21,10 +21,23 @@ class MaxRecipient(BaseModel):
     user_id: Optional[int] = None
 
 
+class MaxAttachmentPayload(BaseModel):
+    url: Optional[str] = None
+    token: Optional[str] = None
+
+
+class MaxAttachment(BaseModel):
+    type: str
+    payload: Optional[MaxAttachmentPayload] = None
+    filename: Optional[str] = None
+    size: Optional[int] = None
+
+
 class MaxMessageBody(BaseModel):
     mid: str
     seq: int
     text: Optional[str] = None
+    attachments: List[MaxAttachment] = Field(default_factory=list)
 
 
 class MaxMessage(BaseModel):

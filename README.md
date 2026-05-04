@@ -88,6 +88,17 @@ python3 scripts/register_max_webhook.py
 - `GET /api/imports/skud` — история импортов
 - `GET /docs` — Swagger UI
 
+## Загрузка файла через MAX
+
+Роль `security` может отправить в бот вложение `csv` или `xlsx`.
+
+Бот:
+
+- скачает файл из attachment `payload.url`
+- сохранит его в `data/uploads/skud/`
+- создаст кейсы через импорт СКУД
+- ответит кратким итогом обработки
+
 ## Пример webhook payload
 
 ```json

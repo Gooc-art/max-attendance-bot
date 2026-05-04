@@ -89,8 +89,8 @@ class MaxApiClient:
             "POST",
             "messages",
             params={
-                "chat_id": chat_id,
-                "user_id": user_id,
+                "chatId": chat_id,
+                "userId": user_id,
             },
             body=body.model_dump(exclude_none=True),
         )
@@ -116,7 +116,7 @@ class MaxApiClient:
         return self._request(
             "POST",
             "answers",
-            params={"callback_id": callback_id},
+            params={"callbackId": callback_id},
             body=answer.model_dump(exclude_none=True),
         )
 

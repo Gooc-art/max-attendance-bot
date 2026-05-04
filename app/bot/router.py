@@ -358,18 +358,6 @@ class MaxWebhookRouter:
         if not file_attachments:
             return None
 
-        if role != Role.SECURITY.value:
-            return MaxWebhookResponse(
-                ok=True,
-                role=role,
-                menu=get_menu_for_role(role),
-                outbound=MaxOutboundMessage(
-                    text="Файлы СКУД может загружать только роль безопасности.",
-                    buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
-                ),
-                active_flow=None,
-            )
-
         results = self.max_file_import_service.import_attachments(file_attachments, created_by_user_id=user_id)
         if not results:
             return None

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import zipfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO, StringIO
@@ -15,6 +17,8 @@ from app.services.skud_import import SkudImportResult, SkudImportService
 
 
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+NS_MAIN = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+NS_REL = {"r": "http://schemas.openxmlformats.org/package/2006/relationships"}
 
 
 @dataclass
@@ -117,25 +121,105 @@ class MaxFileImportService:
             raise
 
     def _store_file(self, filename: str, content: bytes) -> Path:
-        safe_name = SAFE_FILENAME_RE.sub("_", filename).strip("._") or "attachment"
+        source = Path(filename)
+        suffix = source.suffix
+        stem = source.stem if suffix else source.name
+        safe_stem = SAFE_FILENAME_RE.sub("_", stem).strip("._") or "attachment"
+        safe_suffix = SAFE_FILENAME_RE.sub("", suffix) if suffix else ""
+        safe_name = f"{safe_stem}{safe_suffix}"
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         target = self.upload_dir / f"{timestamp}_{safe_name}"
         target.write_bytes(content)
         return target
 
     def _xlsx_to_csv_bytes(self, content: bytes) -> bytes:
-        from openpyxl import load_workbook
+        try:
+            from openpyxl import load_workbook
 
-        workbook = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
-        sheet = workbook.worksheets[0]
+            workbook = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
+            try:
+                sheet = workbook.worksheets[0]
+                output = StringIO()
+                rows = sheet.iter_rows(values_only=True)
+                for row in rows:
+                    values = ["" if value is None else str(value) for value in row]
+                    output.write(";".join(values))
+                    output.write("\n")
+                return output.getvalue().encode("utf-8")
+            finally:
+                workbook.close()
+        except Exception:
+            return self._xlsx_to_csv_bytes_fallback(content)
+
+    def _xlsx_to_csv_bytes_fallback(self, content: bytes) -> bytes:
+        with zipfile.ZipFile(BytesIO(content)) as archive:
+            shared_strings = self._read_shared_strings(archive)
+            sheet_path = self._find_first_sheet_path(archive)
+            root = ET.fromstring(archive.read(sheet_path))
+
         output = StringIO()
-        rows = sheet.iter_rows(values_only=True)
-        for row in rows:
-            values = ["" if value is None else str(value) for value in row]
+        for row in root.findall(".//x:sheetData/x:row", NS_MAIN):
+            values: List[str] = []
+            expected_index = 0
+            for cell in row.findall("x:c", NS_MAIN):
+                ref = cell.attrib.get("r", "")
+                column_index = self._column_index_from_ref(ref)
+                while expected_index < column_index:
+                    values.append("")
+                    expected_index += 1
+                values.append(self._read_cell_value(cell, shared_strings))
+                expected_index += 1
             output.write(";".join(values))
             output.write("\n")
-        workbook.close()
         return output.getvalue().encode("utf-8")
+
+    def _read_shared_strings(self, archive: zipfile.ZipFile) -> List[str]:
+        if "xl/sharedStrings.xml" not in archive.namelist():
+            return []
+        root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+        items: List[str] = []
+        for si in root.findall("x:si", NS_MAIN):
+            text_parts = [node.text or "" for node in si.findall(".//x:t", NS_MAIN)]
+            items.append("".join(text_parts))
+        return items
+
+    def _find_first_sheet_path(self, archive: zipfile.ZipFile) -> str:
+        workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+        workbook_rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        first_sheet = workbook_root.find("x:sheets/x:sheet", NS_MAIN)
+        if first_sheet is None:
+            raise ValueError("В XLSX не найден ни один лист")
+        rel_id = first_sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+        if not rel_id:
+            raise ValueError("У листа XLSX отсутствует relationship id")
+        target = None
+        for rel in workbook_rels.findall("r:Relationship", NS_REL):
+            if rel.attrib.get("Id") == rel_id:
+                target = rel.attrib.get("Target")
+                break
+        if not target:
+            raise ValueError("Не удалось определить путь к первому листу XLSX")
+        return f"xl/{target}".replace("xl/xl/", "xl/")
+
+    def _read_cell_value(self, cell: ET.Element, shared_strings: List[str]) -> str:
+        cell_type = cell.attrib.get("t")
+        if cell_type == "inlineStr":
+            texts = [node.text or "" for node in cell.findall(".//x:t", NS_MAIN)]
+            return "".join(texts)
+        value = cell.findtext("x:v", default="", namespaces=NS_MAIN)
+        if cell_type == "s":
+            try:
+                return shared_strings[int(value)]
+            except Exception:
+                return value
+        return value
+
+    def _column_index_from_ref(self, ref: str) -> int:
+        letters = "".join(ch for ch in ref if ch.isalpha()).upper()
+        result = 0
+        for ch in letters:
+            result = result * 26 + (ord(ch) - ord("A") + 1)
+        return max(result - 1, 0)
 
     @staticmethod
     def _format_import_message(result: SkudImportResult) -> str:

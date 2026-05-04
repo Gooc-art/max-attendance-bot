@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from datetime import datetime, time
 from io import StringIO
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType
 from app.repositories.approval_repository import ApprovalRepository
@@ -37,6 +38,13 @@ class SkudImportService:
 
     def import_csv(self, *, filename: str, content: bytes, created_by_user_id: str = "") -> SkudImportResult:
         text = content.decode("utf-8-sig")
+        if self._looks_like_access_report(text):
+            return self._import_access_report(
+                filename=filename,
+                text=text,
+                created_by_user_id=created_by_user_id,
+            )
+
         sample = text[:1024]
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters=";,")
@@ -66,6 +74,92 @@ class SkudImportService:
                     )
             except Exception as exc:
                 errors.append(f"Строка {row_number}: {exc}")
+
+        import_id = self.import_repository.create(
+            filename=filename,
+            created_by_user_id=created_by_user_id,
+            status="completed" if not errors else "completed_with_errors",
+            total_rows=total_rows,
+            created_cases=created_cases,
+            error_rows=len(errors),
+        )
+        return SkudImportResult(
+            import_id=import_id,
+            filename=filename,
+            total_rows=total_rows,
+            created_cases=created_cases,
+            error_rows=len(errors),
+            errors=errors,
+        )
+
+    def _import_access_report(self, *, filename: str, text: str, created_by_user_id: str) -> SkudImportResult:
+        reader = csv.reader(StringIO(text), delimiter=";")
+        rows = [row for row in reader]
+        header_index = self._find_access_report_header_row(rows)
+        if header_index is None:
+            raise ValueError("Не удалось определить строку заголовков в отчете по проходам")
+
+        data_start = header_index + 1
+        while data_start < len(rows) and rows[data_start] and rows[data_start][0].strip() == "Ф.И.О":
+            data_start += 1
+
+        first_entries: Dict[Tuple[str, str], Dict[str, str]] = {}
+        total_rows = 0
+        errors: List[str] = []
+
+        for row_number, row in enumerate(rows[data_start:], start=data_start + 1):
+            if len(row) < 8:
+                continue
+            if not any(cell.strip() for cell in row):
+                continue
+            total_rows += 1
+            try:
+                employee_name = row[0].strip()
+                department_name = row[3].strip()
+                event_value = row[6].strip()
+                zone_value = row[7].strip()
+                dt_value = row[4].strip()
+                if not employee_name or not dt_value:
+                    continue
+                if event_value != "Проход":
+                    continue
+                if zone_value != "Здание":
+                    continue
+
+                event_dt = datetime.strptime(dt_value, "%d.%m.%Y %H:%M:%S")
+                key = (employee_name, event_dt.date().isoformat())
+                current = first_entries.get(key)
+                if current is None or event_dt.isoformat() < current["event_dt"]:
+                    first_entries[key] = {
+                        "employee_name": employee_name,
+                        "department_name": department_name or "Не указано",
+                        "event_date": event_dt.date().isoformat(),
+                        "actual_start": event_dt.strftime("%H:%M"),
+                        "event_dt": event_dt.isoformat(),
+                    }
+            except Exception as exc:
+                errors.append(f"Строка {row_number}: {exc}")
+
+        created_cases = 0
+        planned_time = time(hour=8, minute=30)
+        for item in first_entries.values():
+            actual_dt = datetime.fromisoformat(item["event_dt"])
+            delay_minutes = int((actual_dt - datetime.combine(actual_dt.date(), planned_time)).total_seconds() // 60)
+            if delay_minutes <= 0:
+                continue
+            self.case_repository.create_case(
+                employee_name=item["employee_name"],
+                department_name=item["department_name"],
+                case_type=AttendanceCaseType.LATE.value,
+                status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
+                event_date=item["event_date"],
+                planned_start="08:30",
+                actual_start=item["actual_start"],
+                delay_minutes=delay_minutes,
+                employee_reason="",
+                source="skud_report",
+            )
+            created_cases += 1
 
         import_id = self.import_repository.create(
             filename=filename,
@@ -138,3 +232,17 @@ class SkudImportService:
             if value:
                 return value
         return ""
+
+    @staticmethod
+    def _looks_like_access_report(text: str) -> bool:
+        return "Отчет по проходам" in text and "Ф.И.О" in text and "Событие" in text
+
+    @staticmethod
+    def _find_access_report_header_row(rows: List[List[str]]) -> int | None:
+        for index, row in enumerate(rows):
+            if not row:
+                continue
+            values = [cell.strip() for cell in row]
+            if "Ф.И.О" in values and "Событие" in values:
+                return index
+        return None

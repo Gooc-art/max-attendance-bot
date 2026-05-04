@@ -29,6 +29,7 @@ class BotAction:
     MENU_EXCEPTIONS = "menu.exceptions"
     MENU_SETTINGS = "menu.settings"
     MENU_ACCESS_RIGHTS = "menu.access_rights"
+    MENU_ADMIN_PANEL = "menu.admin_panel"
     MENU_SUMMARY = "menu.summary"
     MENU_DIVISION_REPORTS = "menu.division_reports"
     MENU_OVERDUE_APPROVALS = "menu.overdue_approvals"

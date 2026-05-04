@@ -201,6 +201,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.MENU_ADMIN_PANEL or user_text == "Админ-панель":
+            response = self._admin_panel_menu(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.MENU_MATCH_ERRORS or user_text == "Ошибки сопоставления":
             response = self._match_errors_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -950,6 +955,34 @@ class MaxWebhookRouter:
                     MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
                     MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
                     MaxOutboundButton(title="Системные настройки", action=BotAction.MENU_SETTINGS),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _admin_panel_menu(self, role: str, user_id: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Админ-панель доступна только администратору.")
+
+        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        directory_state = "найдено в Google Sheets" if sheet_record else "не найдено в Google Sheets"
+        text = (
+            "Админ-панель:\n\n"
+            "Текущая роль: admin\n"
+            "Профиль в таблице: {directory_state}\n\n"
+            "Если ты видишь это меню, значит доступ к админскому интерфейсу уже выдан.\n"
+            "Если личные разделы пустые, проверь в таблице поля `ФИО`, `ID_пользователя_MAX`, `Подразделение`, `Роль`."
+        ).format(directory_state=directory_state)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Права доступа", action=BotAction.MENU_ACCESS_RIGHTS),
+                    MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),

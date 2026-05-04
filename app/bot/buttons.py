@@ -45,6 +45,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.ADMIN.value:
         return [
             btn("Старт", BotAction.START),
+            btn("Админ-панель", BotAction.MENU_ADMIN_PANEL),
             btn("Права доступа", BotAction.MENU_ACCESS_RIGHTS),
             btn("Сводка", BotAction.MENU_SUMMARY),
             btn("Отчеты", BotAction.MENU_REPORTS),

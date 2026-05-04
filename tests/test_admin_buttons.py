@@ -12,11 +12,11 @@ class AdminButtonsTests(unittest.TestCase):
         self.assertEqual(buttons[0].title, "Старт")
         self.assertEqual(buttons[0].action, BotAction.START)
 
-    def test_admin_menu_promotes_access_rights_button(self) -> None:
+    def test_admin_menu_promotes_admin_panel_button(self) -> None:
         buttons = main_menu_buttons("admin")
         self.assertGreater(len(buttons), 1)
-        self.assertEqual(buttons[1].title, "Права доступа")
-        self.assertEqual(buttons[1].action, BotAction.MENU_ACCESS_RIGHTS)
+        self.assertEqual(buttons[1].title, "Админ-панель")
+        self.assertEqual(buttons[1].action, BotAction.MENU_ADMIN_PANEL)
 
 
 if __name__ == "__main__":

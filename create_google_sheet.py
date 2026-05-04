@@ -1,0 +1,572 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+
+PROJECT_TITLE = "Контроль_опозданий_MAX"
+SERVICE_ACCOUNT_FILE = Path("/Users/goocbk.ru/secure/attendance-max-bot-service-account.json")
+FOLDER_ID = "1kAJrAbR9ehmGLNwblRuMgZxrYRWR4C9w"
+EXISTING_SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+
+SHEET_TITLES = [
+    "Сотрудники",
+    "Подразделения",
+    "Графики",
+    "Исключения",
+    "Связи_руководства",
+    "Замещения",
+    "Правила",
+    "Справочники",
+]
+
+
+HEADERS = {
+    "Сотрудники": [
+        "ID_сотрудника",
+        "ФИО",
+        "ФИО_для_сопоставления",
+        "ID_пользователя_MAX",
+        "ФИО_руководителя",
+        "ID_руководителя",
+        "Подразделение",
+        "ID_подразделения",
+        "Роль",
+        "График",
+        "ID_графика",
+        "Формат_работы",
+        "Допуск_опоздания_мин",
+        "Работает",
+        "Дата_приема",
+        "Дата_увольнения",
+        "Комментарий",
+    ],
+    "Подразделения": [
+        "ID_подразделения",
+        "Наименование_подразделения",
+        "Родительское_подразделение",
+        "ID_родительского_подразделения",
+        "ФИО_руководителя",
+        "ID_руководителя",
+        "Активно",
+        "Комментарий",
+    ],
+    "Графики": [
+        "ID_графика",
+        "Наименование_графика",
+        "Понедельник_начало",
+        "Вторник_начало",
+        "Среда_начало",
+        "Четверг_начало",
+        "Пятница_начало",
+        "Суббота_начало",
+        "Воскресенье_начало",
+        "Допустимое_опоздание_мин",
+        "Активен",
+        "Комментарий",
+    ],
+    "Исключения": [
+        "ID_исключения",
+        "ФИО",
+        "ID_сотрудника",
+        "Дата_начала",
+        "Дата_окончания",
+        "Тип_исключения",
+        "Статус_согласования",
+        "ФИО_согласовавшего",
+        "ID_согласовавшего",
+        "Источник",
+        "Комментарий",
+    ],
+    "Связи_руководства": [
+        "ID_связи",
+        "ID_сотрудника",
+        "ФИО_сотрудника",
+        "ID_руководителя",
+        "ФИО_руководителя",
+        "Тип_руководителя",
+        "Основной",
+        "Дата_начала",
+        "Дата_окончания",
+        "Приоритет",
+        "Комментарий",
+    ],
+    "Замещения": [
+        "ID_замещения",
+        "ID_основного_руководителя",
+        "ФИО_основного_руководителя",
+        "ID_замещающего",
+        "ФИО_замещающего",
+        "Причина",
+        "Дата_начала",
+        "Дата_окончания",
+        "Распространяется_на_согласование",
+        "Распространяется_на_отчеты",
+        "Активно",
+        "Комментарий",
+    ],
+    "Правила": [
+        "Параметр",
+        "Значение",
+        "Комментарий",
+    ],
+}
+
+
+RULES_ROWS = [
+    ["Минут_допуска_по_умолчанию", "10", "Если у сотрудника не указан личный допуск"],
+    ["Считать_неявкой_после", "12:00", "Если до этого времени нет входа"],
+    ["Срок_ответа_сотрудника", "1_рабочий_день", "Сколько времени дается на ответ"],
+    ["Часовой_пояс", "Europe/Moscow", "Использовать единый часовой пояс"],
+    ["Формат_даты", "YYYY-MM-DD", "Единый формат даты"],
+    ["Формат_времени", "HH:MM", "Единый формат времени"],
+]
+
+
+SCHEDULE_ROWS = [
+    ["ГР001", "Пятидневка 09:00", "09:00", "09:00", "09:00", "09:00", "09:00", "", "", 10, "Да", "Основной график"],
+    ["ГР002", "Сменный график", "08:00", "08:00", "20:00", "20:00", "08:00", "08:00", "", 5, "Да", "Пример сменного графика"],
+]
+
+
+REFERENCE_COLUMNS = {
+    "A": ["Роли", "Сотрудник", "Руководитель", "Безопасность", "HR", "Администратор", "Топ_руководитель"],
+    "B": ["Формат_работы", "Офис", "Удаленно", "Гибрид", "Сменный"],
+    "C": ["Да_Нет", "Да", "Нет"],
+    "D": ["Тип_исключения", "Отпуск", "Больничный", "Командировка", "Удаленная_работа", "Разрешенное_опоздание", "Отгул", "Неявка_по_уважительной_причине"],
+    "E": ["Статус_согласования", "На_согласовании", "Согласовано", "Отклонено"],
+    "F": ["Источник", "HR", "Бот", "Ручной_ввод", "Импорт"],
+    "G": ["Тип_руководителя", "Непосредственный_руководитель", "Руководитель_отдела", "Курирующий_зам", "Главный_руководитель"],
+    "H": ["Причина_замещения", "Отпуск", "Больничный", "Командировка", "Иное"],
+}
+
+
+COLUMN_WIDTHS = {
+    "Сотрудники": {
+        0: 120,
+        1: 260,
+        2: 260,
+        3: 220,
+        4: 240,
+        5: 140,
+        6: 220,
+        7: 140,
+        8: 140,
+        9: 180,
+        10: 120,
+        11: 160,
+        12: 140,
+        13: 110,
+        14: 120,
+        15: 120,
+        16: 240,
+    },
+    "Подразделения": {
+        0: 140,
+        1: 260,
+        2: 240,
+        3: 170,
+        4: 240,
+        5: 140,
+        6: 110,
+        7: 240,
+    },
+    "Графики": {
+        0: 120,
+        1: 220,
+        2: 130,
+        3: 130,
+        4: 130,
+        5: 130,
+        6: 130,
+        7: 130,
+        8: 130,
+        9: 170,
+        10: 110,
+        11: 220,
+    },
+    "Исключения": {
+        0: 130,
+        1: 260,
+        2: 130,
+        3: 120,
+        4: 120,
+        5: 220,
+        6: 180,
+        7: 240,
+        8: 160,
+        9: 140,
+        10: 240,
+    },
+    "Связи_руководства": {
+        0: 120,
+        1: 130,
+        2: 240,
+        3: 140,
+        4: 240,
+        5: 220,
+        6: 110,
+        7: 120,
+        8: 120,
+        9: 100,
+        10: 240,
+    },
+    "Замещения": {
+        0: 130,
+        1: 180,
+        2: 240,
+        3: 160,
+        4: 240,
+        5: 160,
+        6: 120,
+        7: 120,
+        8: 230,
+        9: 180,
+        10: 110,
+        11: 240,
+    },
+    "Правила": {
+        0: 220,
+        1: 180,
+        2: 320,
+    },
+    "Справочники": {
+        0: 220,
+        1: 220,
+        2: 160,
+        3: 260,
+        4: 220,
+        5: 180,
+        6: 220,
+        7: 180,
+    },
+}
+
+
+def load_credentials():
+    if not SERVICE_ACCOUNT_FILE.exists():
+        raise FileNotFoundError(f"Не найден файл ключа: {SERVICE_ACCOUNT_FILE}")
+    return service_account.Credentials.from_service_account_file(
+        str(SERVICE_ACCOUNT_FILE),
+        scopes=SCOPES,
+    )
+
+
+def create_services():
+    creds = load_credentials()
+    sheets = build("sheets", "v4", credentials=creds)
+    drive = build("drive", "v3", credentials=creds)
+    return sheets, drive
+
+
+def create_spreadsheet(drive_service, sheets_service):
+    file_metadata = {
+        "name": PROJECT_TITLE,
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "parents": [FOLDER_ID],
+    }
+    created_file = drive_service.files().create(
+        body=file_metadata,
+        fields="id, webViewLink",
+        supportsAllDrives=True,
+    ).execute()
+
+    spreadsheet_id = created_file["id"]
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "requests": [
+                {
+                    "updateSpreadsheetProperties": {
+                        "properties": {
+                            "title": PROJECT_TITLE,
+                            "locale": "ru_RU",
+                            "timeZone": "Europe/Moscow",
+                        },
+                        "fields": "title,locale,timeZone",
+                    }
+                }
+            ]
+        },
+    ).execute()
+
+    spreadsheet = sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="spreadsheetId,spreadsheetUrl,sheets(properties(sheetId,title))",
+    ).execute()
+    return spreadsheet
+
+
+def get_existing_spreadsheet(sheets_service, spreadsheet_id):
+    return sheets_service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="spreadsheetId,spreadsheetUrl,sheets(properties(sheetId,title))",
+    ).execute()
+
+
+def setup_sheets(sheets_service, spreadsheet_id, default_sheet_id):
+    requests = [
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": default_sheet_id,
+                    "title": SHEET_TITLES[0],
+                    "index": 0,
+                },
+                "fields": "title,index",
+            }
+        }
+    ]
+    for index, title in enumerate(SHEET_TITLES[1:], start=1):
+        requests.append(
+            {
+                "addSheet": {
+                    "properties": {
+                        "title": title,
+                        "index": index,
+                    }
+                }
+            }
+        )
+
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests},
+    ).execute()
+
+
+def get_sheet_map(sheets_service, spreadsheet_id):
+    metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    return {
+        sheet["properties"]["title"]: sheet["properties"]["sheetId"]
+        for sheet in metadata["sheets"]
+    }
+
+
+def ensure_missing_sheets(sheets_service, spreadsheet_id, sheet_map):
+    requests = []
+    existing_titles = set(sheet_map)
+    for index, title in enumerate(SHEET_TITLES):
+        if title not in existing_titles:
+            requests.append(
+                {
+                    "addSheet": {
+                        "properties": {
+                            "title": title,
+                            "index": index,
+                        }
+                    }
+                }
+            )
+
+    if requests:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+
+
+def write_initial_values(sheets_service, spreadsheet_id):
+    data = []
+
+    for title in ["Сотрудники", "Подразделения", "Графики", "Исключения", "Связи_руководства", "Замещения", "Правила"]:
+        rows = [HEADERS[title]]
+        if title == "Графики":
+            rows.extend(SCHEDULE_ROWS)
+        elif title == "Правила":
+            rows.extend(RULES_ROWS)
+        data.append(
+            {
+                "range": f"{title}!A1",
+                "majorDimension": "ROWS",
+                "values": rows,
+            }
+        )
+
+    for column, values in REFERENCE_COLUMNS.items():
+        data.append(
+            {
+                "range": f"Справочники!{column}1",
+                "majorDimension": "COLUMNS",
+                "values": [values],
+            }
+        )
+
+    sheets_service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "valueInputOption": "USER_ENTERED",
+            "data": data,
+        },
+    ).execute()
+
+
+def build_dropdown_request(sheet_id, start_row, end_row, column_index, values):
+    return {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": column_index,
+                "endColumnIndex": column_index + 1,
+            },
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_LIST",
+                    "values": [{"userEnteredValue": value} for value in values],
+                },
+                "strict": True,
+                "showCustomUi": True,
+            },
+        }
+    }
+
+
+def format_sheets(sheets_service, spreadsheet_id, sheet_map):
+    requests = []
+
+    for title, sheet_id in sheet_map.items():
+        header_values = HEADERS.get(title, [])
+        column_count = len(header_values) if header_values else 6
+
+        requests.extend(
+            [
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": sheet_id,
+                            "gridProperties": {"frozenRowCount": 1},
+                        },
+                        "fields": "gridProperties.frozenRowCount",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": column_count,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": {"red": 0.85, "green": 0.92, "blue": 0.97},
+                                "textFormat": {"bold": True},
+                                "wrapStrategy": "WRAP",
+                                "verticalAlignment": "MIDDLE",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,wrapStrategy,verticalAlignment)",
+                    }
+                },
+            ]
+        )
+
+        for column_index, width in COLUMN_WIDTHS.get(title, {}).items():
+            requests.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "COLUMNS",
+                            "startIndex": column_index,
+                            "endIndex": column_index + 1,
+                        },
+                        "properties": {"pixelSize": width},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+
+    requests.append(
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_map["Справочники"],
+                    "hidden": True,
+                },
+                "fields": "hidden",
+            }
+        }
+    )
+
+    employee_headers = HEADERS["Сотрудники"]
+    department_headers = HEADERS["Подразделения"]
+    schedule_headers = HEADERS["Графики"]
+    exception_headers = HEADERS["Исключения"]
+    management_headers = HEADERS["Связи_руководства"]
+    substitution_headers = HEADERS["Замещения"]
+
+    employee_sheet_id = sheet_map["Сотрудники"]
+    department_sheet_id = sheet_map["Подразделения"]
+    schedule_sheet_id = sheet_map["Графики"]
+    exception_sheet_id = sheet_map["Исключения"]
+    management_sheet_id = sheet_map["Связи_руководства"]
+    substitution_sheet_id = sheet_map["Замещения"]
+
+    requests.extend(
+        [
+            build_dropdown_request(employee_sheet_id, 1, 2000, employee_headers.index("Роль"), REFERENCE_COLUMNS["A"][1:]),
+            build_dropdown_request(employee_sheet_id, 1, 2000, employee_headers.index("Формат_работы"), REFERENCE_COLUMNS["B"][1:]),
+            build_dropdown_request(employee_sheet_id, 1, 2000, employee_headers.index("Работает"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(department_sheet_id, 1, 2000, department_headers.index("Активно"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(schedule_sheet_id, 1, 2000, schedule_headers.index("Активен"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(exception_sheet_id, 1, 2000, exception_headers.index("Тип_исключения"), REFERENCE_COLUMNS["D"][1:]),
+            build_dropdown_request(exception_sheet_id, 1, 2000, exception_headers.index("Статус_согласования"), REFERENCE_COLUMNS["E"][1:]),
+            build_dropdown_request(exception_sheet_id, 1, 2000, exception_headers.index("Источник"), REFERENCE_COLUMNS["F"][1:]),
+            build_dropdown_request(management_sheet_id, 1, 2000, management_headers.index("Тип_руководителя"), REFERENCE_COLUMNS["G"][1:]),
+            build_dropdown_request(management_sheet_id, 1, 2000, management_headers.index("Основной"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(substitution_sheet_id, 1, 2000, substitution_headers.index("Причина"), REFERENCE_COLUMNS["H"][1:]),
+            build_dropdown_request(substitution_sheet_id, 1, 2000, substitution_headers.index("Распространяется_на_согласование"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(substitution_sheet_id, 1, 2000, substitution_headers.index("Распространяется_на_отчеты"), REFERENCE_COLUMNS["C"][1:]),
+            build_dropdown_request(substitution_sheet_id, 1, 2000, substitution_headers.index("Активно"), REFERENCE_COLUMNS["C"][1:]),
+        ]
+    )
+
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests},
+    ).execute()
+
+
+def main():
+    sheets_service, drive_service = create_services()
+    if EXISTING_SPREADSHEET_ID:
+        spreadsheet = get_existing_spreadsheet(sheets_service, EXISTING_SPREADSHEET_ID)
+        spreadsheet_id = spreadsheet["spreadsheetId"]
+        spreadsheet_url = spreadsheet["spreadsheetUrl"]
+        sheet_map = get_sheet_map(sheets_service, spreadsheet_id)
+        ensure_missing_sheets(sheets_service, spreadsheet_id, sheet_map)
+        sheet_map = get_sheet_map(sheets_service, spreadsheet_id)
+        write_initial_values(sheets_service, spreadsheet_id)
+        format_sheets(sheets_service, spreadsheet_id, sheet_map)
+
+        print("Таблица обновлена:")
+        print(spreadsheet_url)
+        return
+    else:
+        spreadsheet = create_spreadsheet(drive_service, sheets_service)
+    spreadsheet_id = spreadsheet["spreadsheetId"]
+    spreadsheet_url = spreadsheet["spreadsheetUrl"]
+    default_sheet_id = spreadsheet["sheets"][0]["properties"]["sheetId"]
+
+    setup_sheets(sheets_service, spreadsheet_id, default_sheet_id)
+    sheet_map = get_sheet_map(sheets_service, spreadsheet_id)
+    write_initial_values(sheets_service, spreadsheet_id)
+    format_sheets(sheets_service, spreadsheet_id, sheet_map)
+
+    print("Таблица создана:")
+    print(spreadsheet_url)
+
+
+if __name__ == "__main__":
+    main()

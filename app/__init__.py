@@ -1,0 +1,1 @@
+"""Attendance bot application package."""

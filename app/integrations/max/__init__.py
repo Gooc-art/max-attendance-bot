@@ -1,0 +1,1 @@
+"""MAX integration package."""

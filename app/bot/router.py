@@ -18,6 +18,7 @@ from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow, R
 from app.integrations.max.client import MaxApiClient
 from app.repositories.approval_repository import ApprovalRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
+from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.repositories.skud_import_repository import SkudImportRepository
 from app.repositories.substitution_repository import SubstitutionRepository
 from app.repositories.user_role_override_repository import UserRoleOverrideRepository
@@ -36,6 +37,7 @@ class MaxWebhookRouter:
         self.substitution_repository = SubstitutionRepository()
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
+        self.employee_directory_repository = EmployeeDirectoryRepository()
         self.skud_import_repository = SkudImportRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
@@ -129,6 +131,11 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_IMPORT_HISTORY or user_text == "История импортов":
             response = self._security_import_history(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_STAFF or user_text == "Сотрудники":
+            response = self._staff_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -352,6 +359,40 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=text,
                 buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+            ),
+            active_flow=None,
+        )
+
+    def _staff_menu(self, role: str) -> MaxWebhookResponse:
+        rows = self.employee_directory_repository.list_recent(limit=8)
+        if not rows:
+            text = (
+                "Справочник сотрудников пока пустой.\n\n"
+                "Загрузить можно через API:\n"
+                "POST /api/employees/directory/csv"
+            )
+        else:
+            text = "Последние сотрудники:\n\n" + "\n".join(
+                "#{id} | {name} | {user_id} | {role} | {dept}".format(
+                    id=row.id,
+                    name=row.employee_name,
+                    user_id=row.employee_user_id,
+                    role=row.role,
+                    dept=row.department_name or "-",
+                )
+                for row in rows
+            )
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
             ),
             active_flow=None,
         )

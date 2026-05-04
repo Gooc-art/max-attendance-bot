@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType
 from app.repositories.approval_repository import ApprovalRepository
+from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.skud_import_repository import SkudImportRepository
 
@@ -38,6 +39,7 @@ class SkudImportService:
     def __init__(self) -> None:
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
+        self.employee_directory_repository = EmployeeDirectoryRepository()
         self.import_repository = SkudImportRepository()
 
     def import_csv(self, *, filename: str, content: bytes, created_by_user_id: str = "") -> SkudImportResult:
@@ -141,15 +143,19 @@ class SkudImportService:
                     min_dt = event_dt
                 if max_dt is None or event_dt > max_dt:
                     max_dt = event_dt
+                employee_directory = self.employee_directory_repository.get_by_employee_name(employee_name)
                 key = (employee_name, event_dt.date().isoformat())
                 current = first_entries.get(key)
                 if current is None or event_dt.isoformat() < current["event_dt"]:
                     first_entries[key] = {
                         "employee_name": employee_name,
-                        "department_name": department_name or "Не указано",
+                        "department_name": (employee_directory.department_name if employee_directory and employee_directory.department_name else department_name) or "Не указано",
                         "event_date": event_dt.date().isoformat(),
                         "actual_start": event_dt.strftime("%H:%M"),
                         "event_dt": event_dt.isoformat(),
+                        "employee_user_id": employee_directory.employee_user_id if employee_directory else "",
+                        "manager_user_id": employee_directory.manager_user_id if employee_directory else "",
+                        "manager_name": employee_directory.manager_name if employee_directory else "",
                     }
             except Exception as exc:
                 errors.append(f"Строка {row_number}: {exc}")
@@ -172,8 +178,11 @@ class SkudImportService:
                     )
                 )
             self.case_repository.create_case(
+                employee_user_id=item.get("employee_user_id", ""),
                 employee_name=item["employee_name"],
                 department_name=item["department_name"],
+                manager_user_id=item.get("manager_user_id", ""),
+                manager_name=item.get("manager_name", ""),
                 case_type=AttendanceCaseType.LATE.value,
                 status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
                 event_date=item["event_date"],

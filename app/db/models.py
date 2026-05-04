@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -74,6 +74,20 @@ class UserRoleOverrideModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(100), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmployeeDirectoryModel(Base):
+    __tablename__ = "employee_directory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_name: Mapped[str] = mapped_column(String(255), index=True)
+    employee_user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    manager_name: Mapped[str] = mapped_column(String(255), default="")
+    manager_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    department_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    role: Mapped[str] = mapped_column(String(100), default="employee", index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

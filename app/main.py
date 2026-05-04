@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.config import get_settings
 from app.db.base import init_db
-from app.services.demo_data import ensure_demo_approvals
 
 
 settings = get_settings()
@@ -23,7 +22,6 @@ app.include_router(api_router)
 @app.on_event("startup")
 def startup() -> None:
     init_db()
-    ensure_demo_approvals()
 
 
 @app.get("/", tags=["root"])

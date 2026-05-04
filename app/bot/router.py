@@ -341,11 +341,14 @@ class MaxWebhookRouter:
 
     def _menu_response(self, role: str, text: str) -> MaxWebhookResponse:
         menu = get_menu_for_role(role)
+        prefix = ""
+        if role == Role.ADMIN.value:
+            prefix = "Администратор. Источник прав: Google Sheets.\n\n"
         return MaxWebhookResponse(
             ok=True,
             role=role,
             menu=menu,
-            outbound=MaxOutboundMessage(text=text, buttons=main_menu_buttons(role)),
+            outbound=MaxOutboundMessage(text=prefix + text, buttons=main_menu_buttons(role)),
             active_flow=None,
         )
 

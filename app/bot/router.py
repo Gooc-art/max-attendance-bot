@@ -194,6 +194,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.MENU_ACCESS_RIGHTS or user_text == "Права доступа":
+            response = self._access_rights_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.MENU_MATCH_ERRORS or user_text == "Ошибки сопоставления":
             response = self._match_errors_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -882,6 +887,46 @@ class MaxWebhookRouter:
                 text=text,
                 buttons=[
                     MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _access_rights_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел прав доступа доступен только администратору.")
+
+        overrides = self.user_role_override_repository.list_all(limit=20)
+        if not overrides:
+            rows_text = "Override-ролей пока нет."
+        else:
+            rows_text = "\n".join(
+                "#{id} | {user_id} | {role} | {updated_at}".format(
+                    id=row.id,
+                    user_id=row.user_id,
+                    role=row.role,
+                    updated_at=row.updated_at.isoformat(timespec="seconds"),
+                )
+                for row in overrides
+            )
+
+        text = (
+            "Права доступа администратора:\n\n"
+            "Доступны все разделы сотрудника, руководителя, безопасности и HR.\n"
+            "Администратор может просматривать, импортировать, согласовывать и управлять замещениями.\n\n"
+            "Текущие override-роли:\n{rows}"
+        ).format(rows=rows_text)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="Системные настройки", action=BotAction.MENU_SETTINGS),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),

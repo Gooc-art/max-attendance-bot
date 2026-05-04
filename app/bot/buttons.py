@@ -28,7 +28,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS),
             btn("Необработанные записи", BotAction.MENU_UNPROCESSED),
         ]
-    if role in {Role.HR.value, Role.ADMIN.value}:
+    if role == Role.HR.value:
         return [
             btn("Сотрудники", BotAction.MENU_STAFF),
             btn("Подразделения", BotAction.MENU_DEPARTMENTS),
@@ -38,6 +38,33 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Согласования", BotAction.MENU_APPROVALS),
             btn("Отчеты", BotAction.MENU_REPORTS),
             btn("Системные настройки", BotAction.MENU_SETTINGS),
+        ]
+    if role == Role.ADMIN.value:
+        return [
+            btn("Мои уведомления", BotAction.MENU_MY_NOTIFICATIONS),
+            btn("Мои опоздания", BotAction.MENU_MY_LATES),
+            btn("Указать причину", BotAction.MENU_SUBMIT_REASON),
+            btn("Мои статусы", BotAction.MENU_MY_STATUSES),
+            btn("Мой руководитель", BotAction.MENU_MY_MANAGER),
+            btn("Мои сотрудники", BotAction.MENU_EMPLOYEES),
+            btn("Согласования", BotAction.MENU_APPROVALS),
+            btn("Опоздания отдела", BotAction.MENU_DEPARTMENT_LATES),
+            btn("Неявки отдела", BotAction.MENU_DEPARTMENT_ABSENCES),
+            btn("Отчеты", BotAction.MENU_REPORTS),
+            btn("Сводка", BotAction.MENU_SUMMARY),
+            btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS),
+            btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS),
+            btn("Замещения", BotAction.MENU_SUBSTITUTIONS),
+            btn("Загрузить выгрузку СКУД", BotAction.MENU_SECURITY_IMPORT),
+            btn("История импортов", BotAction.MENU_IMPORT_HISTORY),
+            btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS),
+            btn("Необработанные записи", BotAction.MENU_UNPROCESSED),
+            btn("Сотрудники", BotAction.MENU_STAFF),
+            btn("Подразделения", BotAction.MENU_DEPARTMENTS),
+            btn("Графики", BotAction.MENU_SCHEDULES),
+            btn("Исключения", BotAction.MENU_EXCEPTIONS),
+            btn("Системные настройки", BotAction.MENU_SETTINGS),
+            btn("Права доступа", BotAction.MENU_ACCESS_RIGHTS),
         ]
     if role == Role.TOP_MANAGER.value:
         return [

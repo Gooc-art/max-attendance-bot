@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import select
 
@@ -28,3 +28,12 @@ class UserRoleOverrideRepository:
                 row.role = role
             session.commit()
             return role
+
+    def list_all(self, limit: int = 50) -> List[UserRoleOverrideModel]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(UserRoleOverrideModel)
+                .order_by(UserRoleOverrideModel.updated_at.desc())
+                .limit(limit)
+            ).scalars().all()
+            return list(rows)

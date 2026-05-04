@@ -16,6 +16,7 @@ from app.bot.buttons import (
 from app.bot.menus import get_menu_for_role
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow, Role
 from app.integrations.max.client import MaxApiClient
+from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.approval_repository import ApprovalRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
@@ -36,6 +37,7 @@ class MaxWebhookRouter:
         self.substitution_repository = SubstitutionRepository()
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
+        self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
         self.skud_import_repository = SkudImportRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
@@ -471,7 +473,7 @@ class MaxWebhookRouter:
         )
 
     def _my_manager(self, role: str, user_id: str) -> MaxWebhookResponse:
-        record = self.employee_directory_repository.get_by_user_id(user_id)
+        record = self._resolve_directory_record_by_user_id(user_id)
         if record is not None and record.manager_name:
             text = (
                 "Твой руководитель:\n\n"
@@ -506,7 +508,7 @@ class MaxWebhookRouter:
         )
 
     def _manager_employees(self, role: str, user_id: str) -> MaxWebhookResponse:
-        directory_rows = self.employee_directory_repository.get_by_manager_user_id(user_id)
+        directory_rows = self._resolve_directory_rows_by_manager_user_id(user_id)
         if directory_rows:
             lines = [
                 "#{id} | {name} | {dept} | {status}".format(
@@ -769,7 +771,7 @@ class MaxWebhookRouter:
         )
 
     def _staff_menu(self, role: str) -> MaxWebhookResponse:
-        rows = self.employee_directory_repository.list_recent(limit=8)
+        rows = self._resolve_directory_rows_recent(limit=8)
         if not rows:
             text = (
                 "Справочник сотрудников пока пустой.\n\n"
@@ -803,7 +805,7 @@ class MaxWebhookRouter:
         )
 
     def _departments_menu(self, role: str) -> MaxWebhookResponse:
-        rows = self.employee_directory_repository.list_recent(limit=100)
+        rows = self._resolve_directory_rows_recent(limit=100)
         departments = {}
         for row in rows:
             if not row.department_name:
@@ -831,6 +833,24 @@ class MaxWebhookRouter:
             ),
             active_flow=None,
         )
+
+    def _resolve_directory_record_by_user_id(self, user_id: str):
+        google_record = self.google_directory_service.get_by_user_id(user_id)
+        if google_record is not None:
+            return google_record
+        return self.employee_directory_repository.get_by_user_id(user_id)
+
+    def _resolve_directory_rows_by_manager_user_id(self, manager_user_id: str):
+        google_rows = self.google_directory_service.get_by_manager_user_id(manager_user_id)
+        if google_rows:
+            return google_rows
+        return self.employee_directory_repository.get_by_manager_user_id(manager_user_id)
+
+    def _resolve_directory_rows_recent(self, limit: int = 50):
+        google_rows = self.google_directory_service.list_employees()
+        if google_rows:
+            return google_rows[:limit]
+        return self.employee_directory_repository.list_recent(limit=limit)
 
     def _schedules_menu(self, role: str) -> MaxWebhookResponse:
         text = (

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.services.employee_directory_import import EmployeeDirectoryImportService
 
@@ -27,9 +28,32 @@ async def import_employee_directory_csv(request: Request) -> dict:
 
 @router.get("/employees/directory")
 def list_employee_directory(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    google_directory_service = GoogleSheetsDirectoryService.from_settings()
+    google_rows = google_directory_service.list_employees()
+    if google_rows:
+        rows = google_rows[:limit]
+        return {
+            "source": "google_sheets",
+            "items": [
+                {
+                    "id": index + 1,
+                    "employee_name": row.employee_name,
+                    "employee_user_id": row.employee_user_id,
+                    "manager_name": row.manager_name,
+                    "manager_user_id": row.manager_user_id,
+                    "department_name": row.department_name,
+                    "role": row.role,
+                    "is_active": row.is_active,
+                    "updated_at": None,
+                }
+                for index, row in enumerate(rows)
+            ],
+        }
+
     repository = EmployeeDirectoryRepository()
     rows = repository.list_recent(limit=limit)
     return {
+        "source": "local_database",
         "items": [
             {
                 "id": row.id,

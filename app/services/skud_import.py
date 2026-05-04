@@ -7,6 +7,7 @@ from io import StringIO
 from typing import Dict, List, Tuple
 
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType
+from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.approval_repository import ApprovalRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
@@ -39,6 +40,7 @@ class SkudImportService:
     def __init__(self) -> None:
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
+        self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
         self.import_repository = SkudImportRepository()
 
@@ -62,6 +64,10 @@ class SkudImportService:
         total_rows = 0
         created_cases = 0
         errors: List[str] = []
+        unique_employees = set()
+        min_dt: datetime | None = None
+        max_dt: datetime | None = None
+        samples: List[str] = []
 
         for row_number, raw_row in enumerate(reader, start=2):
             if not any((value or "").strip() for value in raw_row.values()):
@@ -71,6 +77,22 @@ class SkudImportService:
                 normalized = self._normalize_row(raw_row)
                 case_id = self.case_repository.create_case(**normalized)
                 created_cases += 1
+                unique_employees.add(normalized["employee_name"])
+                event_dt = self._parse_event_date(str(normalized["event_date"]))
+                if event_dt is not None:
+                    if min_dt is None or event_dt < min_dt:
+                        min_dt = event_dt
+                    if max_dt is None or event_dt > max_dt:
+                        max_dt = event_dt
+                if len(samples) < 5:
+                    samples.append(
+                        "{name} | {date} | {planned} | {status}".format(
+                            name=normalized["employee_name"],
+                            date=normalized["event_date"],
+                            planned=normalized["planned_start"],
+                            status=normalized["status"],
+                        )
+                    )
                 if normalized["employee_reason"] and normalized["manager_user_id"]:
                     self.approval_repository.create_if_missing(
                         case_id=case_id,
@@ -87,7 +109,7 @@ class SkudImportService:
             status="completed" if not errors else "completed_with_errors",
             period_start=min_dt.date().isoformat() if min_dt else "",
             period_end=max_dt.date().isoformat() if max_dt else "",
-            unique_employees=len({key[0] for key in first_entries.keys()}),
+            unique_employees=len(unique_employees),
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
@@ -99,6 +121,10 @@ class SkudImportService:
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
+            unique_employees=len(unique_employees),
+            period_start=min_dt.date().isoformat() if min_dt else "",
+            period_end=max_dt.date().isoformat() if max_dt else "",
+            samples=samples,
             errors=errors,
         )
 
@@ -143,19 +169,22 @@ class SkudImportService:
                     min_dt = event_dt
                 if max_dt is None or event_dt > max_dt:
                     max_dt = event_dt
-                employee_directory = self.employee_directory_repository.get_by_employee_name(employee_name)
+                employee_directory = self._resolve_directory_record(employee_name)
                 key = (employee_name, event_dt.date().isoformat())
                 current = first_entries.get(key)
                 if current is None or event_dt.isoformat() < current["event_dt"]:
                     first_entries[key] = {
                         "employee_name": employee_name,
-                        "department_name": (employee_directory.department_name if employee_directory and employee_directory.department_name else department_name) or "Не указано",
+                        "department_name": (
+                            employee_directory["department_name"] if employee_directory and employee_directory["department_name"] else department_name
+                        )
+                        or "Не указано",
                         "event_date": event_dt.date().isoformat(),
                         "actual_start": event_dt.strftime("%H:%M"),
                         "event_dt": event_dt.isoformat(),
-                        "employee_user_id": employee_directory.employee_user_id if employee_directory else "",
-                        "manager_user_id": employee_directory.manager_user_id if employee_directory else "",
-                        "manager_name": employee_directory.manager_name if employee_directory else "",
+                        "employee_user_id": employee_directory["employee_user_id"] if employee_directory else "",
+                        "manager_user_id": employee_directory["manager_user_id"] if employee_directory else "",
+                        "manager_name": employee_directory["manager_name"] if employee_directory else "",
                     }
             except Exception as exc:
                 errors.append(f"Строка {row_number}: {exc}")
@@ -198,9 +227,13 @@ class SkudImportService:
             filename=filename,
             created_by_user_id=created_by_user_id,
             status="completed" if not errors else "completed_with_errors",
+            period_start=min_dt.date().isoformat() if min_dt else "",
+            period_end=max_dt.date().isoformat() if max_dt else "",
+            unique_employees=len({key[0] for key in first_entries.keys()}),
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
+            samples_text="\n".join(samples),
         )
         return SkudImportResult(
             import_id=import_id,
@@ -282,4 +315,50 @@ class SkudImportService:
             values = [cell.strip() for cell in row]
             if "Ф.И.О" in values and "Событие" in values:
                 return index
+        return None
+
+    def _resolve_directory_record(self, employee_name: str) -> Dict[str, str]:
+        google_record = self.google_directory_service.get_by_employee_name(employee_name)
+        local_record = self.employee_directory_repository.get_by_employee_name(employee_name)
+
+        return {
+            "employee_name": self._merge_directory_value(
+                google_record.employee_name if google_record else "",
+                local_record.employee_name if local_record else "",
+                fallback=employee_name,
+            ),
+            "employee_user_id": self._merge_directory_value(
+                google_record.employee_user_id if google_record else "",
+                local_record.employee_user_id if local_record else "",
+            ),
+            "manager_name": self._merge_directory_value(
+                google_record.manager_name if google_record else "",
+                local_record.manager_name if local_record else "",
+            ),
+            "manager_user_id": self._merge_directory_value(
+                google_record.manager_user_id if google_record else "",
+                local_record.manager_user_id if local_record else "",
+            ),
+            "department_name": self._merge_directory_value(
+                google_record.department_name if google_record else "",
+                local_record.department_name if local_record else "",
+            ),
+            "role": self._merge_directory_value(
+                google_record.role if google_record else "",
+                local_record.role if local_record else "",
+                fallback="employee",
+            ),
+        }
+
+    @staticmethod
+    def _merge_directory_value(primary: str, secondary: str, fallback: str = "") -> str:
+        return primary or secondary or fallback
+
+    @staticmethod
+    def _parse_event_date(value: str) -> datetime | None:
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y %H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
         return None

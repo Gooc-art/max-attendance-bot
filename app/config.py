@@ -31,6 +31,10 @@ class Settings:
     max_bot_token: str
     max_bot_secret: str
     max_bot_webhook_url: str
+    google_service_account_file: str
+    google_sheets_spreadsheet_id: str
+    google_sheets_employee_range: str
+    google_sheets_cache_ttl_seconds: int
 
 
 @lru_cache(maxsize=1)
@@ -46,4 +50,14 @@ def get_settings() -> Settings:
         max_bot_token=os.getenv("MAX_BOT_TOKEN", ""),
         max_bot_secret=os.getenv("MAX_BOT_SECRET", ""),
         max_bot_webhook_url=os.getenv("MAX_BOT_WEBHOOK_URL", ""),
+        google_service_account_file=os.getenv(
+            "GOOGLE_SERVICE_ACCOUNT_FILE",
+            "/Users/goocbk.ru/secure/attendance-max-bot-service-account.json",
+        ),
+        google_sheets_spreadsheet_id=os.getenv(
+            "GOOGLE_SHEETS_SPREADSHEET_ID",
+            "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54",
+        ),
+        google_sheets_employee_range=os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "Сотрудники!A:Q"),
+        google_sheets_cache_ttl_seconds=int(os.getenv("GOOGLE_SHEETS_CACHE_TTL_SECONDS", "300")),
     )

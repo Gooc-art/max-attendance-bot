@@ -33,6 +33,10 @@ APP_HOST=0.0.0.0
 APP_PORT=8000
 APP_DEBUG=true
 DATABASE_URL=sqlite:///./data/attendance_bot.db
+GOOGLE_SERVICE_ACCOUNT_FILE=/Users/goocbk.ru/secure/attendance-max-bot-service-account.json
+GOOGLE_SHEETS_SPREADSHEET_ID=1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54
+GOOGLE_SHEETS_EMPLOYEE_RANGE=Сотрудники!A:Q
+GOOGLE_SHEETS_CACHE_TTL_SECONDS=300
 ```
 
 ## Запуск backend на Mac
@@ -188,9 +192,10 @@ python3 scripts/register_max_webhook.py
 - прод-скрипты для `launchd` и tunnel
 - employee-flow: `Мои опоздания`, `Указать причину`, `Мои статусы`
 - CSV-импорт СКУД через API с записью истории импортов
+- чтение справочника сотрудников и ролей из Google Sheets как первого источника данных
 
 Следующий этап:
 
-- справочник сотрудников и связка с Google Sheets
+- расширение Google Sheets до полноценного источника прав и маршрутов согласования
 - реальные маршруты руководителей и замещений без demo-данных
 - отчеты по периоду и выгрузка файлов

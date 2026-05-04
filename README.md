@@ -84,6 +84,8 @@ python3 scripts/register_max_webhook.py
 - `GET /` — корневой статус
 - `GET /api/health` — healthcheck
 - `POST /api/webhooks/max` — webhook-заглушка под MAX
+- `POST /api/imports/skud/csv?filename=...&created_by_user_id=...` — импорт CSV выгрузки СКУД
+- `GET /api/imports/skud` — история импортов
 - `GET /docs` — Swagger UI
 
 ## Пример webhook payload
@@ -173,10 +175,11 @@ python3 scripts/register_max_webhook.py
 - сохранение шагов диалога и черновиков замещений в БД
 - demo-согласования с inline-кнопками в MAX
 - прод-скрипты для `launchd` и tunnel
+- employee-flow: `Мои опоздания`, `Указать причину`, `Мои статусы`
+- CSV-импорт СКУД через API с записью истории импортов
 
 Следующий этап:
 
-- модели сотрудников, нарушений и согласований
-- сценарии `Согласования`, `Отчеты`, `Импорт СКУД`
-- импорт СКУД
-- маршрутизация согласований и замещений
+- справочник сотрудников и связка с Google Sheets
+- реальные маршруты руководителей и замещений без demo-данных
+- отчеты по периоду и выгрузка файлов

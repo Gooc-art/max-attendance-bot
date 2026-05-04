@@ -47,3 +47,12 @@ class ApprovalStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class AttendanceReasonCode(str, Enum):
+    SICK_LEAVE = "sick_leave"
+    BUSINESS_TRIP = "business_trip"
+    REMOTE_DAY = "remote_day"
+    APPROVED_LATE = "approved_late"
+    PERSONAL_REASON = "personal_reason"
+    OTHER = "other"

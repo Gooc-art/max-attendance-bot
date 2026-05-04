@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 
 from app.bot.actions import BotAction
-from app.domain.enums import Role, SubstitutionReason, SubstitutionScope
+from app.domain.enums import AttendanceReasonCode, Role, SubstitutionReason, SubstitutionScope
 from app.schemas.max import MaxOutboundButton
 
 
@@ -82,6 +82,33 @@ def approval_card_buttons(approval_id: int) -> List[MaxOutboundButton]:
         btn("К списку согласований", BotAction.MENU_APPROVALS),
         btn("Главное меню", BotAction.MAIN_MENU),
     ]
+
+
+ATTENDANCE_REASON_LABELS: Dict[str, str] = {
+    AttendanceReasonCode.SICK_LEAVE.value: "Больничный",
+    AttendanceReasonCode.BUSINESS_TRIP.value: "Командировка",
+    AttendanceReasonCode.REMOTE_DAY.value: "Удаленная работа",
+    AttendanceReasonCode.APPROVED_LATE.value: "Согласованное опоздание",
+    AttendanceReasonCode.PERSONAL_REASON.value: "Личная причина",
+    AttendanceReasonCode.OTHER.value: "Другое",
+}
+
+
+def employee_case_buttons(case_id: int, require_reason: bool) -> List[MaxOutboundButton]:
+    buttons: List[MaxOutboundButton] = []
+    if require_reason:
+        buttons.append(btn("Указать причину", f"{BotAction.EMPLOYEE_CASE_OPEN_PREFIX}{case_id}"))
+    buttons.append(btn("Главное меню", BotAction.MAIN_MENU))
+    return buttons
+
+
+def attendance_reason_buttons(case_id: int) -> List[MaxOutboundButton]:
+    buttons = [
+        btn(label, f"{BotAction.EMPLOYEE_REASON_PREFIX}{case_id}:{code}")
+        for code, label in ATTENDANCE_REASON_LABELS.items()
+    ]
+    buttons.append(btn("Главное меню", BotAction.MAIN_MENU))
+    return buttons
 
 
 def reports_menu_buttons() -> List[MaxOutboundButton]:

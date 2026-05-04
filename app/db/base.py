@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import get_settings
@@ -36,3 +36,27 @@ def init_db() -> None:
     from app.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_runtime_schema()
+
+
+def _ensure_runtime_schema() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "attendance_cases" not in tables:
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("attendance_cases")}
+    required_columns = {
+        "employee_user_id": "ALTER TABLE attendance_cases ADD COLUMN employee_user_id VARCHAR(255) DEFAULT ''",
+        "manager_user_id": "ALTER TABLE attendance_cases ADD COLUMN manager_user_id VARCHAR(255) DEFAULT ''",
+        "manager_name": "ALTER TABLE attendance_cases ADD COLUMN manager_name VARCHAR(255) DEFAULT ''",
+        "source": "ALTER TABLE attendance_cases ADD COLUMN source VARCHAR(50) DEFAULT 'manual'",
+        "updated_at": "ALTER TABLE attendance_cases ADD COLUMN updated_at DATETIME",
+    }
+    with engine.begin() as connection:
+        for column_name, ddl in required_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(text(ddl))

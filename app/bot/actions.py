@@ -48,6 +48,8 @@ class BotAction:
     APPROVAL_OPEN_PREFIX = "approval.open:"
     APPROVAL_APPROVE_PREFIX = "approval.approve:"
     APPROVAL_REJECT_PREFIX = "approval.reject:"
+    EMPLOYEE_CASE_OPEN_PREFIX = "employee.case:"
+    EMPLOYEE_REASON_PREFIX = "employee.reason:"
 
     CANCEL = "common.cancel"
     CONFIRM = "common.confirm"

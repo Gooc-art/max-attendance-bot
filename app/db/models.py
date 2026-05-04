@@ -39,8 +39,11 @@ class AttendanceCaseModel(Base):
     __tablename__ = "attendance_cases"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     employee_name: Mapped[str] = mapped_column(String(255), index=True)
     department_name: Mapped[str] = mapped_column(String(255), index=True)
+    manager_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    manager_name: Mapped[str] = mapped_column(String(255), default="")
     case_type: Mapped[str] = mapped_column(String(50), index=True)
     status: Mapped[str] = mapped_column(String(50), index=True)
     event_date: Mapped[str] = mapped_column(String(20), index=True)
@@ -48,7 +51,9 @@ class AttendanceCaseModel(Base):
     actual_start: Mapped[str] = mapped_column(String(20))
     delay_minutes: Mapped[int] = mapped_column(Integer, default=0)
     employee_reason: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(50), default="manual", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ApprovalModel(Base):
@@ -70,3 +75,16 @@ class UserRoleOverrideModel(Base):
     user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(100), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SkudImportModel(Base):
+    __tablename__ = "skud_imports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    filename: Mapped[str] = mapped_column(String(255), index=True)
+    created_by_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    status: Mapped[str] = mapped_column(String(50), index=True)
+    total_rows: Mapped[int] = mapped_column(Integer, default=0)
+    created_cases: Mapped[int] = mapped_column(Integer, default=0)
+    error_rows: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

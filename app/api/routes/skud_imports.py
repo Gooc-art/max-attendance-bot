@@ -29,9 +29,13 @@ async def import_skud_csv(
         "ok": True,
         "import_id": result.import_id,
         "filename": result.filename,
+        "period_start": result.period_start,
+        "period_end": result.period_end,
+        "unique_employees": result.unique_employees,
         "total_rows": result.total_rows,
         "created_cases": result.created_cases,
         "error_rows": result.error_rows,
+        "samples": result.samples,
         "errors": result.errors,
     }
 
@@ -47,9 +51,13 @@ def list_skud_imports(limit: int = Query(default=20, ge=1, le=100)) -> dict:
                 "filename": row.filename,
                 "created_by_user_id": row.created_by_user_id,
                 "status": row.status,
+                "period_start": row.period_start,
+                "period_end": row.period_end,
+                "unique_employees": row.unique_employees,
                 "total_rows": row.total_rows,
                 "created_cases": row.created_cases,
                 "error_rows": row.error_rows,
+                "samples": row.samples_text.splitlines() if row.samples_text else [],
                 "created_at": row.created_at.isoformat(),
             }
             for row in rows

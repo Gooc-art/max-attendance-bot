@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time
 from io import StringIO
 from typing import Dict, List, Tuple
@@ -27,7 +27,11 @@ class SkudImportResult:
     total_rows: int
     created_cases: int
     error_rows: int
-    errors: List[str]
+    unique_employees: int = 0
+    period_start: str = ""
+    period_end: str = ""
+    samples: List[str] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
 
 
 class SkudImportService:
@@ -79,9 +83,13 @@ class SkudImportService:
             filename=filename,
             created_by_user_id=created_by_user_id,
             status="completed" if not errors else "completed_with_errors",
+            period_start=min_dt.date().isoformat() if min_dt else "",
+            period_end=max_dt.date().isoformat() if max_dt else "",
+            unique_employees=len({key[0] for key in first_entries.keys()}),
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
+            samples_text="\n".join(samples),
         )
         return SkudImportResult(
             import_id=import_id,
@@ -106,6 +114,8 @@ class SkudImportService:
         first_entries: Dict[Tuple[str, str], Dict[str, str]] = {}
         total_rows = 0
         errors: List[str] = []
+        min_dt: datetime | None = None
+        max_dt: datetime | None = None
 
         for row_number, row in enumerate(rows[data_start:], start=data_start + 1):
             if len(row) < 8:
@@ -127,6 +137,10 @@ class SkudImportService:
                     continue
 
                 event_dt = datetime.strptime(dt_value, "%d.%m.%Y %H:%M:%S")
+                if min_dt is None or event_dt < min_dt:
+                    min_dt = event_dt
+                if max_dt is None or event_dt > max_dt:
+                    max_dt = event_dt
                 key = (employee_name, event_dt.date().isoformat())
                 current = first_entries.get(key)
                 if current is None or event_dt.isoformat() < current["event_dt"]:
@@ -141,12 +155,22 @@ class SkudImportService:
                 errors.append(f"Строка {row_number}: {exc}")
 
         created_cases = 0
+        samples: List[str] = []
         planned_time = time(hour=8, minute=30)
         for item in first_entries.values():
             actual_dt = datetime.fromisoformat(item["event_dt"])
             delay_minutes = int((actual_dt - datetime.combine(actual_dt.date(), planned_time)).total_seconds() // 60)
             if delay_minutes <= 0:
                 continue
+            if len(samples) < 5:
+                samples.append(
+                    "{name} | {date} | {time} | +{delay} мин".format(
+                        name=item["employee_name"],
+                        date=item["event_date"],
+                        time=item["actual_start"],
+                        delay=delay_minutes,
+                    )
+                )
             self.case_repository.create_case(
                 employee_name=item["employee_name"],
                 department_name=item["department_name"],
@@ -175,6 +199,10 @@ class SkudImportService:
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
+            unique_employees=len({key[0] for key in first_entries.keys()}),
+            period_start=min_dt.date().isoformat() if min_dt else "",
+            period_end=max_dt.date().isoformat() if max_dt else "",
+            samples=samples,
             errors=errors,
         )
 

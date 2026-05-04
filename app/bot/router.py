@@ -332,9 +332,12 @@ class MaxWebhookRouter:
             text = "История импортов пока пустая."
         else:
             text = "Последние импорты:\n\n" + "\n".join(
-                "#{id} | {filename} | создано: {created} | ошибок: {errors} | {status}".format(
+                "#{id} | {filename} | {period_start} - {period_end} | сотрудников: {employees} | создано: {created} | ошибок: {errors} | {status}".format(
                     id=row.id,
                     filename=row.filename,
+                    period_start=row.period_start or "-",
+                    period_end=row.period_end or "-",
+                    employees=row.unique_employees,
                     created=row.created_cases,
                     errors=row.error_rows,
                     status=row.status,

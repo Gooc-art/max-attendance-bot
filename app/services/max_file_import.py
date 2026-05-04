@@ -223,14 +223,17 @@ class MaxFileImportService:
 
     @staticmethod
     def _format_import_message(result: SkudImportResult) -> str:
-        return (
-            "Импорт `{filename}` завершен.\n"
-            "Строк обработано: {total}\n"
-            "Кейсов создано: {created}\n"
-            "Ошибок: {errors}"
-        ).format(
-            filename=result.filename,
-            total=result.total_rows,
-            created=result.created_cases,
-            errors=result.error_rows,
-        )
+        parts = [
+            "Импорт `{filename}` завершен.".format(filename=result.filename),
+            "Период: {start} - {end}".format(
+                start=result.period_start or "-",
+                end=result.period_end or "-",
+            ),
+            "Уникальных сотрудников: {count}".format(count=result.unique_employees),
+            "Строк обработано: {total}".format(total=result.total_rows),
+            "Кейсов создано: {created}".format(created=result.created_cases),
+            "Ошибок: {errors}".format(errors=result.error_rows),
+        ]
+        if result.samples:
+            parts.append("Примеры:\n" + "\n".join(f"- {item}" for item in result.samples))
+        return "\n".join(parts)

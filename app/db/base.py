@@ -56,7 +56,18 @@ def _ensure_runtime_schema() -> None:
         "source": "ALTER TABLE attendance_cases ADD COLUMN source VARCHAR(50) DEFAULT 'manual'",
         "updated_at": "ALTER TABLE attendance_cases ADD COLUMN updated_at DATETIME",
     }
+    skud_import_required_columns = {
+        "period_start": "ALTER TABLE skud_imports ADD COLUMN period_start VARCHAR(20) DEFAULT ''",
+        "period_end": "ALTER TABLE skud_imports ADD COLUMN period_end VARCHAR(20) DEFAULT ''",
+        "unique_employees": "ALTER TABLE skud_imports ADD COLUMN unique_employees INTEGER DEFAULT 0",
+        "samples_text": "ALTER TABLE skud_imports ADD COLUMN samples_text TEXT DEFAULT ''",
+    }
     with engine.begin() as connection:
         for column_name, ddl in required_columns.items():
             if column_name not in existing_columns:
                 connection.execute(text(ddl))
+        if "skud_imports" in tables:
+            skud_columns = {column["name"] for column in inspector.get_columns("skud_imports")}
+            for column_name, ddl in skud_import_required_columns.items():
+                if column_name not in skud_columns:
+                    connection.execute(text(ddl))

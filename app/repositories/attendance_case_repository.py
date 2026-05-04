@@ -87,6 +87,54 @@ class AttendanceCaseRepository:
             ).scalars().all()
             return list(rows)
 
+    def list_for_manager_user(self, manager_user_id: str, limit: int = 20) -> List[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(AttendanceCaseModel)
+                .where(AttendanceCaseModel.manager_user_id == manager_user_id)
+                .order_by(AttendanceCaseModel.created_at.desc())
+                .limit(limit)
+            ).scalars().all()
+            return list(rows)
+
+    def list_for_manager_user_by_status(
+        self,
+        manager_user_id: str,
+        statuses: List[str],
+        limit: int = 20,
+    ) -> List[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(AttendanceCaseModel)
+                .where(AttendanceCaseModel.manager_user_id == manager_user_id)
+                .where(AttendanceCaseModel.status.in_(statuses))
+                .order_by(AttendanceCaseModel.created_at.desc())
+                .limit(limit)
+            ).scalars().all()
+            return list(rows)
+
+    def list_for_department_name(
+        self,
+        department_name: str,
+        statuses: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            query = select(AttendanceCaseModel).where(AttendanceCaseModel.department_name == department_name)
+            if statuses:
+                query = query.where(AttendanceCaseModel.status.in_(statuses))
+            rows = session.execute(
+                query.order_by(AttendanceCaseModel.created_at.desc()).limit(limit)
+            ).scalars().all()
+            return list(rows)
+
+    def count_for_manager_user(self, manager_user_id: str, statuses: Optional[List[str]] = None) -> int:
+        with SessionLocal() as session:
+            query = select(AttendanceCaseModel.id).where(AttendanceCaseModel.manager_user_id == manager_user_id)
+            if statuses:
+                query = query.where(AttendanceCaseModel.status.in_(statuses))
+            return len(session.execute(query).all())
+
     def get(self, case_id: int) -> Optional[AttendanceCaseModel]:
         with SessionLocal() as session:
             return session.get(AttendanceCaseModel, case_id)

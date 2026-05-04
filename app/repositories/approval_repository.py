@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 from sqlalchemy import select
@@ -20,6 +21,51 @@ class ApprovalRepository:
                 .order_by(ApprovalModel.created_at.desc())
             ).all()
             return list(rows)
+
+    def list_for_manager(
+        self,
+        manager_user_id: str,
+        statuses: Optional[List[str]] = None,
+        limit: int = 20,
+    ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+        with SessionLocal() as session:
+            query = (
+                select(ApprovalModel, AttendanceCaseModel)
+                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
+                .where(ApprovalModel.manager_user_id == manager_user_id)
+            )
+            if statuses:
+                query = query.where(ApprovalModel.status.in_(statuses))
+            rows = session.execute(query.order_by(ApprovalModel.created_at.desc()).limit(limit)).all()
+            return list(rows)
+
+    def list_overdue_for_manager(
+        self,
+        manager_user_id: str,
+        overdue_days: int = 2,
+        limit: int = 20,
+    ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+        with SessionLocal() as session:
+            overdue_before = datetime.utcnow() - timedelta(days=overdue_days)
+            rows = session.execute(
+                select(ApprovalModel, AttendanceCaseModel)
+                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
+                .where(ApprovalModel.manager_user_id == manager_user_id)
+                .where(ApprovalModel.status == ApprovalStatus.PENDING.value)
+                .where(ApprovalModel.created_at <= overdue_before)
+                .order_by(ApprovalModel.created_at.asc())
+                .limit(limit)
+            ).all()
+            return list(rows)
+
+    def count_pending_for_manager(self, manager_user_id: str) -> int:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(ApprovalModel.id)
+                .where(ApprovalModel.manager_user_id == manager_user_id)
+                .where(ApprovalModel.status == ApprovalStatus.PENDING.value)
+            ).all()
+            return len(rows)
 
     def get(self, approval_id: int) -> Optional[ApprovalModel]:
         with SessionLocal() as session:

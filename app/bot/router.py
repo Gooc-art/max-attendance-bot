@@ -23,7 +23,6 @@ from app.repositories.skud_import_repository import SkudImportRepository
 from app.repositories.substitution_repository import SubstitutionRepository
 from app.repositories.user_role_override_repository import UserRoleOverrideRepository
 from app.schemas.max import MaxOutboundButton, MaxOutboundMessage, MaxUpdate, MaxWebhookResponse
-from app.services.demo_data import ensure_demo_approvals_for_manager, ensure_demo_cases_for_employee
 from app.services.dialog_state import dialog_state_store
 from app.services.max_file_import import MaxFileImportService
 from app.services.role_resolver import RoleResolver
@@ -86,11 +85,12 @@ class MaxWebhookRouter:
                 "/top": Role.TOP_MANAGER.value,
             }[action]
             self.user_role_override_repository.set_role(event["user_id"], target_role)
-            if target_role == Role.MANAGER.value:
-                ensure_demo_approvals_for_manager(event["user_id"])
-            if target_role == Role.EMPLOYEE.value:
-                ensure_demo_cases_for_employee(event["user_id"])
             response = self._menu_response(target_role, "Роль переключена на: {0}".format(target_role))
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_MY_NOTIFICATIONS or user_text == "Мои уведомления":
+            response = self._my_notifications(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -109,6 +109,26 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.MENU_MY_MANAGER or user_text == "Мой руководитель":
+            response = self._my_manager(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_EMPLOYEES or user_text == "Мои сотрудники":
+            response = self._manager_employees(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_DEPARTMENT_LATES or user_text == "Опоздания отдела":
+            response = self._department_cases(role, event["user_id"], AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_DEPARTMENT_ABSENCES or user_text == "Неявки отдела":
+            response = self._department_cases(role, event["user_id"], AttendanceCaseStatus.NEW.value)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.MENU_SUBSTITUTIONS or user_text == "Замещения":
             response = self._substitutions_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -124,6 +144,21 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.MENU_SUMMARY or user_text == "Сводка":
+            response = self._summary_menu(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_DIVISION_REPORTS or user_text == "Отчеты по подразделениям":
+            response = self._division_reports(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_OVERDUE_APPROVALS or user_text == "Просроченные согласования":
+            response = self._overdue_approvals(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.MENU_SECURITY_IMPORT or user_text == "Загрузить выгрузку СКУД":
             response = self._security_import_help(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
@@ -136,6 +171,36 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_STAFF or user_text == "Сотрудники":
             response = self._staff_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_DEPARTMENTS or user_text == "Подразделения":
+            response = self._departments_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_SCHEDULES or user_text == "Графики":
+            response = self._schedules_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_EXCEPTIONS or user_text == "Исключения":
+            response = self._exceptions_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_SETTINGS or user_text == "Системные настройки":
+            response = self._settings_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_MATCH_ERRORS or user_text == "Ошибки сопоставления":
+            response = self._match_errors_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_UNPROCESSED or user_text == "Необработанные записи":
+            response = self._unprocessed_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -169,17 +234,17 @@ class MaxWebhookRouter:
             return response
 
         if action == BotAction.SUBSTITUTION_CANCEL:
-            response = self._stub_section(role, "Раздел отмены замещения подготовлен как следующий шаг.")
+            response = self._substitution_cancel(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
         if action == BotAction.SUBSTITUTION_EXTEND:
-            response = self._stub_section(role, "Раздел продления замещения подготовлен как следующий шаг.")
+            response = self._substitution_extend(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
         if action in {BotAction.APPROVALS_NEW, BotAction.APPROVALS_IN_PROGRESS, BotAction.APPROVALS_OVERDUE, BotAction.APPROVALS_HISTORY}:
-            response = self._approvals_list(role, event["user_id"])
+            response = self._approvals_list(role, event["user_id"], action=action)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -195,6 +260,7 @@ class MaxWebhookRouter:
             response = self._approvals_list(
                 role,
                 event["user_id"],
+                BotAction.APPROVALS_IN_PROGRESS,
                 prefix_text="Согласование #{0} подтверждено.\n\n".format(approval_id),
             )
             self._send_outbound(payload, response.outbound)
@@ -206,6 +272,7 @@ class MaxWebhookRouter:
             response = self._approvals_list(
                 role,
                 event["user_id"],
+                BotAction.APPROVALS_IN_PROGRESS,
                 prefix_text="Согласование #{0} отклонено.\n\n".format(approval_id),
             )
             self._send_outbound(payload, response.outbound)
@@ -223,10 +290,7 @@ class MaxWebhookRouter:
             return response
 
         if action in {BotAction.REPORT_WEEK, BotAction.REPORT_MONTH, BotAction.REPORT_QUARTER}:
-            response = self._stub_section(
-                role,
-                "Генерация отчетов будет подключена следующим этапом. Выбрано: {0}.".format(user_text or action),
-            )
+            response = self._quick_report(role, event["user_id"], action)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -363,6 +427,342 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
+    def _my_notifications(self, role: str, user_id: str) -> MaxWebhookResponse:
+        rows = self.case_repository.list_for_employee_user(user_id)
+        pending_reason = self.case_repository.list_pending_reason_for_employee(user_id)
+        if not rows:
+            text = (
+                "У тебя пока нет уведомлений.\n\n"
+                "Если справочник сотрудников еще не загружен, импортируй его через раздел `Сотрудники`."
+            )
+        else:
+            latest = rows[0]
+            text = (
+                "Уведомления по твоим случаям:\n\n"
+                "Всего случаев: {total}\n"
+                "Ожидают причину: {pending}\n"
+                "Последний статус: #{case_id} | {date} | {status}"
+            ).format(
+                total=len(rows),
+                pending=len(pending_reason),
+                case_id=latest.id,
+                date=latest.event_date,
+                status=self._status_label(latest.status),
+            )
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Мои опоздания", action=BotAction.MENU_MY_LATES),
+                    MaxOutboundButton(title="Мои статусы", action=BotAction.MENU_MY_STATUSES),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _my_manager(self, role: str, user_id: str) -> MaxWebhookResponse:
+        record = self.employee_directory_repository.get_by_user_id(user_id)
+        if record is not None and record.manager_name:
+            text = (
+                "Твой руководитель:\n\n"
+                "ФИО: {manager}\n"
+                "Подразделение: {department}\n"
+                "Роль: {role}"
+            ).format(
+                manager=record.manager_name,
+                department=record.department_name or "-",
+                role=record.role or "employee",
+            )
+        else:
+            cases = self.case_repository.list_for_employee_user(user_id)
+            manager_name = cases[0].manager_name if cases and cases[0].manager_name else ""
+            if manager_name:
+                text = "Твой руководитель: {0}".format(manager_name)
+            else:
+                text = "Данные о руководителе пока не загружены."
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Мои уведомления", action=BotAction.MENU_MY_NOTIFICATIONS),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _manager_employees(self, role: str, user_id: str) -> MaxWebhookResponse:
+        directory_rows = self.employee_directory_repository.get_by_manager_user_id(user_id)
+        if directory_rows:
+            lines = [
+                "#{id} | {name} | {dept} | {status}".format(
+                    id=row.id,
+                    name=row.employee_name,
+                    dept=row.department_name or "-",
+                    status="активен" if row.is_active else "не активен",
+                )
+                for row in directory_rows[:10]
+            ]
+            text = "Твои сотрудники:\n\n" + "\n".join(lines)
+        else:
+            case_rows = self.case_repository.list_for_manager_user(user_id, limit=10)
+            if case_rows:
+                unique_employees = []
+                seen = set()
+                for case in case_rows:
+                    if case.employee_name in seen:
+                        continue
+                    seen.add(case.employee_name)
+                    unique_employees.append(case.employee_name)
+                text = "Твои сотрудники по случаям:\n\n" + "\n".join(f"- {name}" for name in unique_employees[:10])
+            else:
+                text = "Сотрудники пока не загружены."
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Согласования", action=BotAction.MENU_APPROVALS),
+                    MaxOutboundButton(title="Опоздания отдела", action=BotAction.MENU_DEPARTMENT_LATES),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _department_cases(self, role: str, user_id: str, status_hint: str) -> MaxWebhookResponse:
+        rows = self.case_repository.list_for_manager_user(user_id, limit=20)
+        if not rows:
+            text = "По твоим сотрудникам пока нет случаев."
+        else:
+            if status_hint == AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value:
+                filtered = [case for case in rows if case.case_type == "late"]
+                title = "Опоздания отдела"
+            else:
+                filtered = [case for case in rows if case.case_type == "absent"]
+                title = "Неявки отдела"
+
+            if not filtered:
+                text = f"{title} пока нет."
+            else:
+                lines = [
+                    "#{id} | {employee} | {date} | {status}".format(
+                        id=case.id,
+                        employee=case.employee_name,
+                        date=case.event_date,
+                        status=self._status_label(case.status),
+                    )
+                    for case in filtered[:10]
+                ]
+                text = f"{title}:\n\n" + "\n".join(lines)
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Согласования", action=BotAction.MENU_APPROVALS),
+                    MaxOutboundButton(title="Отчеты", action=BotAction.MENU_REPORTS),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _summary_menu(self, role: str, user_id: str) -> MaxWebhookResponse:
+        approvals = self.approval_repository.count_pending_for_manager(user_id)
+        cases = self.case_repository.count_for_manager_user(
+            user_id,
+            statuses=[
+                AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
+                AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value,
+            ],
+        )
+        text = (
+            "Сводка:\n\n"
+            "Ожидают согласования: {approvals}\n"
+            "Активных случаев по твоим сотрудникам: {cases}"
+        ).format(approvals=approvals, cases=cases)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Просроченные согласования", action=BotAction.MENU_OVERDUE_APPROVALS),
+                    MaxOutboundButton(title="Отчеты по подразделениям", action=BotAction.MENU_DIVISION_REPORTS),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _division_reports(self, role: str, user_id: str) -> MaxWebhookResponse:
+        rows = self.case_repository.list_for_manager_user(user_id, limit=50)
+        if not rows:
+            text = "Отчеты по подразделениям пока пустые."
+        else:
+            late = sum(1 for case in rows if case.case_type == "late")
+            absent = sum(1 for case in rows if case.case_type == "absent")
+            justified = sum(1 for case in rows if case.status == AttendanceCaseStatus.JUSTIFIED.value)
+            text = (
+                "Отчеты по подразделениям:\n\n"
+                "Опоздания: {late}\n"
+                "Неявки: {absent}\n"
+                "Подтверждено уважительно: {justified}\n"
+                "Всего случаев: {total}"
+            ).format(late=late, absent=absent, justified=justified, total=len(rows))
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Недельный отчет", action=BotAction.REPORT_WEEK),
+                    MaxOutboundButton(title="Месячный отчет", action=BotAction.REPORT_MONTH),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _overdue_approvals(self, role: str, user_id: str) -> MaxWebhookResponse:
+        rows = self.approval_repository.list_overdue_for_manager(user_id)
+        if not rows:
+            text = "Просроченных согласований нет."
+            buttons = [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)]
+        else:
+            lines = [
+                "#{approval_id} | {employee} | {date} | {kind}".format(
+                    approval_id=approval.id,
+                    employee=case.employee_name,
+                    date=case.event_date,
+                    kind="Опоздание" if case.case_type == "late" else "Неявка",
+                )
+                for approval, case in rows[:10]
+            ]
+            text = "Просроченные согласования:\n\n" + "\n".join(lines)
+            buttons = [MaxOutboundButton(title="Согласования", action=BotAction.MENU_APPROVALS), MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)]
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(text=text, buttons=buttons),
+            active_flow=None,
+        )
+
+    def _quick_report(self, role: str, user_id: str, action: str) -> MaxWebhookResponse:
+        rows = self.case_repository.list_for_manager_user(user_id, limit=100)
+        label = {
+            BotAction.REPORT_WEEK: "недельный",
+            BotAction.REPORT_MONTH: "месячный",
+            BotAction.REPORT_QUARTER: "квартальный",
+        }.get(action, "выбранный")
+        if not rows:
+            text = "{0} отчет пока пустой.".format(label.capitalize())
+        else:
+            text = (
+                "{title} отчет:\n\n"
+                "Всего случаев: {total}\n"
+                "Опоздания: {late}\n"
+                "Неявки: {absent}\n"
+                "На согласовании: {pending}"
+            ).format(
+                title=label.capitalize(),
+                total=len(rows),
+                late=sum(1 for case in rows if case.case_type == "late"),
+                absent=sum(1 for case in rows if case.case_type == "absent"),
+                pending=sum(1 for case in rows if case.status == AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value),
+            )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _substitution_cancel(self, role: str, user_id: str) -> MaxWebhookResponse:
+        rows = self.substitution_repository.list_drafts_for_user(user_id)
+        if not rows:
+            text = "У тебя нет черновиков замещений для отмены."
+        else:
+            latest = rows[0]
+            text = (
+                "Последний черновик замещения #{id} можно отменить на следующем этапе CRUD.\n\n"
+                "Сейчас доступны:\n"
+                "Кого замещаем: {target}\n"
+                "Кто замещает: {replacement}\n"
+                "Период: {date_from} - {date_to}"
+            ).format(
+                id=latest.id,
+                target=latest.target_manager,
+                replacement=latest.replacement_user,
+                date_from=latest.date_from,
+                date_to=latest.date_to,
+            )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _substitution_extend(self, role: str, user_id: str) -> MaxWebhookResponse:
+        rows = self.substitution_repository.list_drafts_for_user(user_id)
+        if not rows:
+            text = "У тебя нет черновиков замещений для продления."
+        else:
+            latest = rows[0]
+            text = (
+                "Продление замещения на следующем шаге будет работать как редактирование периода.\n\n"
+                "Текущий черновик #{id}: {date_from} - {date_to}."
+            ).format(id=latest.id, date_from=latest.date_from, date_to=latest.date_to)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
     def _staff_menu(self, role: str) -> MaxWebhookResponse:
         rows = self.employee_directory_repository.list_recent(limit=8)
         if not rows:
@@ -397,6 +797,135 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
+    def _departments_menu(self, role: str) -> MaxWebhookResponse:
+        rows = self.employee_directory_repository.list_recent(limit=100)
+        departments = {}
+        for row in rows:
+            if not row.department_name:
+                continue
+            departments.setdefault(row.department_name, 0)
+            departments[row.department_name] += 1
+        if not departments:
+            text = (
+                "Подразделения пока не загружены.\n\n"
+                "Они появятся после импорта справочника сотрудников."
+            )
+        else:
+            lines = [f"- {name}: {count}" for name, count in sorted(departments.items())]
+            text = "Подразделения:\n\n" + "\n".join(lines)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _schedules_menu(self, role: str) -> MaxWebhookResponse:
+        text = (
+            "Раздел графиков готов к заполнению.\n\n"
+            "Текущий основной график в боте: 08:30 - 18:00, понедельник-пятница.\n"
+            "Фактический справочник графиков подключим следующим шагом."
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Исключения", action=BotAction.MENU_EXCEPTIONS),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _exceptions_menu(self, role: str) -> MaxWebhookResponse:
+        text = (
+            "Исключения сейчас ведутся через импорт справочника и будущий CRUD.\n\n"
+            "Поддерживаемые типы: отпуск, больничный, командировка, удаленная работа, разрешенное опоздание."
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Графики", action=BotAction.MENU_SCHEDULES),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _settings_menu(self, role: str) -> MaxWebhookResponse:
+        text = (
+            "Системные настройки:\n\n"
+            "Порог опоздания: 10 минут\n"
+            "Неявка после: 12:00\n"
+            "Срок ответа сотрудника: 1 рабочий день\n"
+            "Срок согласования: 1 рабочий день"
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _match_errors_menu(self, role: str) -> MaxWebhookResponse:
+        text = (
+            "Ошибки сопоставления пока не ведутся как отдельный журнал.\n\n"
+            "Когда справочник сотрудников и MAX ID будут заполнены, здесь появятся строки, которые не удалось связать."
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _unprocessed_menu(self, role: str) -> MaxWebhookResponse:
+        text = (
+            "Необработанные записи сейчас отсутствуют в отдельном журнале.\n\n"
+            "После загрузки справочника и расширения импорта этот раздел можно будет подключить к очереди разборов."
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Загрузить выгрузку СКУД", action=BotAction.MENU_SECURITY_IMPORT),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                ],
+            ),
+            active_flow=None,
+        )
+
     def _handle_attachments(self, role: str, user_id: str, attachments: list) -> MaxWebhookResponse | None:
         file_attachments = [attachment for attachment in attachments if getattr(attachment, "type", "") == "file"]
         if not file_attachments:
@@ -424,12 +953,14 @@ class MaxWebhookRouter:
     def _employee_cases(self, role: str, user_id: str) -> MaxWebhookResponse:
         rows = self.case_repository.list_for_employee_user(user_id)
         if not rows:
-            ensure_demo_cases_for_employee(user_id)
-            rows = self.case_repository.list_for_employee_user(user_id)
-
-        if not rows:
-            text = "У тебя пока нет зарегистрированных случаев."
-            buttons = [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)]
+            text = (
+                "У тебя пока нет зарегистрированных случаев.\n\n"
+                "Если справочник сотрудников еще не загружен, сначала импортируй его через раздел `Сотрудники`."
+            )
+            buttons = [
+                MaxOutboundButton(title="Мои уведомления", action=BotAction.MENU_MY_NOTIFICATIONS),
+                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+            ]
         else:
             lines = []
             buttons: List[MaxOutboundButton] = []
@@ -539,31 +1070,46 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _approvals_list(self, role: str, user_id: str, prefix_text: str = "") -> MaxWebhookResponse:
-        rows = self.approval_repository.list_pending_for_manager(user_id)
+    def _approvals_list(self, role: str, user_id: str, action: str, prefix_text: str = "") -> MaxWebhookResponse:
+        if action == BotAction.APPROVALS_HISTORY:
+            rows = self.approval_repository.list_for_manager(
+                user_id,
+                statuses=[ApprovalStatus.APPROVED.value, ApprovalStatus.REJECTED.value],
+            )
+            heading = "История согласований"
+        elif action == BotAction.APPROVALS_OVERDUE:
+            rows = self.approval_repository.list_overdue_for_manager(user_id)
+            heading = "Просроченные согласования"
+        else:
+            rows = self.approval_repository.list_for_manager(user_id, statuses=[ApprovalStatus.PENDING.value])
+            heading = "Согласования в ожидании"
+
         if not rows:
-            text = prefix_text + "У тебя нет согласований в статусе ожидания."
+            text = prefix_text + "У тебя нет согласований в этом разделе."
             buttons = [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)]
         else:
             lines = []
             buttons = []
             for approval, case in rows[:8]:
+                status_label = self._approval_status_label(approval.status)
                 lines.append(
-                    "#{approval_id} | {employee} | {date} | {kind}".format(
+                    "#{approval_id} | {employee} | {date} | {kind} | {status}".format(
                         approval_id=approval.id,
                         employee=case.employee_name,
                         date=case.event_date,
                         kind="Опоздание" if case.case_type == "late" else "Неявка",
+                        status=status_label,
                     )
                 )
-                buttons.append(
-                    MaxOutboundButton(
-                        title="Открыть #{0}".format(approval.id),
-                        action="{0}{1}".format(BotAction.APPROVAL_OPEN_PREFIX, approval.id),
+                if approval.status == ApprovalStatus.PENDING.value:
+                    buttons.append(
+                        MaxOutboundButton(
+                            title="Открыть #{0}".format(approval.id),
+                            action="{0}{1}".format(BotAction.APPROVAL_OPEN_PREFIX, approval.id),
+                        )
                     )
-                )
             buttons.append(MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU))
-            text = prefix_text + "Согласования в ожидании:\n\n{lines}".format(lines="\n".join(lines))
+            text = prefix_text + "{heading}:\n\n{lines}".format(heading=heading, lines="\n".join(lines))
 
         return MaxWebhookResponse(
             ok=True,
@@ -770,5 +1316,13 @@ class MaxWebhookRouter:
             AttendanceCaseStatus.JUSTIFIED.value: "Подтверждено уважительно",
             AttendanceCaseStatus.UNJUSTIFIED.value: "Подтверждено неуважительно",
             AttendanceCaseStatus.CLOSED.value: "Закрыт",
+        }
+        return labels.get(status, status)
+
+    def _approval_status_label(self, status: str) -> str:
+        labels = {
+            ApprovalStatus.PENDING.value: "Ожидает",
+            ApprovalStatus.APPROVED.value: "Согласовано",
+            ApprovalStatus.REJECTED.value: "Отклонено",
         }
         return labels.get(status, status)

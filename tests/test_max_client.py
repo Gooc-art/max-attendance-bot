@@ -8,7 +8,7 @@ from app.integrations.max.client import MaxApiClient
 
 
 class MaxApiClientTests(unittest.TestCase):
-    def test_send_message_uses_camelcase_query_names(self) -> None:
+    def test_send_message_uses_snake_case_query_names(self) -> None:
         client = MaxApiClient(
             token="token",
             secret="secret",
@@ -25,11 +25,11 @@ class MaxApiClientTests(unittest.TestCase):
             client.send_message(chat_id=123, text="hello")
 
         request = mocked.call_args.args[0]
-        self.assertIn("chatId=123", request.full_url)
+        self.assertIn("chat_id=123", request.full_url)
         self.assertIn("v=1.2.5", request.full_url)
         self.assertEqual(json.loads(request.data.decode("utf-8"))["text"], "hello")
 
-    def test_answer_callback_uses_camelcase_query_name(self) -> None:
+    def test_answer_callback_uses_snake_case_query_name(self) -> None:
         client = MaxApiClient(
             token="token",
             secret="secret",
@@ -46,7 +46,7 @@ class MaxApiClientTests(unittest.TestCase):
             client.answer_callback(callback_id="cb-1", notification="ok")
 
         request = mocked.call_args.args[0]
-        self.assertIn("callbackId=cb-1", request.full_url)
+        self.assertIn("callback_id=cb-1", request.full_url)
 
 
 if __name__ == "__main__":

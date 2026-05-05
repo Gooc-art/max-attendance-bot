@@ -16,6 +16,8 @@
 7. Expose a visible `Старт` button in every role menu; `/start` remains the underlying command.
 8. Expose a dedicated `Админ-панель` screen for users with the `admin` role.
 9. Expose read-only admin diagnostics for current MAX identity and Google Sheets binding.
+10. Send a push notification to the manager when an employee submits a reason, with approval actions attached.
+11. Restrict SKUD file uploads to the `Служба безопасности` role.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

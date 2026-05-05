@@ -56,10 +56,20 @@ class MaxWebhookRouter:
         active_state = dialog_state_store.get(event["user_id"])
 
         if payload.message and payload.message.body.attachments:
-            response = self._handle_attachments(role, event["user_id"], payload.message.body.attachments)
-            if response is not None:
-                self._send_outbound(payload, response.outbound)
-                return response
+            file_attachments = [
+                attachment
+                for attachment in payload.message.body.attachments
+                if getattr(attachment, "type", "") == "file"
+            ]
+            if file_attachments:
+                if role != Role.SECURITY.value:
+                    response = self._stub_section(role, "Загрузка СКУД доступна только роли Служба безопасности.")
+                    self._send_outbound(payload, response.outbound)
+                    return response
+                response = self._handle_attachments(role, event["user_id"], payload.message.body.attachments)
+                if response is not None:
+                    self._send_outbound(payload, response.outbound)
+                    return response
 
         if active_state and active_state.flow == DialogFlow.SUBSTITUTION.value:
             result = self.substitution_flow.handle_input(event["user_id"], role, user_text, action, active_state)
@@ -1455,13 +1465,15 @@ class MaxWebhookRouter:
             employee_reason=reason_label,
             status=AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value,
         )
+        approval_id = None
         if case.manager_user_id:
-            self.approval_repository.create_if_missing(
+            approval_id = self.approval_repository.create_if_missing(
                 case_id=case_id,
                 manager_user_id=case.manager_user_id,
                 manager_name=case.manager_name or "Руководитель",
                 status=ApprovalStatus.PENDING.value,
             )
+            self._notify_manager_about_reason(case, reason_label, approval_id)
 
         refreshed = self.case_repository.get(case_id)
         return MaxWebhookResponse(
@@ -1483,6 +1495,37 @@ class MaxWebhookRouter:
             ),
             active_flow=None,
         )
+
+    def _notify_manager_about_reason(self, case, reason_label: str, approval_id: int | None) -> None:
+        if not self.max_client.is_configured() or not case.manager_user_id:
+            return
+
+        approval_text = (
+            "Новая причина по случаю #{case_id}\n\n"
+            "Сотрудник: {employee}\n"
+            "Подразделение: {department}\n"
+            "Дата: {date}\n"
+            "Тип: {kind}\n"
+            "Опоздание: {delay} мин\n"
+            "Причина: {reason}"
+        ).format(
+            case_id=case.id,
+            employee=case.employee_name,
+            department=case.department_name,
+            date=case.event_date,
+            kind="Опоздание" if case.case_type == "late" else "Неявка",
+            delay=case.delay_minutes,
+            reason=reason_label,
+        )
+        buttons = approval_card_buttons(approval_id) if approval_id else [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)]
+        try:
+            self.max_client.send_message(
+                user_id=case.manager_user_id,
+                text=approval_text,
+                buttons=buttons,
+            )
+        except Exception:
+            return
 
     def _parse_id(self, action: str, prefix: str) -> int:
         try:

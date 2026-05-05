@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
 from app.bot.buttons import (
@@ -15,6 +15,7 @@ from app.bot.buttons import (
 )
 from app.bot.menus import get_menu_for_role
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow, Role
+from app.domain.dialog_state import UserDialogState
 from app.domain.role_labels import display_role_name
 from app.integrations.max.client import MaxApiClient
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
@@ -82,6 +83,11 @@ class MaxWebhookRouter:
                 active_flow=None if result.completed else active_state.flow,
             )
 
+        if active_state and active_state.flow == DialogFlow.ATTENDANCE_REASON.value:
+            response = self._handle_attendance_reason_flow(role, event["user_id"], user_text, action, active_state)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action in {BotAction.START, BotAction.MAIN_MENU, "/start", "Главное меню"}:
             dialog_state_store.reset(event["user_id"])
             response = self._menu_response(role, "Главное меню готово.")
@@ -119,6 +125,12 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_SUBMIT_REASON or user_text == "Указать причину":
             response = self._employee_pending_reason_cases(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action.startswith(BotAction.EMPLOYEE_REASON_START_PREFIX):
+            case_id = self._parse_id(action, BotAction.EMPLOYEE_REASON_START_PREFIX)
+            response = self._start_attendance_reason_flow(role, event["user_id"], case_id)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1442,7 +1454,13 @@ class MaxWebhookRouter:
             status=self._status_label(case.status),
             reason=case.employee_reason or "-",
         )
-        buttons = attendance_reason_buttons(case.id) if require_reason else employee_case_buttons(case.id, require_reason=False)
+        if require_reason:
+            buttons = [
+                MaxOutboundButton(title="Выбрать руководителя", action=f"{BotAction.EMPLOYEE_REASON_START_PREFIX}{case.id}", emoji="👔", row=0),
+                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=1),
+            ]
+        else:
+            buttons = employee_case_buttons(case.id, require_reason=False)
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1451,7 +1469,157 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _employee_submit_reason(self, role: str, user_id: str, action: str) -> MaxWebhookResponse:
+    def _start_attendance_reason_flow(self, role: str, user_id: str, case_id: int) -> MaxWebhookResponse:
+        case = self.case_repository.get(case_id)
+        if case is None or case.employee_user_id != user_id:
+            return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
+
+        candidates = self._resolve_reason_manager_options(case)
+        if not candidates:
+            if case.manager_user_id:
+                candidates = [(case.manager_user_id, case.manager_name or "Руководитель")]
+            else:
+                return self._stub_section(role, "Не удалось подобрать руководителя для согласования.")
+
+        buttons = [
+            MaxOutboundButton(
+                title=name,
+                action=f"{BotAction.EMPLOYEE_MANAGER_PREFIX}{case.id}:{manager_user_id}",
+                emoji="👔",
+                row=index // 2,
+            )
+            for index, (manager_user_id, name) in enumerate(candidates[:6])
+        ]
+        buttons.append(MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=len(buttons) // 2 + 1))
+
+        dialog_state_store.set(
+            user_id,
+            UserDialogState(
+                flow=DialogFlow.ATTENDANCE_REASON.value,
+                step="choose_manager",
+                data={"case_id": str(case.id)},
+            ),
+        )
+        text = (
+            "Выбери руководителя для согласования по случаю #{id}.\n\n"
+            "Если нужного человека нет в списке, будет использован текущий руководитель из таблицы."
+        ).format(id=case.id)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(text=text, buttons=buttons),
+            active_flow=DialogFlow.ATTENDANCE_REASON.value,
+        )
+
+    def _resolve_reason_manager_options(self, case) -> List[Tuple[str, str]]:
+        options: List[Tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def add_option(manager_user_id: str, manager_name: str) -> None:
+            manager_user_id = str(manager_user_id or "").strip()
+            manager_name = str(manager_name or "").strip() or "Руководитель"
+            if not manager_user_id or manager_user_id in seen:
+                return
+            seen.add(manager_user_id)
+            options.append((manager_user_id, manager_name))
+
+        if case.manager_user_id:
+            add_option(case.manager_user_id, case.manager_name or "Руководитель")
+
+        directory_rows = self._resolve_directory_rows_recent(limit=200)
+        case_department = str(case.department_name or "").strip().lower()
+        for row in directory_rows:
+            if not row.is_active:
+                continue
+            if row.role not in {Role.MANAGER.value, Role.ADMIN.value, Role.TOP_MANAGER.value}:
+                continue
+            row_department = str(getattr(row, "department_name", "") or "").strip().lower()
+            if case_department and row_department and row_department != case_department:
+                continue
+            add_option(row.employee_user_id, row.employee_name or row.manager_name or "Руководитель")
+
+        return options
+
+    def _handle_attendance_reason_flow(
+        self,
+        role: str,
+        user_id: str,
+        user_text: str,
+        action: str,
+        state,
+    ) -> MaxWebhookResponse:
+        case_id = int(state.data.get("case_id", "0") or 0)
+        case = self.case_repository.get(case_id)
+        if case is None or case.employee_user_id != user_id:
+            dialog_state_store.reset(user_id)
+            return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
+
+        if state.step == "choose_manager" and action.startswith(BotAction.EMPLOYEE_MANAGER_PREFIX):
+            _, remainder = action.split(BotAction.EMPLOYEE_MANAGER_PREFIX, 1)
+            case_part, manager_user_id = remainder.split(":", 1)
+            if int(case_part) != case_id:
+                return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
+            manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
+            manager_name = ""
+            if manager_record is not None:
+                manager_name = manager_record.employee_name or manager_record.manager_name
+            if not manager_name:
+                manager_name = "Руководитель"
+
+            self.case_repository.update_manager(case_id, manager_user_id, manager_name)
+            state.step = "choose_reason"
+            state.data["manager_user_id"] = manager_user_id
+            state.data["manager_name"] = manager_name
+            dialog_state_store.set(user_id, state)
+            buttons = attendance_reason_buttons(case_id)
+            text = (
+                "Руководитель выбран: {manager}\n\n"
+                "Теперь выбери причину по случаю #{case_id}."
+            ).format(manager=manager_name, case_id=case_id)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(text=text, buttons=buttons),
+                active_flow=DialogFlow.ATTENDANCE_REASON.value,
+            )
+
+        if state.step == "choose_reason" and action.startswith(BotAction.EMPLOYEE_REASON_PREFIX):
+            _, remainder = action.split(BotAction.EMPLOYEE_REASON_PREFIX, 1)
+            case_part, reason_code = remainder.split(":", 1)
+            if int(case_part) != case_id:
+                return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
+            response = self._employee_submit_reason(
+                role,
+                user_id,
+                action,
+                manager_override=state.data.get("manager_user_id"),
+                manager_name_override=state.data.get("manager_name"),
+            )
+            dialog_state_store.reset(user_id)
+            return response
+
+        manager_name = state.data.get("manager_name", "руководителя")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Сначала выбери руководителя, затем причину. Текущий выбор: {0}".format(manager_name),
+                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)],
+            ),
+            active_flow=DialogFlow.ATTENDANCE_REASON.value,
+        )
+
+    def _employee_submit_reason(
+        self,
+        role: str,
+        user_id: str,
+        action: str,
+        manager_override: Optional[str] = None,
+        manager_name_override: Optional[str] = None,
+    ) -> MaxWebhookResponse:
         _, remainder = action.split(BotAction.EMPLOYEE_REASON_PREFIX, 1)
         case_part, reason_code = remainder.split(":", 1)
         case_id = int(case_part)
@@ -1460,20 +1628,27 @@ class MaxWebhookRouter:
             return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
 
         reason_label = ATTENDANCE_REASON_LABELS.get(reason_code, reason_code)
+        manager_user_id = manager_override or case.manager_user_id
+        manager_name = manager_name_override or case.manager_name or "Руководитель"
+        if manager_user_id:
+            update_manager = getattr(self.case_repository, "update_manager", None)
+            if callable(update_manager):
+                update_manager(case_id, manager_user_id, manager_name)
         self.case_repository.update_reason_and_status(
             case_id=case_id,
             employee_reason=reason_label,
             status=AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value,
         )
         approval_id = None
-        if case.manager_user_id:
+        if manager_user_id:
             approval_id = self.approval_repository.create_if_missing(
                 case_id=case_id,
-                manager_user_id=case.manager_user_id,
-                manager_name=case.manager_name or "Руководитель",
+                manager_user_id=manager_user_id,
+                manager_name=manager_name,
                 status=ApprovalStatus.PENDING.value,
             )
-            self._notify_manager_about_reason(case, reason_label, approval_id)
+            refreshed = self.case_repository.get(case_id)
+            self._notify_manager_about_reason(refreshed or case, reason_label, approval_id)
 
         refreshed = self.case_repository.get(case_id)
         return MaxWebhookResponse(

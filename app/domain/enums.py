@@ -14,6 +14,7 @@ class Role(str, Enum):
 
 class DialogFlow(str, Enum):
     SUBSTITUTION = "substitution"
+    ATTENDANCE_REASON = "attendance_reason"
 
 
 class SubstitutionScope(str, Enum):

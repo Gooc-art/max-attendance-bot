@@ -110,6 +110,11 @@ class ApprovalRepository:
                 select(ApprovalModel).where(ApprovalModel.case_id == case_id).limit(1)
             ).scalar_one_or_none()
             if existing is not None:
+                existing.manager_user_id = manager_user_id
+                existing.manager_name = manager_name
+                existing.status = status
+                session.commit()
+                session.refresh(existing)
                 return int(existing.id)
             row = ApprovalModel(
                 case_id=case_id,

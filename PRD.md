@@ -15,8 +15,8 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Show role-based MAX menus with Russian display labels for people-facing UI.
 - Read employee directory, departments, and managers from Google Sheets.
 - Import SKUD reports and create late/absence cases.
-- Support employee reason selection and manager approvals.
-- Notify the manager immediately when the employee submits a reason.
+- Support employee reason selection, manager choice from a shortlist, and manager approvals.
+- Notify the selected manager immediately when the employee submits a reason.
 - Restrict SKUD upload actions to the `Служба безопасности` role.
 - Support substitution drafts and future substitution CRUD.
 

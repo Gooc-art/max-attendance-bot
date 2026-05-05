@@ -150,6 +150,17 @@ class AttendanceCaseRepository:
             session.refresh(case)
             return case
 
+    def update_manager(self, case_id: int, manager_user_id: str, manager_name: str) -> Optional[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            case = session.get(AttendanceCaseModel, case_id)
+            if case is None:
+                return None
+            case.manager_user_id = manager_user_id
+            case.manager_name = manager_name
+            session.commit()
+            session.refresh(case)
+            return case
+
     def update_status(self, case_id: int, status: str) -> Optional[AttendanceCaseModel]:
         with SessionLocal() as session:
             case = session.get(AttendanceCaseModel, case_id)

@@ -26,6 +26,7 @@ class SubstitutionFlowService:
     STEP_DATE_TO = "date_to"
     STEP_SCOPE = "scope"
     STEP_CONFIRM = "confirm"
+    STEP_EXTEND_DATE_TO = "extend_date_to"
 
     def __init__(self) -> None:
         self.substitution_repository = SubstitutionRepository()
@@ -42,6 +43,48 @@ class SubstitutionFlowService:
         return FlowResult(
             message=MaxOutboundMessage(
                 text="Кого замещаем? Введи ФИО или ID основного руководителя.",
+                buttons=[MaxOutboundButton(title="Отмена", action=BotAction.CANCEL)],
+            )
+        )
+
+    def start_extend(self, user_id: str, draft_id: int) -> FlowResult:
+        draft = self.substitution_repository.get_draft(draft_id, created_by_user_id=user_id)
+        if draft is None:
+            return FlowResult(
+                message=MaxOutboundMessage(
+                    text="Черновик замещения не найден.",
+                    buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+                ),
+                completed=True,
+            )
+
+        dialog_state_store.set(
+            user_id,
+            UserDialogState(
+                flow=DialogFlow.SUBSTITUTION.value,
+                step=self.STEP_EXTEND_DATE_TO,
+                data={
+                    "draft_id": str(draft.id),
+                    "target_manager": draft.target_manager,
+                    "replacement_user": draft.replacement_user,
+                    "reason": draft.reason,
+                    "date_from": draft.date_from,
+                    "date_to": draft.date_to,
+                    "scope": draft.scope,
+                },
+            ),
+        )
+        return FlowResult(
+            message=MaxOutboundMessage(
+                text=(
+                    "Продлеваем черновик #{draft_id}.\n\n"
+                    "Текущие даты: {date_from} -> {date_to}\n"
+                    "Введи новую дату окончания в формате YYYY-MM-DD."
+                ).format(
+                    draft_id=draft.id,
+                    date_from=draft.date_from,
+                    date_to=draft.date_to,
+                ),
                 buttons=[MaxOutboundButton(title="Отмена", action=BotAction.CANCEL)],
             )
         )
@@ -66,6 +109,7 @@ class SubstitutionFlowService:
             self.STEP_DATE_TO: self._handle_date_to,
             self.STEP_SCOPE: self._handle_scope,
             self.STEP_CONFIRM: self._handle_confirm,
+            self.STEP_EXTEND_DATE_TO: self._handle_extend_date_to,
         }
         return handlers[state.step](user_id, role, normalized_text, action, state)
 
@@ -146,11 +190,28 @@ class SubstitutionFlowService:
             )
 
         summary = self._build_summary(state.data)
-        draft_id = self.substitution_repository.create_draft(
-            created_by_user_id=user_id,
-            role=role,
-            data=state.data,
-        )
+        draft_id = 0
+        if state.step == self.STEP_CONFIRM and state.data.get("draft_id"):
+            draft_id = int(state.data["draft_id"])
+            updated = self.substitution_repository.extend_draft(
+                draft_id=draft_id,
+                created_by_user_id=user_id,
+                new_date_to=state.data.get("date_to", ""),
+            )
+            if updated is None:
+                return FlowResult(
+                    message=MaxOutboundMessage(
+                        text="Черновик для продления не найден.",
+                        buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+                    ),
+                    completed=True,
+                )
+        else:
+            draft_id = self.substitution_repository.create_draft(
+                created_by_user_id=user_id,
+                role=role,
+                data=state.data,
+            )
         dialog_state_store.reset(user_id)
         return FlowResult(
             message=MaxOutboundMessage(
@@ -164,6 +225,18 @@ class SubstitutionFlowService:
                 ],
             ),
             completed=True,
+        )
+
+    def _handle_extend_date_to(self, user_id: str, role: str, user_text: str, action: str, state: UserDialogState) -> FlowResult:
+        state.data["date_to"] = user_text
+        state.step = self.STEP_CONFIRM
+        dialog_state_store.set(user_id, state)
+        summary = self._build_summary(state.data)
+        return FlowResult(
+            message=MaxOutboundMessage(
+                text="Проверь новое окончание замещения:\n\n{summary}".format(summary=summary),
+                buttons=confirm_buttons(),
+            )
         )
 
     def _build_summary(self, data: Dict[str, str]) -> str:

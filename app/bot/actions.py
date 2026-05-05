@@ -41,6 +41,8 @@ class BotAction:
     SUBSTITUTION_LIST = "substitution.list"
     SUBSTITUTION_CANCEL = "substitution.cancel"
     SUBSTITUTION_EXTEND = "substitution.extend"
+    SUBSTITUTION_CANCEL_PREFIX = "substitution.cancel:"
+    SUBSTITUTION_EXTEND_PREFIX = "substitution.extend:"
 
     REPORT_WEEK = "reports.week"
     REPORT_MONTH = "reports.month"

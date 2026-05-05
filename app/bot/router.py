@@ -278,6 +278,18 @@ class MaxWebhookRouter:
                 active_flow=DialogFlow.SUBSTITUTION.value,
             )
 
+        if action.startswith(BotAction.SUBSTITUTION_CANCEL_PREFIX):
+            draft_id = self._parse_id(action, BotAction.SUBSTITUTION_CANCEL_PREFIX)
+            response = self._cancel_substitution_draft(role, event["user_id"], draft_id)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action.startswith(BotAction.SUBSTITUTION_EXTEND_PREFIX):
+            draft_id = self._parse_id(action, BotAction.SUBSTITUTION_EXTEND_PREFIX)
+            response = self._start_substitution_extend_flow(role, event["user_id"], draft_id)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.SUBSTITUTION_LIST:
             response = self._substitution_list(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
@@ -764,30 +776,25 @@ class MaxWebhookRouter:
         if not rows:
             text = "У тебя нет черновиков замещений для отмены."
         else:
-            latest = rows[0]
-            text = (
-                "Последний черновик замещения #{id} можно отменить на следующем этапе CRUD.\n\n"
-                "Сейчас доступны:\n"
-                "Кого замещаем: {target}\n"
-                "Кто замещает: {replacement}\n"
-                "Период: {date_from} - {date_to}"
-            ).format(
-                id=latest.id,
-                target=latest.target_manager,
-                replacement=latest.replacement_user,
-                date_from=latest.date_from,
-                date_to=latest.date_to,
-            )
+            lines = [
+                "#{id} | {target} -> {replacement} | {date_from} - {date_to} | {status}".format(
+                    id=row.id,
+                    target=row.target_manager,
+                    replacement=row.replacement_user,
+                    date_from=row.date_from,
+                    date_to=row.date_to,
+                    status=row.status,
+                )
+                for row in rows[:5]
+            ]
+            text = "Выбери черновик для отмены:\n\n" + "\n".join(lines)
         return MaxWebhookResponse(
             ok=True,
             role=role,
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+                buttons=self._substitution_draft_action_buttons(rows, mode="cancel"),
             ),
             active_flow=None,
         )
@@ -797,21 +804,25 @@ class MaxWebhookRouter:
         if not rows:
             text = "У тебя нет черновиков замещений для продления."
         else:
-            latest = rows[0]
-            text = (
-                "Продление замещения на следующем шаге будет работать как редактирование периода.\n\n"
-                "Текущий черновик #{id}: {date_from} - {date_to}."
-            ).format(id=latest.id, date_from=latest.date_from, date_to=latest.date_to)
+            lines = [
+                "#{id} | {target} -> {replacement} | {date_from} - {date_to} | {status}".format(
+                    id=row.id,
+                    target=row.target_manager,
+                    replacement=row.replacement_user,
+                    date_from=row.date_from,
+                    date_to=row.date_to,
+                    status=row.status,
+                )
+                for row in rows[:5]
+            ]
+            text = "Выбери черновик для продления:\n\n" + "\n".join(lines)
         return MaxWebhookResponse(
             ok=True,
             role=role,
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+                buttons=self._substitution_draft_action_buttons(rows, mode="extend"),
             ),
             active_flow=None,
         )
@@ -1712,6 +1723,10 @@ class MaxWebhookRouter:
         rows = self.substitution_repository.list_drafts_for_user(user_id)
         if not rows:
             text = "У тебя пока нет сохраненных черновиков замещений."
+            buttons = [
+                MaxOutboundButton(title="Назначить замещение", action=BotAction.SUBSTITUTION_CREATE, emoji="➕", row=0),
+                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+            ]
         else:
             preview_lines = []
             for row in rows[:5]:
@@ -1726,6 +1741,7 @@ class MaxWebhookRouter:
                     )
                 )
             text = "Мои замещения:\n\n{lines}".format(lines="\n".join(preview_lines))
+            buttons = self._substitution_draft_action_buttons(rows, mode="list")
 
         return MaxWebhookResponse(
             ok=True,
@@ -1733,13 +1749,96 @@ class MaxWebhookRouter:
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Назначить замещение", action=BotAction.SUBSTITUTION_CREATE),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+                buttons=buttons,
             ),
             active_flow=None,
         )
+
+    def _cancel_substitution_draft(self, role: str, user_id: str, draft_id: int) -> MaxWebhookResponse:
+        if draft_id <= 0:
+            return self._stub_section(role, "Черновик не найден.")
+        draft = self.substitution_repository.cancel_draft(draft_id, user_id)
+        if draft is None:
+            return self._stub_section(role, "Черновик не найден или недоступен.")
+        rows = self.substitution_repository.list_drafts_for_user(user_id)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Черновик #{0} отменен.\n\nМои замещения:\n\n{1}".format(
+                    draft_id,
+                    "\n".join(
+                        "#{id}: {target} -> {replacement} | {date_from} - {date_to} | {scope} | {status}".format(
+                            id=row.id,
+                            target=row.target_manager,
+                            replacement=row.replacement_user,
+                            date_from=row.date_from,
+                            date_to=row.date_to,
+                            scope=row.scope,
+                            status=row.status,
+                        )
+                        for row in rows[:5]
+                    )
+                    or "-",
+                ),
+                buttons=self._substitution_draft_action_buttons(rows, mode="list"),
+            ),
+            active_flow=None,
+        )
+
+    def _start_substitution_extend_flow(self, role: str, user_id: str, draft_id: int) -> MaxWebhookResponse:
+        result = self.substitution_flow.start_extend(user_id, draft_id)
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=result.message,
+            active_flow=DialogFlow.SUBSTITUTION.value if not result.completed else None,
+        )
+
+    def _substitution_draft_action_buttons(self, rows, mode: str) -> List[MaxOutboundButton]:
+        buttons: List[MaxOutboundButton] = []
+        for index, row in enumerate(rows[:5]):
+            if mode == "cancel":
+                buttons.append(
+                    MaxOutboundButton(
+                        title=f"Отменить #{row.id}",
+                        action=f"{BotAction.SUBSTITUTION_CANCEL_PREFIX}{row.id}",
+                        emoji="🗑️",
+                        row=index,
+                    )
+                )
+            elif mode == "extend":
+                buttons.append(
+                    MaxOutboundButton(
+                        title=f"Продлить #{row.id}",
+                        action=f"{BotAction.SUBSTITUTION_EXTEND_PREFIX}{row.id}",
+                        emoji="🔁",
+                        row=index,
+                    )
+                )
+            else:
+                buttons.append(
+                    MaxOutboundButton(
+                        title=f"Отменить #{row.id}",
+                        action=f"{BotAction.SUBSTITUTION_CANCEL_PREFIX}{row.id}",
+                        emoji="🗑️",
+                        row=index,
+                    )
+                )
+                buttons.append(
+                    MaxOutboundButton(
+                        title=f"Продлить #{row.id}",
+                        action=f"{BotAction.SUBSTITUTION_EXTEND_PREFIX}{row.id}",
+                        emoji="🔁",
+                        row=index,
+                    )
+                )
+
+        buttons.append(MaxOutboundButton(title="Назначить замещение", action=BotAction.SUBSTITUTION_CREATE, emoji="➕", row=10))
+        buttons.append(MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=10))
+        return buttons
 
     def _send_outbound(self, inbound: MaxUpdate, outbound: MaxOutboundMessage) -> None:
         if not self.max_client.is_configured():

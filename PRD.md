@@ -19,6 +19,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Notify the selected manager immediately when the employee submits a reason.
 - Restrict SKUD upload actions to the `Служба безопасности` role.
 - Support substitution drafts and future substitution CRUD.
+- Support substitution draft actions: list, cancel, and extend.
 
 ## Constraints
 - No manual file edits for runtime permissions.

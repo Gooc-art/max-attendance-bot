@@ -19,6 +19,7 @@
 10. Let the employee pick a manager from a shortlist before submitting a reason.
 11. Send a push notification to the selected manager when an employee submits a reason, with approval actions attached.
 12. Restrict SKUD file uploads to the `Служба безопасности` role.
+13. Provide substitution draft actions in the bot: list, cancel, and extend.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

@@ -36,6 +36,7 @@ class AdminRowAndBindingTests(unittest.TestCase):
         self.assertIn("Моя строка", response.outbound.text)
         self.assertIn("Кутлуев Родион Романович", response.outbound.text)
         self.assertIn("203302812", response.outbound.text)
+        self.assertIn("Роль: Администратор", response.outbound.text)
         self.assertIn("ИТ", response.outbound.text)
 
     def test_binding_check_shows_match_status(self) -> None:
@@ -54,6 +55,7 @@ class AdminRowAndBindingTests(unittest.TestCase):
         response = self.router._binding_check("admin", "203302812")
 
         self.assertIn("Привязка найдена", response.outbound.text)
+        self.assertIn("Роль: Администратор", response.outbound.text)
         self.assertIn("Совпадение: Да", response.outbound.text)
 
 

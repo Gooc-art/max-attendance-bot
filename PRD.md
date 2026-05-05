@@ -12,7 +12,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 
 ## Functional scope
 - Read user roles from Google Sheets.
-- Show role-based MAX menus.
+- Show role-based MAX menus with Russian display labels for people-facing UI.
 - Read employee directory, departments, and managers from Google Sheets.
 - Import SKUD reports and create late/absence cases.
 - Support employee reason selection and manager approvals.
@@ -26,4 +26,5 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 ## Success criteria
 - Admin users with `admin` role in Google Sheets see admin-only sections.
 - Manager and employee menus reflect the spreadsheet without code changes.
+- User-facing role names are shown in Russian while internal role codes remain stable.
 - SKUD import still works when Google Sheets is unavailable, using local fallback.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from itertools import groupby
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -48,10 +49,16 @@ class MaxApiClient:
         if not buttons:
             return []
 
-        keyboard_buttons = [
-            [MaxKeyboardButton(text=button.title, payload=button.action)]
-            for button in buttons
-        ]
+        keyboard_buttons = []
+        sorted_buttons = sorted(enumerate(buttons), key=lambda item: (item[1].row, item[0]))
+        for _, group in groupby(sorted_buttons, key=lambda item: item[1].row):
+            row_buttons = []
+            for _, button in group:
+                text = button.title
+                if button.emoji:
+                    text = f"{button.emoji} {text}"
+                row_buttons.append(MaxKeyboardButton(text=text, payload=button.action))
+            keyboard_buttons.append(row_buttons)
         return [
             MaxInlineKeyboardAttachment(
                 payload=MaxInlineKeyboardPayload(buttons=keyboard_buttons)

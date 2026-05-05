@@ -68,6 +68,8 @@ class MaxUpdate(BaseModel):
 class MaxOutboundButton(BaseModel):
     title: str
     action: str
+    emoji: Optional[str] = None
+    row: int = 0
 
 
 class MaxKeyboardButton(BaseModel):

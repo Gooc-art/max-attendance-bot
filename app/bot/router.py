@@ -15,6 +15,7 @@ from app.bot.buttons import (
 )
 from app.bot.menus import get_menu_for_role
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow, Role
+from app.domain.role_labels import display_role_name
 from app.integrations.max.client import MaxApiClient
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.approval_repository import ApprovalRepository
@@ -92,7 +93,7 @@ class MaxWebhookRouter:
                 "/top": Role.TOP_MANAGER.value,
             }[action]
             self.user_role_override_repository.set_role(event["user_id"], target_role)
-            response = self._menu_response(target_role, "Роль переключена на: {0}".format(target_role))
+            response = self._menu_response(target_role, "Роль переключена на: {0}".format(display_role_name(target_role)))
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -324,7 +325,7 @@ class MaxWebhookRouter:
         menu = get_menu_for_role(role)
         message = MaxOutboundMessage(
             text="Роль определена как: {role}. Кнопка `{text}` пока подключена как заглушка.".format(
-                role=role,
+                role=display_role_name(role),
                 text=user_text or action or "без текста",
             ),
             buttons=main_menu_buttons(role),
@@ -506,7 +507,7 @@ class MaxWebhookRouter:
             ).format(
                 manager=record.manager_name,
                 department=record.department_name or "-",
-                role=record.role or "employee",
+                role=display_role_name(record.role or "employee"),
             )
         else:
             cases = self.case_repository.list_for_employee_user(user_id)
@@ -807,7 +808,7 @@ class MaxWebhookRouter:
                     id=row.id,
                     name=row.employee_name,
                     user_id=row.employee_user_id,
-                    role=row.role,
+                    role=display_role_name(row.role),
                     dept=row.department_name or "-",
                 )
                 for row in rows
@@ -948,7 +949,7 @@ class MaxWebhookRouter:
                 "#{id} | {user_id} | {role} | {updated_at}".format(
                     id=row.id,
                     user_id=row.user_id,
-                    role=row.role,
+                    role=display_role_name(row.role),
                     updated_at=row.updated_at.isoformat(timespec="seconds"),
                 )
                 for row in overrides
@@ -984,11 +985,11 @@ class MaxWebhookRouter:
         directory_state = "найдено в Google Sheets" if sheet_record else "не найдено в Google Sheets"
         text = (
             "Админ-панель:\n\n"
-            "Текущая роль: admin\n"
+            "Текущая роль: {role}\n"
             "Профиль в таблице: {directory_state}\n\n"
             "Если ты видишь это меню, значит доступ к админскому интерфейсу уже выдан.\n"
             "Если личные разделы пустые, проверь в таблице поля `ФИО`, `ID_пользователя_MAX`, `Подразделение`, `Роль`."
-        ).format(directory_state=directory_state)
+        ).format(directory_state=directory_state, role=display_role_name(role))
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1016,7 +1017,7 @@ class MaxWebhookRouter:
                 "Подразделение: {department}"
             ).format(
                 name=sheet_record.employee_name or "-",
-                sheet_role=sheet_record.role or "-",
+                sheet_role=display_role_name(sheet_record.role or "-"),
                 active="Да" if sheet_record.is_active else "Нет",
                 manager=sheet_record.manager_name or "-",
                 department=sheet_record.department_name or "-",
@@ -1037,7 +1038,7 @@ class MaxWebhookRouter:
         ).format(
             user_id=user_id,
             chat_id=chat_id,
-            role=role,
+            role=display_role_name(role),
             sheet_status=sheet_status,
             needed_id=needed_id,
         )
@@ -1074,7 +1075,7 @@ class MaxWebhookRouter:
             ).format(
                 name=sheet_record.employee_name or "-",
                 user_id=sheet_record.employee_user_id or "-",
-                role=sheet_record.role or "-",
+                role=display_role_name(sheet_record.role or "-"),
                 department=sheet_record.department_name or "-",
                 manager=sheet_record.manager_name or "-",
                 active="Да" if sheet_record.is_active else "Нет",
@@ -1113,7 +1114,7 @@ class MaxWebhookRouter:
             ).format(
                 user_id=user_id,
                 sheet_user_id=sheet_record.employee_user_id,
-                role=sheet_record.role or "-",
+                role=display_role_name(sheet_record.role or "-"),
                 name=sheet_record.employee_name or "-",
                 match="Да" if sheet_record.employee_user_id == user_id else "Нет",
             )

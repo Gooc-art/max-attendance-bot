@@ -32,7 +32,7 @@ class WhoAmITests(unittest.TestCase):
         response = router._whoami("admin", "203302812", "123")
 
         self.assertIn("user_id из MAX: 203302812", response.outbound.text)
-        self.assertIn("Роль, которую видит бот: admin", response.outbound.text)
+        self.assertIn("Роль, которую видит бот: Администратор", response.outbound.text)
         self.assertIn("Найдено в Google Sheets", response.outbound.text)
         self.assertIn("Нужный ID: 203302812", response.outbound.text)
 

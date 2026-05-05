@@ -18,6 +18,7 @@ class AdminPanelMenuTests(unittest.TestCase):
         response = router._admin_panel_menu("admin", "203302812")
 
         self.assertIn("Админ-панель", response.outbound.text)
+        self.assertIn("Текущая роль: Администратор", response.outbound.text)
         self.assertIn("Google Sheets", response.outbound.text)
         self.assertIn("Права доступа", [button.title for button in response.outbound.buttons])
 

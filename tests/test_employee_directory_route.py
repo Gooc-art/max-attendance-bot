@@ -37,6 +37,7 @@ class EmployeeDirectoryRouteTests(unittest.TestCase):
         self.assertEqual(result["source"], "google_sheets")
         self.assertEqual(result["items"][0]["employee_user_id"], "max_001")
         self.assertEqual(result["items"][0]["role"], "admin")
+        self.assertEqual(result["items"][0]["role_label"], "Администратор")
 
 
 if __name__ == "__main__":

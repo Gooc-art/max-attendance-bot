@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.services.employee_directory_import import EmployeeDirectoryImportService
+from app.domain.role_labels import display_role_name
 
 
 router = APIRouter(tags=["employees"])
@@ -43,6 +44,7 @@ def list_employee_directory(limit: int = Query(default=20, ge=1, le=100)) -> dic
                     "manager_user_id": row.manager_user_id,
                     "department_name": row.department_name,
                     "role": row.role,
+                    "role_label": display_role_name(row.role),
                     "is_active": row.is_active,
                     "updated_at": None,
                 }
@@ -63,6 +65,7 @@ def list_employee_directory(limit: int = Query(default=20, ge=1, le=100)) -> dic
                 "manager_user_id": row.manager_user_id,
                 "department_name": row.department_name,
                 "role": row.role,
+                "role_label": display_role_name(row.role),
                 "is_active": row.is_active,
                 "updated_at": row.updated_at.isoformat(),
             }

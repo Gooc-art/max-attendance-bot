@@ -83,6 +83,34 @@ class ReportServiceTests(unittest.TestCase):
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
 
+    def test_generate_division_report_creates_department_breakdown(self) -> None:
+        service = ReportService()
+        service.case_repository = _FakeCaseRepository()
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_division_report(user_id="mgr-1", role="admin", period="month")
+
+            self.assertTrue(Path(artifact.file_path).exists())
+            self.assertIn("/api/reports/", artifact.download_url)
+            self.assertIn("division_month", artifact.file_name)
+
+            with zipfile.ZipFile(artifact.file_path) as archive:
+                workbook_xml = archive.read("xl/workbook.xml")
+                root = ET.fromstring(workbook_xml)
+                sheet_names = [
+                    sheet.attrib["name"]
+                    for sheet in root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
+                ]
+                self.assertIn("Подразделения", sheet_names)
+                self.assertIn("Разрез", sheet_names)
+                self.assertIn("Случаи", sheet_names)
+                summary_xml = archive.read("xl/worksheets/sheet1.xml")
+                self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
+                breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
+                self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
+
     def test_get_report_path_uses_token_lookup(self) -> None:
         service = ReportService()
         repo = _FakeReportRepository()

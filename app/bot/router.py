@@ -680,20 +680,12 @@ class MaxWebhookRouter:
         )
 
     def _division_reports(self, role: str, user_id: str) -> MaxWebhookResponse:
-        rows = self.case_repository.list_for_manager_user(user_id, limit=50)
-        if not rows:
-            text = "Отчеты по подразделениям пока пустые."
-        else:
-            late = sum(1 for case in rows if case.case_type == "late")
-            absent = sum(1 for case in rows if case.case_type == "absent")
-            justified = sum(1 for case in rows if case.status == AttendanceCaseStatus.JUSTIFIED.value)
-            text = (
-                "Отчеты по подразделениям:\n\n"
-                "Опоздания: {late}\n"
-                "Неявки: {absent}\n"
-                "Подтверждено уважительно: {justified}\n"
-                "Всего случаев: {total}"
-            ).format(late=late, absent=absent, justified=justified, total=len(rows))
+        artifact = self.report_service.generate_division_report(user_id=user_id, role=role, period="month")
+        text = (
+            "Отчет по подразделениям готов.\n\n"
+            "{summary}\n\n"
+            "Скачать файл: {url}"
+        ).format(summary=artifact.summary_text, url=artifact.download_url)
 
         return MaxWebhookResponse(
             ok=True,
@@ -704,6 +696,7 @@ class MaxWebhookRouter:
                 buttons=[
                     MaxOutboundButton(title="Недельный отчет", action=BotAction.REPORT_WEEK),
                     MaxOutboundButton(title="Месячный отчет", action=BotAction.REPORT_MONTH),
+                    MaxOutboundButton(title="Квартальный отчет", action=BotAction.REPORT_QUARTER),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),
@@ -763,11 +756,11 @@ class MaxWebhookRouter:
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
-                    MaxOutboundButton(title="Отчеты по подразделениям", action=BotAction.MENU_DIVISION_REPORTS),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+            buttons=[
+                MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
+                MaxOutboundButton(title="Отчеты по подразделениям", action=BotAction.MENU_DIVISION_REPORTS),
+                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+            ],
             ),
             active_flow=None,
         )

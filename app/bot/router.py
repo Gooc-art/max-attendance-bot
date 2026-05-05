@@ -22,6 +22,7 @@ from app.integrations.google_sheets.directory import GoogleSheetsDirectoryServic
 from app.repositories.approval_repository import ApprovalRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
+from app.services.report_service import ReportService
 from app.repositories.skud_import_repository import SkudImportRepository
 from app.repositories.substitution_repository import SubstitutionRepository
 from app.repositories.user_role_override_repository import UserRoleOverrideRepository
@@ -41,6 +42,7 @@ class MaxWebhookRouter:
         self.approval_repository = ApprovalRepository()
         self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
+        self.report_service = ReportService()
         self.skud_import_repository = SkudImportRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
@@ -735,28 +737,26 @@ class MaxWebhookRouter:
         )
 
     def _quick_report(self, role: str, user_id: str, action: str) -> MaxWebhookResponse:
-        rows = self.case_repository.list_for_manager_user(user_id, limit=100)
         label = {
             BotAction.REPORT_WEEK: "недельный",
             BotAction.REPORT_MONTH: "месячный",
             BotAction.REPORT_QUARTER: "квартальный",
         }.get(action, "выбранный")
-        if not rows:
-            text = "{0} отчет пока пустой.".format(label.capitalize())
-        else:
-            text = (
-                "{title} отчет:\n\n"
-                "Всего случаев: {total}\n"
-                "Опоздания: {late}\n"
-                "Неявки: {absent}\n"
-                "На согласовании: {pending}"
-            ).format(
-                title=label.capitalize(),
-                total=len(rows),
-                late=sum(1 for case in rows if case.case_type == "late"),
-                absent=sum(1 for case in rows if case.case_type == "absent"),
-                pending=sum(1 for case in rows if case.status == AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value),
-            )
+        period = {
+            BotAction.REPORT_WEEK: "week",
+            BotAction.REPORT_MONTH: "month",
+            BotAction.REPORT_QUARTER: "quarter",
+        }.get(action, "week")
+        artifact = self.report_service.generate_manager_report(user_id=user_id, role=role, period=period)
+        text = (
+            "{title} готов.\n\n"
+            "{summary}\n\n"
+            "Скачать файл: {url}"
+        ).format(
+            title=label.capitalize(),
+            summary=artifact.summary_text,
+            url=artifact.download_url,
+        )
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -765,6 +765,7 @@ class MaxWebhookRouter:
                 text=text,
                 buttons=[
                     MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
+                    MaxOutboundButton(title="Отчеты по подразделениям", action=BotAction.MENU_DIVISION_REPORTS),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),

@@ -20,6 +20,7 @@
 11. Send a push notification to the selected manager when an employee submits a reason, with approval actions attached.
 12. Restrict SKUD file uploads to the `Служба безопасности` role.
 13. Provide substitution draft actions in the bot: list, cancel, and extend.
+14. Generate downloadable `.xlsx` reports and return a public download URL in report responses.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

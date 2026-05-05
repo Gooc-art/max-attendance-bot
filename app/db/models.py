@@ -106,3 +106,21 @@ class SkudImportModel(Base):
     error_rows: Mapped[int] = mapped_column(Integer, default=0)
     samples_text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ReportModel(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    report_type: Mapped[str] = mapped_column(String(50), index=True)
+    user_id: Mapped[str] = mapped_column(String(255), index=True)
+    role: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    period_start: Mapped[str] = mapped_column(String(20), default="")
+    period_end: Mapped[str] = mapped_column(String(20), default="")
+    file_name: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(500))
+    summary_text: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(50), default="ready", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

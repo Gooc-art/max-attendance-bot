@@ -24,7 +24,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Support substitution drafts and future substitution CRUD.
 - Support substitution draft actions: list, cancel, and extend.
 - Generate downloadable `.xlsx` and `.pdf` reports with public download URLs.
-- Return normal MAX replies directly from the webhook to avoid an extra outbound API round-trip on each user action.
+- Send normal MAX replies with `send_message` on incoming message events, and use `answer_callback` for inline keyboard callbacks.
 
 ## Constraints
 - No manual file edits for runtime permissions.

@@ -17,7 +17,7 @@ from app.schemas.max import (
 
 
 class SendOutboundTests(unittest.TestCase):
-    def test_message_updates_do_not_duplicate_delivery_with_send_message(self) -> None:
+    def test_message_updates_send_message_for_normal_delivery(self) -> None:
         router = MaxWebhookRouter()
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = True
@@ -41,7 +41,11 @@ class SendOutboundTests(unittest.TestCase):
             ),
         )
 
-        router.max_client.send_message.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertEqual(kwargs["chat_id"], 987)
+        self.assertEqual(kwargs["user_id"], 123)
+        self.assertEqual(kwargs["text"], "Hello")
 
     def test_callback_updates_use_answer_callback(self) -> None:
         router = MaxWebhookRouter()

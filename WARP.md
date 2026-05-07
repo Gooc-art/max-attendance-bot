@@ -24,7 +24,7 @@
 15. Bootstrap `Сотрудники` and `Подразделения` in Google Sheets from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
 16. Resolve SKUD planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned.
 17. Assign bootstrap employee schedules to the five-day schedules `ГР003` or `ГР004` automatically from the employee name pattern instead of using `ГР001` for everyone.
-18. Return ordinary MAX replies directly from the webhook response and reserve outbound API calls for push notifications and other proactive messages.
+18. Send ordinary MAX replies with `send_message` on incoming message events, and reserve `answer_callback` for inline keyboard callbacks and `send_message` for push notifications and proactive messages.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

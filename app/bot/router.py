@@ -1848,9 +1848,9 @@ class MaxWebhookRouter:
                 return
 
             if inbound.update_type in {"bot_started", "message_created"}:
+                recipient_chat_id = inbound.chat_id or getattr(inbound.message.recipient, "chat_id", None)
                 self.max_client.send_message(
-                    chat_id=inbound.chat_id or getattr(inbound.message.recipient, "chat_id", None),
-                    user_id=getattr(inbound.message.recipient, "user_id", None) if inbound.message else None,
+                    chat_id=recipient_chat_id,
                     text=outbound.text,
                     buttons=outbound.buttons,
                 )
@@ -1862,18 +1862,30 @@ class MaxWebhookRouter:
         if not self.max_client.is_configured():
             return
         try:
-            self.max_client.send_file_message(
-                chat_id=int(chat_id) if str(chat_id).isdigit() else None,
-                user_id=int(user_id) if str(user_id).isdigit() else None,
-                text=f"{title} в Excel",
-                file_path=xlsx_path,
-            )
-            self.max_client.send_file_message(
-                chat_id=int(chat_id) if str(chat_id).isdigit() else None,
-                user_id=int(user_id) if str(user_id).isdigit() else None,
-                text=f"{title} в PDF",
-                file_path=pdf_path,
-            )
+            recipient_chat_id = int(chat_id) if str(chat_id).isdigit() else None
+            recipient_user_id = int(user_id) if str(user_id).isdigit() else None
+            if recipient_chat_id is not None:
+                self.max_client.send_file_message(
+                    chat_id=recipient_chat_id,
+                    text=f"{title} в Excel",
+                    file_path=xlsx_path,
+                )
+                self.max_client.send_file_message(
+                    chat_id=recipient_chat_id,
+                    text=f"{title} в PDF",
+                    file_path=pdf_path,
+                )
+            elif recipient_user_id is not None:
+                self.max_client.send_file_message(
+                    user_id=recipient_user_id,
+                    text=f"{title} в Excel",
+                    file_path=xlsx_path,
+                )
+                self.max_client.send_file_message(
+                    user_id=recipient_user_id,
+                    text=f"{title} в PDF",
+                    file_path=pdf_path,
+                )
         except Exception:
             return
 

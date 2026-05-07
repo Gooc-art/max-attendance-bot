@@ -52,7 +52,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
         router.max_client.send_message.assert_called_once()
         kwargs = router.max_client.send_message.call_args.kwargs
         self.assertEqual(kwargs["chat_id"], 987)
-        self.assertEqual(kwargs["user_id"], 123)
+        self.assertNotIn("user_id", kwargs)
         self.assertIn("службе безопасности", kwargs["text"].lower())
 
 

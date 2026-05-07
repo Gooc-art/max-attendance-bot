@@ -95,13 +95,11 @@ class MaxApiClient:
                 "status": "not_configured",
                 "body": body.model_dump(exclude_none=True),
             }
+        params = self._recipient_params(chat_id=chat_id, user_id=user_id)
         return self._request(
             "POST",
             "messages",
-            params={
-                "chat_id": chat_id,
-                "user_id": user_id,
-            },
+            params=params,
             body=body.model_dump(exclude_none=True),
         )
 
@@ -132,13 +130,11 @@ class MaxApiClient:
                 "status": "not_configured",
                 "body": body,
             }
+        params = self._recipient_params(chat_id=chat_id, user_id=user_id)
         return self._request(
             "POST",
             "messages",
-            params={
-                "chat_id": chat_id,
-                "user_id": user_id,
-            },
+            params=params,
             body=body,
         )
 
@@ -265,3 +261,10 @@ class MaxApiClient:
         with urlopen(request, timeout=60) as response:
             raw = response.read().decode("utf-8")
             return json.loads(raw) if raw else {"status": response.status}
+
+    def _recipient_params(self, chat_id: Optional[int] = None, user_id: Optional[int] = None) -> Dict[str, Optional[object]]:
+        if chat_id is not None:
+            return {"chat_id": chat_id}
+        if user_id is not None:
+            return {"user_id": user_id}
+        return {}

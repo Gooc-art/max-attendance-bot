@@ -30,7 +30,28 @@ class MaxApiClientTests(unittest.TestCase):
         request = mocked.call_args.args[0]
         self.assertIn("chat_id=123", request.full_url)
         self.assertIn("v=1.2.5", request.full_url)
+        self.assertNotIn("user_id=", request.full_url)
         self.assertEqual(json.loads(request.data.decode("utf-8"))["text"], "hello")
+
+    def test_send_message_prefers_chat_id_over_user_id(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"{}"
+        response.status = 200
+
+        with patch("app.integrations.max.client.urlopen", return_value=response) as mocked:
+            client.send_message(chat_id=123, user_id=456, text="hello")
+
+        request = mocked.call_args.args[0]
+        self.assertIn("chat_id=123", request.full_url)
+        self.assertNotIn("user_id=456", request.full_url)
 
     def test_answer_callback_uses_snake_case_query_name(self) -> None:
         client = MaxApiClient(
@@ -105,6 +126,8 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertEqual(body["attachments"][0]["payload"]["token"], "file-token")
         self.assertEqual(body["attachments"][0]["filename"], Path(tmp.name).name)
         self.assertEqual(body["attachments"][0]["size"], 123)
+        self.assertIn("chat_id=123", request.full_url)
+        self.assertNotIn("user_id=", request.full_url)
 
 
 if __name__ == "__main__":

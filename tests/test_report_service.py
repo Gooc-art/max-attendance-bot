@@ -68,8 +68,11 @@ class ReportServiceTests(unittest.TestCase):
             artifact = service.generate_manager_report(user_id="mgr-1", role="manager", period="week")
 
             self.assertTrue(Path(artifact.file_path).exists())
+            self.assertTrue(Path(artifact.pdf_file_path).exists())
             self.assertIn("/api/reports/", artifact.download_url)
+            self.assertIn("/api/reports/", artifact.pdf_download_url)
             self.assertTrue(artifact.download_url.endswith("/download"))
+            self.assertTrue(artifact.pdf_download_url.endswith("/download/pdf"))
 
             with zipfile.ZipFile(artifact.file_path) as archive:
                 workbook_xml = archive.read("xl/workbook.xml")
@@ -83,6 +86,9 @@ class ReportServiceTests(unittest.TestCase):
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
 
+            pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
+            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+
     def test_generate_division_report_creates_department_breakdown(self) -> None:
         service = ReportService()
         service.case_repository = _FakeCaseRepository()
@@ -93,7 +99,9 @@ class ReportServiceTests(unittest.TestCase):
             artifact = service.generate_division_report(user_id="mgr-1", role="admin", period="month")
 
             self.assertTrue(Path(artifact.file_path).exists())
+            self.assertTrue(Path(artifact.pdf_file_path).exists())
             self.assertIn("/api/reports/", artifact.download_url)
+            self.assertIn("/api/reports/", artifact.pdf_download_url)
             self.assertIn("division_month", artifact.file_name)
 
             with zipfile.ZipFile(artifact.file_path) as archive:
@@ -110,6 +118,8 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
                 breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
                 self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
+            pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
+            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
 
     def test_get_report_path_uses_token_lookup(self) -> None:
         service = ReportService()
@@ -133,6 +143,7 @@ class ReportServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(service.get_report_path("abc123"), file_path)
+            self.assertEqual(service.get_report_path("abc123", format="pdf"), file_path.with_suffix(".pdf"))
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 from pathlib import Path
+import textwrap
 from typing import List, Sequence, Tuple
 from xml.sax.saxutils import escape
 import zipfile
@@ -14,6 +15,7 @@ from app.config import BASE_DIR, get_settings
 from app.domain.enums import AttendanceCaseStatus
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.report_repository import ReportRepository
+from app.services.simple_pdf import SimplePdfWriter
 
 
 SAFE_USER_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -26,10 +28,13 @@ class ReportArtifact:
     title: str
     file_name: str
     file_path: str
+    pdf_file_name: str
+    pdf_file_path: str
     period_start: str
     period_end: str
     summary_text: str
     download_url: str
+    pdf_download_url: str
 
 
 class ReportService:
@@ -59,6 +64,7 @@ class ReportService:
             period_start=period_start,
             period_end=period_end,
             sheet1_name="Сводка",
+            html_title="Недельный отчет" if period == "week" else "Месячный отчет" if period == "month" else "Квартальный отчет",
         )
 
     def generate_division_report(self, *, user_id: str, role: str, period: str) -> ReportArtifact:
@@ -84,13 +90,16 @@ class ReportService:
             period_end=period_end,
             sheet1_name="Подразделения",
             extra_rows=department_rows,
+            html_title="Отчет по подразделениям",
         )
 
-    def get_report_path(self, token: str) -> Path | None:
+    def get_report_path(self, token: str, format: str = "xlsx") -> Path | None:
         report = self.report_repository.get_by_token(token)
         if report is None:
             return None
         path = Path(report.file_path)
+        if format == "pdf":
+            path = path.with_suffix(".pdf")
         if not path.exists():
             return None
         return path
@@ -135,12 +144,16 @@ class ReportService:
         period_start: date,
         period_end: date,
         sheet1_name: str,
+        html_title: str,
         extra_rows: List[List[str]] | None = None,
     ) -> ReportArtifact:
         token = uuid.uuid4().hex
         file_name = self._build_file_name(filename_prefix, user_id, token)
         file_path = self.reports_dir / file_name
+        pdf_file_name = file_path.with_suffix(".pdf").name
+        pdf_file_path = self.reports_dir / pdf_file_name
         self._write_workbook(file_path, sheet1_name, summary_rows, detail_rows, extra_rows or [])
+        self._write_pdf(pdf_file_path, html_title, summary_rows, detail_rows, extra_rows or [])
         report_id = self.report_repository.create(
             token=token,
             report_type=report_type,
@@ -159,10 +172,13 @@ class ReportService:
             title=title,
             file_name=file_name,
             file_path=str(file_path),
+            pdf_file_name=pdf_file_name,
+            pdf_file_path=str(pdf_file_path),
             period_start=period_start.isoformat(),
             period_end=period_end.isoformat(),
             summary_text=summary_text,
             download_url=self._build_download_url(token),
+            pdf_download_url=self._build_download_url(token, format="pdf"),
         )
 
     def _filter_cases_by_period(self, rows, period_start: date, period_end: date):
@@ -254,6 +270,53 @@ class ReportService:
 
     def _rows_to_text(self, rows: Sequence[Sequence[str]]) -> str:
         return "\n".join(" | ".join(cell for cell in row) for row in rows)
+
+    def _write_pdf(self, file_path: Path, title: str, summary_rows: List[List[str]], detail_rows: List[List[str]], extra_rows: List[List[str]] | None = None) -> None:
+        writer = SimplePdfWriter()
+        lines = self._build_pdf_lines(title, summary_rows, detail_rows, extra_rows or [])
+        file_path.write_bytes(writer.build_pdf(title, lines))
+
+    def _build_pdf_lines(self, title: str, summary_rows: List[List[str]], detail_rows: List[List[str]], extra_rows: List[List[str]]) -> List[str]:
+        lines: List[str] = [title, "Сформировано автоматически", ""]
+        for row in summary_rows[1:]:
+            if len(row) >= 2:
+                lines.append(f"{row[0]}: {row[1]}")
+        if extra_rows:
+            lines.extend(["", "Разрез по подразделениям"])
+            for row in extra_rows[1:]:
+                if len(row) >= 6:
+                    lines.append(
+                        f"{row[0]}: всего {row[1]}, опоздания {row[2]}, неявки {row[3]}, на согласовании {row[4]}, подтверждено {row[5]}"
+                    )
+        lines.extend(["", "Случаи"])
+        for row in detail_rows[1:]:
+            if len(row) < 11:
+                continue
+            lines.extend(
+                self._wrap_text_block(
+                    [
+                        f"ID: {row[0]}",
+                        f"Сотрудник: {row[1]}",
+                        f"Подразделение: {row[2]}",
+                        f"Руководитель: {row[3]}",
+                        f"Дата: {row[4]}",
+                        f"Тип: {row[5]}",
+                        f"Статус: {row[6]}",
+                        f"План: {row[7]}",
+                        f"Факт: {row[8]}",
+                        f"Минут: {row[9]}",
+                        f"Причина: {row[10]}",
+                        "-" * 72,
+                    ]
+                )
+            )
+        return lines
+
+    def _wrap_text_block(self, lines: List[str], width: int = 96) -> List[str]:
+        wrapped: List[str] = []
+        for line in lines:
+            wrapped.extend(textwrap.wrap(line, width=width, break_long_words=False, drop_whitespace=False) or [""])
+        return wrapped
 
     def _write_workbook(self, file_path: Path, sheet1_name: str, summary_rows: List[List[str]], detail_rows: List[List[str]], extra_rows: List[List[str]] | None = None) -> None:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -361,10 +424,12 @@ class ReportService:
             result = chr(65 + remainder) + result
         return result
 
-    def _build_download_url(self, token: str) -> str:
+    def _build_download_url(self, token: str, format: str = "xlsx") -> str:
         settings = get_settings()
         base = settings.max_bot_webhook_url.rstrip("/")
         suffix = "/api/webhooks/max"
         if base.endswith(suffix):
             base = base[: -len(suffix)]
+        if format == "pdf":
+            return f"{base}/api/reports/{token}/download/pdf"
         return f"{base}/api/reports/{token}/download"

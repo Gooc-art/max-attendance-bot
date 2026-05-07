@@ -684,8 +684,14 @@ class MaxWebhookRouter:
         text = (
             "Отчет по подразделениям готов.\n\n"
             "{summary}\n\n"
-            "Скачать файл: {url}"
-        ).format(summary=artifact.summary_text, url=artifact.download_url)
+            "Файлы сформированы:\n"
+            "XLSX: {xlsx_url}\n"
+            "PDF: {pdf_url}"
+        ).format(
+            summary=artifact.summary_text,
+            xlsx_url=artifact.download_url,
+            pdf_url=artifact.pdf_download_url,
+        )
 
         return MaxWebhookResponse(
             ok=True,
@@ -744,11 +750,14 @@ class MaxWebhookRouter:
         text = (
             "{title} готов.\n\n"
             "{summary}\n\n"
-            "Скачать файл: {url}"
+            "Файлы сформированы:\n"
+            "XLSX: {xlsx_url}\n"
+            "PDF: {pdf_url}"
         ).format(
             title=label.capitalize(),
             summary=artifact.summary_text,
-            url=artifact.download_url,
+            xlsx_url=artifact.download_url,
+            pdf_url=artifact.pdf_download_url,
         )
         return MaxWebhookResponse(
             ok=True,

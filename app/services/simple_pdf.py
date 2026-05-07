@@ -12,6 +12,8 @@ from typing import Dict, Iterable, List, Sequence
 DEFAULT_FONT_PATHS = [
     Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
     Path("/Library/Fonts/Arial Unicode.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
 ]
 
 
@@ -214,11 +216,17 @@ class SimplePdfWriter:
         last_width = 0
         for glyph_index in range(num_glyphs):
             if glyph_index < number_of_hmetrics:
+                if offset + 4 > len(hmtx_table):
+                    widths.append(last_width)
+                    continue
                 advance, _ = struct.unpack_from(">HH", hmtx_table, offset)
                 offset += 4
                 last_width = advance
             else:
-                _, _ = struct.unpack_from(">hH", hmtx_table, offset)
+                if offset + 2 > len(hmtx_table):
+                    widths.append(last_width)
+                    continue
+                struct.unpack_from(">h", hmtx_table, offset)
                 offset += 2
             widths.append(last_width)
         return widths

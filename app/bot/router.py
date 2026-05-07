@@ -1856,22 +1856,8 @@ class MaxWebhookRouter:
                 )
                 return
 
-            if inbound.update_type == "bot_started":
-                self.max_client.send_message(
-                    user_id=inbound.user.user_id if inbound.user else None,
-                    chat_id=inbound.chat_id,
-                    text=outbound.text,
-                    buttons=outbound.buttons,
-                )
+            if inbound.update_type in {"bot_started", "message_created"}:
                 return
-
-            if inbound.message:
-                self.max_client.send_message(
-                    user_id=inbound.message.sender.user_id,
-                    chat_id=inbound.message.recipient.chat_id,
-                    text=outbound.text,
-                    buttons=outbound.buttons,
-                )
         except Exception:
             return
 

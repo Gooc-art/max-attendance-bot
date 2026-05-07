@@ -3,10 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-
-
 PROJECT_TITLE = "Контроль_опозданий_MAX"
 SERVICE_ACCOUNT_FILE = Path("/Users/goocbk.ru/secure/attendance-max-bot-service-account.json")
 FOLDER_ID = "1kAJrAbR9ehmGLNwblRuMgZxrYRWR4C9w"
@@ -256,6 +252,8 @@ COLUMN_WIDTHS = {
 
 
 def load_credentials():
+    from google.oauth2 import service_account
+
     if not SERVICE_ACCOUNT_FILE.exists():
         raise FileNotFoundError(f"Не найден файл ключа: {SERVICE_ACCOUNT_FILE}")
     return service_account.Credentials.from_service_account_file(
@@ -265,6 +263,8 @@ def load_credentials():
 
 
 def create_services():
+    from googleapiclient.discovery import build
+
     creds = load_credentials()
     sheets = build("sheets", "v4", credentials=creds)
     drive = build("drive", "v3", credentials=creds)

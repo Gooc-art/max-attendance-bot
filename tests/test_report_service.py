@@ -129,6 +129,8 @@ class ReportServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "report.xlsx"
             file_path.write_text("test")
+            pdf_path = file_path.with_suffix(".pdf")
+            pdf_path.write_text("%PDF-1.4")
             repo.create(
                 token="abc123",
                 report_type="week",
@@ -143,7 +145,7 @@ class ReportServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(service.get_report_path("abc123"), file_path)
-            self.assertEqual(service.get_report_path("abc123", format="pdf"), file_path.with_suffix(".pdf"))
+            self.assertEqual(service.get_report_path("abc123", format="pdf"), pdf_path)
 
 
 if __name__ == "__main__":

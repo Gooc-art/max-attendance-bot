@@ -49,7 +49,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
 
         router.max_file_import_service.import_attachments.assert_not_called()
         self.assertIn("только роли Служба безопасности", response.outbound.text)
-        router.max_client.send_message.assert_called_once()
+        router.max_client.send_message.assert_not_called()
 
 
 if __name__ == "__main__":

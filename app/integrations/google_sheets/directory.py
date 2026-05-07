@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,6 +61,7 @@ class GoogleSheetsDirectoryService:
         self.cache_ttl_seconds = cache_ttl_seconds or settings.google_sheets_cache_ttl_seconds
         self._cached_records: List[GoogleSheetsEmployeeRecord] = []
         self._cached_at: datetime | None = None
+        self.logger = logging.getLogger(__name__)
 
     @classmethod
     def from_settings(cls) -> "GoogleSheetsDirectoryService":
@@ -79,11 +81,18 @@ class GoogleSheetsDirectoryService:
             return []
         if not refresh and self._cache_is_fresh():
             return list(self._cached_records)
-        values = self._fetch_values()
-        records = self._parse_values(values)
-        self._cached_records = records
-        self._cached_at = datetime.now(timezone.utc)
-        return list(records)
+        try:
+            values = self._fetch_values()
+            records = self._parse_values(values)
+            self._cached_records = records
+            self._cached_at = datetime.now(timezone.utc)
+            return list(records)
+        except Exception as exc:
+            if self._cached_records:
+                self.logger.warning("Google Sheets directory fetch failed, using cached records: %s", exc)
+                return list(self._cached_records)
+            self.logger.warning("Google Sheets directory fetch failed and cache is empty: %s", exc)
+            return []
 
     def get_by_user_id(self, user_id: str, refresh: bool = False) -> Optional[GoogleSheetsEmployeeRecord]:
         if not user_id:

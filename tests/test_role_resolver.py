@@ -50,7 +50,7 @@ class RoleResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(resolver.resolve_role("max_001", "private"), "admin")
-        self.assertEqual(resolver.google_directory_service.refresh_calls, [True])
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [False])
 
     def test_override_is_used_when_sheet_is_empty(self) -> None:
         resolver = RoleResolver(
@@ -60,7 +60,7 @@ class RoleResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(resolver.resolve_role("max_002", "private"), "manager")
-        self.assertEqual(resolver.google_directory_service.refresh_calls, [True])
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [False])
 
 
 if __name__ == "__main__":

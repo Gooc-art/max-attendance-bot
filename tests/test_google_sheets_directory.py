@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 
@@ -53,6 +54,28 @@ class GoogleSheetsDirectoryServiceTests(unittest.TestCase):
         self.assertEqual(record.department_name, "Отдел продаж")
         self.assertEqual(record.role, "admin")
         self.assertTrue(record.is_active)
+
+    def test_list_employees_uses_cached_records_when_fetch_fails(self) -> None:
+        service = _FakeGoogleSheetsDirectoryService(
+            [
+                ["ФИО", "ID_пользователя_MAX", "Роль", "Работает"],
+                ["Иванов Иван Иванович", "max_001", "Администратор", "Да"],
+            ]
+        )
+
+        first_pass = service.list_employees(refresh=True)
+        self.assertEqual(len(first_pass), 1)
+
+        service._cached_at = datetime.now(timezone.utc) - timedelta(seconds=600)
+
+        def _raise():
+            raise RuntimeError("quota exceeded")
+
+        service._fetch_values = _raise  # type: ignore[method-assign]
+
+        cached = service.list_employees(refresh=False)
+        self.assertEqual(len(cached), 1)
+        self.assertEqual(cached[0].employee_user_id, "max_001")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 
 ## Source of truth
 - Google Sheets `Сотрудники` is the first runtime source for role resolution and employee directory lookup.
-- Manager lookup can also use the sheet, but role resolution should be refreshed on each incoming event so manual edits apply immediately.
+- Manager lookup can also use the sheet, but role resolution should use a short-lived cache and fail over to local data when Google Sheets hits a quota or transport error.
+- Google Sheets reads are cached briefly; if Sheets returns a quota error, the bot must continue from the last valid cached directory instead of failing the webhook.
 - The initial spreadsheet population is bootstrapped from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
 - During bootstrap, employee schedules are assigned automatically to the five-day schedules `ГР003` or `ГР004` based on the name pattern, so the attendance importer can use weekday schedules without manual per-row edits.
 - Local SQLite remains a fallback/cache for imported data and runtime cases.

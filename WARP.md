@@ -7,8 +7,8 @@
 - Prefer reversible, observable terminal commands.
 
 ## Current runtime data flow
-1. Resolve role from Google Sheets `Сотрудники` with a fresh read on each incoming event.
-2. Fallback to local role overrides and local employee directory.
+1. Resolve role from Google Sheets `Сотрудники` with a short-lived cache on incoming events.
+2. If Google Sheets returns a quota or transport error, fall back to the last cached directory and then to local role overrides and local employee directory.
 3. Render role-based MAX menus.
 4. Display role names in Russian in user-facing interfaces while keeping technical role codes internal.
 5. Import SKUD files and create attendance cases. If a MAX file attachment arrives without a direct download URL, rehydrate the source message by `message_id` before rejecting the upload.

@@ -49,13 +49,13 @@ class MaxFileImportService:
             return AttachmentImportResult(
                 filename=attachment.filename or "unknown",
                 status="error",
-                message="Во вложении нет URL для скачивания.",
+                message="Я получил файл, но не смог его открыть. Попробуй отправить его еще раз.",
             )
 
         filename = attachment.filename or "attachment"
         try:
             file_bytes = self._download_file(attachment.payload.url)
-            saved_path = self._store_file(filename, file_bytes)
+            self._store_file(filename, file_bytes)
             suffix = Path(filename).suffix.lower()
 
             if suffix == ".csv":
@@ -88,16 +88,13 @@ class MaxFileImportService:
             return AttachmentImportResult(
                 filename=filename,
                 status="unsupported",
-                message="Файл `{0}` сохранен в `{1}`, но формат пока не поддержан. Поддерживаются `.csv` и `.xlsx`.".format(
-                    filename,
-                    saved_path.name,
-                ),
+                message="Файл `{0}` я сохранил, но пока умею работать только с CSV и Excel.".format(filename),
             )
-        except Exception as exc:
+        except Exception:
             return AttachmentImportResult(
                 filename=filename,
                 status="error",
-                message="Не удалось обработать файл `{0}`: {1}".format(filename, exc),
+                message="Не получилось разобрать файл `{0}`. Проверь формат и попробуй еще раз.".format(filename),
             )
 
     def _download_file(self, url: str) -> bytes:
@@ -224,16 +221,16 @@ class MaxFileImportService:
     @staticmethod
     def _format_import_message(result: SkudImportResult) -> str:
         parts = [
-            "Импорт `{filename}` завершен.".format(filename=result.filename),
+            "Файл `{filename}` обработан.".format(filename=result.filename),
             "Период: {start} - {end}".format(
                 start=result.period_start or "-",
                 end=result.period_end or "-",
             ),
-            "Уникальных сотрудников: {count}".format(count=result.unique_employees),
-            "Строк обработано: {total}".format(total=result.total_rows),
-            "Кейсов создано: {created}".format(created=result.created_cases),
-            "Ошибок: {errors}".format(errors=result.error_rows),
+            "Сотрудников найдено: {count}".format(count=result.unique_employees),
+            "Строк проверено: {total}".format(total=result.total_rows),
+            "Новых случаев: {created}".format(created=result.created_cases),
+            "Не получилось разобрать: {errors}".format(errors=result.error_rows),
         ]
         if result.samples:
-            parts.append("Примеры:\n" + "\n".join(f"- {item}" for item in result.samples))
+            parts.append("Что не получилось распознать:\n" + "\n".join(f"- {item}" for item in result.samples))
         return "\n".join(parts)

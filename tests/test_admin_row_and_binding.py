@@ -54,7 +54,7 @@ class AdminRowAndBindingTests(unittest.TestCase):
 
         response = self.router._binding_check("admin", "203302812")
 
-        self.assertIn("Привязка найдена", response.outbound.text)
+        self.assertIn("Связку нашел", response.outbound.text)
         self.assertIn("Роль: Администратор", response.outbound.text)
         self.assertIn("Совпадение: Да", response.outbound.text)
 

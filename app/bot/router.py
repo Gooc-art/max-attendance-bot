@@ -66,7 +66,7 @@ class MaxWebhookRouter:
             ]
             if file_attachments:
                 if role != Role.SECURITY.value:
-                    response = self._stub_section(role, "Загрузка СКУД доступна только роли Служба безопасности.")
+                    response = self._stub_section(role, "Загрузка файлов доступна только службе безопасности.")
                     self._send_outbound(payload, response.outbound)
                     return response
                 response = self._handle_attachments(role, event["user_id"], payload.message.body.attachments)
@@ -447,12 +447,7 @@ class MaxWebhookRouter:
         )
 
     def _security_import_help(self, role: str, user_id: str) -> MaxWebhookResponse:
-        text = (
-            "Импорт СКУД сейчас подключен через API.\n\n"
-            "POST /api/imports/skud/csv?filename=prohodki.csv&created_by_user_id={user_id}\n"
-            "Body: сырой CSV файл.\n\n"
-            "Можно отправить запрос через Swagger /docs или curl."
-        ).format(user_id=user_id)
+        text = "Отправь файл с проходами прямо сюда, и я сам его разберу.\n\nПодойдут файлы в формате CSV или Excel."
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -470,10 +465,10 @@ class MaxWebhookRouter:
     def _security_import_history(self, role: str) -> MaxWebhookResponse:
         rows = self.skud_import_repository.list_recent(limit=8)
         if not rows:
-            text = "История импортов пока пустая."
+            text = "Пока нет загруженных файлов."
         else:
-            text = "Последние импорты:\n\n" + "\n".join(
-                "#{id} | {filename} | {period_start} - {period_end} | сотрудников: {employees} | создано: {created} | ошибок: {errors} | {status}".format(
+            text = "Последние загрузки:\n\n" + "\n".join(
+                "#{id} | {filename} | {period_start} - {period_end} | сотрудников: {employees} | случаев: {created} | ошибок: {errors} | {status}".format(
                     id=row.id,
                     filename=row.filename,
                     period_start=row.period_start or "-",
@@ -688,7 +683,7 @@ class MaxWebhookRouter:
         text = (
             "Отчет по подразделениям готов.\n\n"
             "{summary}\n\n"
-            "Файлы отправлены в чат."
+            "Я уже отправил его в чат."
         ).format(
             summary=artifact.summary_text,
         )
@@ -751,7 +746,7 @@ class MaxWebhookRouter:
         text = (
             "{title} готов.\n\n"
             "{summary}\n\n"
-            "Файлы отправлены в чат."
+            "Я уже отправил его в чат."
         ).format(
             title=label.capitalize(),
             summary=artifact.summary_text,
@@ -831,9 +826,8 @@ class MaxWebhookRouter:
         rows = self._resolve_directory_rows_recent(limit=8)
         if not rows:
             text = (
-                "Справочник сотрудников пока пустой.\n\n"
-                "Загрузить можно через API:\n"
-                "POST /api/employees/directory/csv"
+                "Список сотрудников пока пустой.\n\n"
+                "Как только он будет загружен, я покажу его здесь."
             )
         else:
             text = "Последние сотрудники:\n\n" + "\n".join(
@@ -872,7 +866,7 @@ class MaxWebhookRouter:
         if not departments:
             text = (
                 "Подразделения пока не загружены.\n\n"
-                "Они появятся после импорта справочника сотрудников."
+                "Они появятся после загрузки списка сотрудников."
             )
         else:
             lines = [f"- {name}: {count}" for name, count in sorted(departments.items())]
@@ -1062,12 +1056,12 @@ class MaxWebhookRouter:
 
         text = (
             "Кто я:\n\n"
-            "user_id из MAX: {user_id}\n"
-            "chat_id: {chat_id}\n"
-            "Роль, которую видит бот: {role}\n\n"
+            "Твой ID в MAX: {user_id}\n"
+            "Чат: {chat_id}\n"
+            "Роль в боте: {role}\n\n"
             "{sheet_status}\n\n"
-            "Чтобы показать админ-панель, в таблице `Сотрудники` поле `ID_пользователя_MAX` должно быть равно этому user_id.\n"
-            "Нужный ID: {needed_id}"
+            "Чтобы бот показал админ-панель, в таблице `Сотрудники` у тебя должен быть тот же ID в MAX.\n"
+            "Нужный ID для таблицы: {needed_id}"
         ).format(
             user_id=user_id,
             chat_id=chat_id,
@@ -1093,14 +1087,14 @@ class MaxWebhookRouter:
         sheet_record = self.google_directory_service.get_by_user_id(user_id)
         if sheet_record is None:
             text = (
-                "Твоя строка в Google Sheets не найдена.\n\n"
-                "Проверь, что в листе `Сотрудники` поле `ID_пользователя_MAX` совпадает с текущим `user_id`."
+                "Твоя строка в таблице не найдена.\n\n"
+                "Проверь, что в листе `Сотрудники` у тебя указан тот же ID в MAX."
             )
         else:
             text = (
                 "Моя строка:\n\n"
                 "ФИО: {name}\n"
-                "ID_пользователя_MAX: {user_id}\n"
+                "ID в MAX: {user_id}\n"
                 "Роль: {role}\n"
                 "Подразделение: {department}\n"
                 "Руководитель: {manager}\n"
@@ -1132,15 +1126,15 @@ class MaxWebhookRouter:
         sheet_record = self.google_directory_service.get_by_user_id(user_id)
         if sheet_record is None:
             text = (
-                "Привязка не найдена.\n\n"
-                "Нужен exact match по `ID_пользователя_MAX` в листе `Сотрудники`.\n"
-                "Сейчас: {user_id}"
+                "Связку не нашел.\n\n"
+                "Проверь, что в листе `Сотрудники` у тебя указан тот же ID в MAX.\n"
+                "Сейчас у тебя: {user_id}"
             ).format(user_id=user_id)
         else:
             text = (
-                "Привязка найдена.\n\n"
-                "MAX user_id: {user_id}\n"
-                "Sheet user_id: {sheet_user_id}\n"
+                "Связку нашел.\n\n"
+                "Твой ID в MAX: {user_id}\n"
+                "ID в таблице: {sheet_user_id}\n"
                 "Роль: {role}\n"
                 "ФИО: {name}\n"
                 "Совпадение: {match}"
@@ -1213,7 +1207,7 @@ class MaxWebhookRouter:
         if not results:
             return None
 
-        text = "Результат обработки вложений:\n\n" + "\n\n".join(result.message for result in results)
+        text = "Файл принят. Вот что получилось:\n\n" + "\n\n".join(result.message for result in results)
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1871,13 +1865,13 @@ class MaxWebhookRouter:
             self.max_client.send_file_message(
                 chat_id=int(chat_id) if str(chat_id).isdigit() else None,
                 user_id=int(user_id) if str(user_id).isdigit() else None,
-                text=f"{title}: XLSX",
+                text=f"{title} в Excel",
                 file_path=xlsx_path,
             )
             self.max_client.send_file_message(
                 chat_id=int(chat_id) if str(chat_id).isdigit() else None,
                 user_id=int(user_id) if str(user_id).isdigit() else None,
-                text=f"{title}: PDF",
+                text=f"{title} в PDF",
                 file_path=pdf_path,
             )
         except Exception:

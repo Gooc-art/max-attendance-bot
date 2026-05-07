@@ -34,7 +34,7 @@ class QuickReportLinkTests(unittest.TestCase):
 
         response = router._quick_report("manager", "mgr-1", "777", "reports.week")
 
-        self.assertIn("Файлы отправлены в чат.", response.outbound.text)
+        self.assertIn("Я уже отправил его в чат.", response.outbound.text)
         router.max_client.send_file_message.assert_not_called()
 
     def test_division_reports_includes_download_url(self) -> None:
@@ -46,7 +46,7 @@ class QuickReportLinkTests(unittest.TestCase):
         response = router._division_reports("manager", "mgr-1", "777")
 
         self.assertIn("Отчет по подразделениям готов.", response.outbound.text)
-        self.assertIn("Файлы отправлены в чат.", response.outbound.text)
+        self.assertIn("Я уже отправил его в чат.", response.outbound.text)
         router.max_client.send_file_message.assert_not_called()
 
 

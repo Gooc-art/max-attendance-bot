@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
@@ -47,6 +48,7 @@ class MaxWebhookRouter:
         self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
         self.max_file_import_service = MaxFileImportService()
+        self.logger = logging.getLogger(__name__)
 
     def handle_event(self, payload: MaxUpdate) -> MaxWebhookResponse:
         event = self._normalize_event(payload)
@@ -57,6 +59,12 @@ class MaxWebhookRouter:
         action = event["action"]
         user_text = event["text"]
         active_state = dialog_state_store.get(event["user_id"])
+
+        if action in {BotAction.START, BotAction.MAIN_MENU, "/start", "Главное меню"}:
+            dialog_state_store.reset(event["user_id"])
+            response = self._menu_response(role, "Главное меню готово.")
+            self._send_outbound(payload, response.outbound)
+            return response
 
         if payload.message and payload.message.body.attachments:
             file_attachments = [
@@ -87,12 +95,6 @@ class MaxWebhookRouter:
 
         if active_state and active_state.flow == DialogFlow.ATTENDANCE_REASON.value:
             response = self._handle_attendance_reason_flow(role, event["user_id"], user_text, action, active_state)
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action in {BotAction.START, BotAction.MAIN_MENU, "/start", "Главное меню"}:
-            dialog_state_store.reset(event["user_id"])
-            response = self._menu_response(role, "Главное меню готово.")
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1856,6 +1858,13 @@ class MaxWebhookRouter:
                 )
                 return
         except Exception:
+            self.logger.exception(
+                "Failed to send MAX outbound update_type=%s chat_id=%s user_id=%s action=%s",
+                inbound.update_type,
+                inbound.chat_id,
+                inbound.user.user_id if inbound.user else None,
+                getattr(inbound.callback, "payload", None) if inbound.callback else getattr(getattr(inbound.message, "body", None), "text", None),
+            )
             return
 
     def _send_report_files(self, chat_id: str, user_id: str, title: str, xlsx_path: str, pdf_path: str) -> None:
@@ -1887,6 +1896,12 @@ class MaxWebhookRouter:
                     file_path=pdf_path,
                 )
         except Exception:
+            self.logger.exception(
+                "Failed to send MAX report files chat_id=%s user_id=%s title=%s",
+                chat_id,
+                user_id,
+                title,
+            )
             return
 
     def _status_label(self, status: str) -> str:

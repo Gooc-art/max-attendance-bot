@@ -36,6 +36,7 @@ DATABASE_URL=sqlite:///./data/attendance_bot.db
 GOOGLE_SERVICE_ACCOUNT_FILE=/Users/goocbk.ru/secure/attendance-max-bot-service-account.json
 GOOGLE_SHEETS_SPREADSHEET_ID=1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54
 GOOGLE_SHEETS_EMPLOYEE_RANGE=Сотрудники!A:Q
+GOOGLE_SHEETS_SCHEDULE_RANGE=Графики!A:L
 GOOGLE_SHEETS_CACHE_TTL_SECONDS=300
 ```
 
@@ -83,6 +84,24 @@ source .venv/bin/activate
 python3 scripts/register_max_webhook.py
 ```
 
+## Загрузка справочника сотрудников в Google Sheets
+
+Скрипт `create_google_sheet.py` умеет не только создавать структуру таблицы, но и заполнять листы `Сотрудники` и `Подразделения` из JSON-файлов:
+
+- `/Users/goocbk.ru/attendance-bot/data/staff_catalog.json`
+- `/Users/goocbk.ru/attendance-bot/data/staff_bindings.json`
+
+Запуск:
+
+```bash
+cd ~/attendance-bot
+source .venv/bin/activate
+python3 create_google_sheet.py
+```
+
+Скрипт перезапишет данные на листах `Сотрудники` и `Подразделения`, сохранив структуру и справочные листы.
+При загрузке он автоматически распределяет сотрудников по пятидневным графикам `ГР003` и `ГР004` по ФИО, а `ГР001` остается как резервный справочный график.
+
 ## Полезные URL
 
 - `GET /` — корневой статус
@@ -101,7 +120,7 @@ python3 scripts/register_max_webhook.py
 
 - скачает файл из attachment `payload.url`
 - сохранит его в `data/uploads/skud/`
-- создаст кейсы через импорт СКУД
+- создаст кейсы через импорт СКУД с учетом графика сотрудника из Google Sheets
 - ответит кратким итогом обработки
 
 ## Пример webhook payload

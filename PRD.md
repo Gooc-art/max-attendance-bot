@@ -8,6 +8,8 @@ Build a MAX bot for attendance control that reads employee rights and directory 
   - role resolution
   - employee directory lookup
   - manager lookup
+- The initial spreadsheet population is bootstrapped from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
+- During bootstrap, employee schedules are assigned automatically to the five-day schedules `ГР003` or `ГР004` based on the name pattern, so the attendance importer can use weekday schedules without manual per-row edits.
 - Local SQLite remains a fallback/cache for imported data and runtime cases.
 
 ## Functional scope
@@ -15,6 +17,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Show role-based MAX menus with Russian display labels for people-facing UI.
 - Read employee directory, departments, and managers from Google Sheets.
 - Import SKUD reports and create late/absence cases.
+- Resolve planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned.
 - Support employee reason selection, manager choice from a shortlist, and manager approvals.
 - Notify the selected manager immediately when the employee submits a reason.
 - Restrict SKUD upload actions to the `Служба безопасности` role.

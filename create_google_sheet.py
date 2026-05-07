@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from google.oauth2 import service_account
@@ -10,6 +11,8 @@ PROJECT_TITLE = "Контроль_опозданий_MAX"
 SERVICE_ACCOUNT_FILE = Path("/Users/goocbk.ru/secure/attendance-max-bot-service-account.json")
 FOLDER_ID = "1kAJrAbR9ehmGLNwblRuMgZxrYRWR4C9w"
 EXISTING_SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
+STAFF_CATALOG_FILE = Path("/Users/goocbk.ru/attendance-bot/data/staff_catalog.json")
+STAFF_BINDINGS_FILE = Path("/Users/goocbk.ru/attendance-bot/data/staff_bindings.json")
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -133,6 +136,8 @@ RULES_ROWS = [
 SCHEDULE_ROWS = [
     ["ГР001", "Пятидневка 09:00", "09:00", "09:00", "09:00", "09:00", "09:00", "", "", 10, "Да", "Основной график"],
     ["ГР002", "Сменный график", "08:00", "08:00", "20:00", "20:00", "08:00", "08:00", "", 5, "Да", "Пример сменного графика"],
+    ["ГР003", "Пятидневка - Девушки 08:30-12:30 / 14:00-17:15", "08:30", "08:30", "08:30", "08:30", "08:30", "", "", 10, "Да", "Обед 12:30-14:00"],
+    ["ГР004", "Пятидневка - Парни 08:30-12:30 / 14:00-18:15", "08:30", "08:30", "08:30", "08:30", "08:30", "", "", 10, "Да", "Обед 12:30-14:00"],
 ]
 
 
@@ -264,6 +269,109 @@ def create_services():
     sheets = build("sheets", "v4", credentials=creds)
     drive = build("drive", "v3", credentials=creds)
     return sheets, drive
+
+
+def load_json_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+
+
+def build_department_id_map(catalog: dict) -> dict[str, str]:
+    departments = catalog.get("departments", {}) if isinstance(catalog, dict) else {}
+    return {
+        department_name: f"DEP{index:03d}"
+        for index, department_name in enumerate(departments.keys(), start=1)
+    }
+
+
+def build_staff_rows(catalog: dict, bindings: dict) -> list[list[str]]:
+    departments = catalog.get("departments", {}) if isinstance(catalog, dict) else {}
+    binding_by_name = {
+        str(binding.get("name", "")).strip(): binding
+        for binding in bindings.values()
+        if isinstance(binding, dict) and str(binding.get("name", "")).strip()
+    }
+    department_id_map = build_department_id_map(catalog)
+
+    rows: list[list[str]] = []
+    employee_index = 1
+    for department_name, employee_names in departments.items():
+        for employee_name in employee_names:
+            binding = binding_by_name.get(employee_name, {})
+            employee_user_id = str(binding.get("user_id", "")).strip()
+            schedule_id = infer_schedule_id(employee_name)
+            rows.append(
+                [
+                    f"EMP{employee_index:04d}",
+                    employee_name,
+                    employee_name,
+                    employee_user_id,
+                    "",
+                    "",
+                    department_name,
+                    department_id_map.get(department_name, ""),
+                    "Руководитель" if department_name == "0. Руководство" else "Сотрудник",
+                    schedule_name_for(schedule_id),
+                    schedule_id,
+                    "Офис",
+                    10,
+                    "Да",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+            employee_index += 1
+    return rows
+
+
+def infer_schedule_id(employee_name: str) -> str:
+    parts = [part for part in employee_name.split() if part]
+    if len(parts) >= 3:
+        patronymic = parts[2].lower()
+        if patronymic.endswith(("овна", "евна", "ична")):
+            return "ГР003"
+        if patronymic.endswith(("ович", "евич", "ич")):
+            return "ГР004"
+    if len(parts) >= 2:
+        first_name = parts[1].lower()
+        if first_name.endswith(("а", "я", "ь")):
+            return "ГР003"
+    return "ГР004"
+
+
+def schedule_name_for(schedule_id: str) -> str:
+    mapping = {
+        "ГР003": "Пятидневка - Девушки 08:30-12:30 / 14:00-17:15",
+        "ГР004": "Пятидневка - Парни 08:30-12:30 / 14:00-18:15",
+    }
+    return mapping.get(schedule_id, "Пятидневка 09:00")
+
+
+def build_department_rows(catalog: dict) -> list[list[str]]:
+    departments = catalog.get("departments", {}) if isinstance(catalog, dict) else {}
+    rows: list[list[str]] = []
+    for index, department_name in enumerate(departments.keys(), start=1):
+        rows.append(
+            [
+                f"DEP{index:03d}",
+                department_name,
+                "",
+                "",
+                "",
+                "",
+                "Да",
+                "",
+            ]
+        )
+    return rows
 
 
 def create_spreadsheet(drive_service, sheets_service):
@@ -408,6 +516,73 @@ def write_initial_values(sheets_service, spreadsheet_id):
     ).execute()
 
 
+def clear_range(sheets_service, spreadsheet_id, sheet_name: str, end_column: str) -> None:
+    sheets_service.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet_name}!A:{end_column}",
+    ).execute()
+
+
+def write_staff_data(sheets_service, spreadsheet_id):
+    catalog = load_json_file(STAFF_CATALOG_FILE)
+    bindings = load_json_file(STAFF_BINDINGS_FILE)
+    if not catalog or not bindings:
+        return {"catalog_rows": 0, "department_rows": 0}
+
+    staff_rows = build_staff_rows(catalog, bindings)
+    department_rows = build_department_rows(catalog)
+
+    clear_range(sheets_service, spreadsheet_id, "Сотрудники", "Q")
+    clear_range(sheets_service, spreadsheet_id, "Подразделения", "H")
+
+    sheets_service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+            "valueInputOption": "USER_ENTERED",
+            "data": [
+                {
+                    "range": "Сотрудники!A1",
+                    "majorDimension": "ROWS",
+                    "values": [HEADERS["Сотрудники"], *staff_rows],
+                },
+                {
+                    "range": "Подразделения!A1",
+                    "majorDimension": "ROWS",
+                    "values": [HEADERS["Подразделения"], *department_rows],
+                },
+            ],
+        },
+    ).execute()
+    sync_employee_schedule_columns(sheets_service, spreadsheet_id)
+    return {"catalog_rows": len(staff_rows), "department_rows": len(department_rows)}
+
+
+def sync_employee_schedule_columns(sheets_service, spreadsheet_id):
+    response = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range="Сотрудники!A1:Q2000",
+    ).execute()
+    values = response.get("values", [])
+    if len(values) <= 1:
+        return
+
+    schedule_rows = []
+    for row in values[1:]:
+        employee_name = row[1].strip() if len(row) > 1 else ""
+        if not employee_name:
+            schedule_rows.append(["", ""])
+            continue
+        schedule_id = infer_schedule_id(employee_name)
+        schedule_rows.append([schedule_name_for(schedule_id), schedule_id])
+
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=f"Сотрудники!J2:K{len(schedule_rows) + 1}",
+        valueInputOption="USER_ENTERED",
+        body={"values": schedule_rows},
+    ).execute()
+
+
 def build_dropdown_request(sheet_id, start_row, end_row, column_index, values):
     return {
         "setDataValidation": {
@@ -548,10 +723,16 @@ def main():
         ensure_missing_sheets(sheets_service, spreadsheet_id, sheet_map)
         sheet_map = get_sheet_map(sheets_service, spreadsheet_id)
         write_initial_values(sheets_service, spreadsheet_id)
+        staff_result = write_staff_data(sheets_service, spreadsheet_id)
         format_sheets(sheets_service, spreadsheet_id, sheet_map)
 
         print("Таблица обновлена:")
         print(spreadsheet_url)
+        if staff_result["catalog_rows"] or staff_result["department_rows"]:
+            print(
+                f"Загружено сотрудников: {staff_result['catalog_rows']}, "
+                f"подразделений: {staff_result['department_rows']}"
+            )
         return
     else:
         spreadsheet = create_spreadsheet(drive_service, sheets_service)
@@ -562,10 +743,16 @@ def main():
     setup_sheets(sheets_service, spreadsheet_id, default_sheet_id)
     sheet_map = get_sheet_map(sheets_service, spreadsheet_id)
     write_initial_values(sheets_service, spreadsheet_id)
+    staff_result = write_staff_data(sheets_service, spreadsheet_id)
     format_sheets(sheets_service, spreadsheet_id, sheet_map)
 
     print("Таблица создана:")
     print(spreadsheet_url)
+    if staff_result["catalog_rows"] or staff_result["department_rows"]:
+        print(
+            f"Загружено сотрудников: {staff_result['catalog_rows']}, "
+            f"подразделений: {staff_result['department_rows']}"
+        )
 
 
 if __name__ == "__main__":

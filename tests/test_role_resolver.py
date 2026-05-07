@@ -9,8 +9,10 @@ from app.services.role_resolver import RoleResolver
 class _FakeGoogleDirectoryService:
     def __init__(self, record=None):
         self.record = record
+        self.refresh_calls = []
 
     def get_by_user_id(self, user_id: str, refresh: bool = False):
+        self.refresh_calls.append(refresh)
         return self.record
 
 
@@ -48,6 +50,7 @@ class RoleResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(resolver.resolve_role("max_001", "private"), "admin")
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [True])
 
     def test_override_is_used_when_sheet_is_empty(self) -> None:
         resolver = RoleResolver(
@@ -57,6 +60,7 @@ class RoleResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(resolver.resolve_role("max_002", "private"), "manager")
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [True])
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 - Prefer reversible, observable terminal commands.
 
 ## Current runtime data flow
-1. Resolve role from Google Sheets `Сотрудники`.
+1. Resolve role from Google Sheets `Сотрудники` with a fresh read on each incoming event.
 2. Fallback to local role overrides and local employee directory.
 3. Render role-based MAX menus.
 4. Display role names in Russian in user-facing interfaces while keeping technical role codes internal.

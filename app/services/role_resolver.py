@@ -27,7 +27,7 @@ class RoleResolver:
         self.employee_directory_repository = employee_directory_repository or EmployeeDirectoryRepository()
 
     def resolve_role(self, user_id: str, chat_id: str) -> str:
-        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        sheet_record = self.google_directory_service.get_by_user_id(user_id, refresh=True)
         if sheet_record is not None and sheet_record.is_active and sheet_record.role:
             return self._normalize_role(sheet_record.role)
         override_role = self.role_override_repository.get_role(user_id)

@@ -130,6 +130,41 @@ class SkudImportAccessControlTests(unittest.TestCase):
         kwargs = router.max_file_import_service.import_attachments.call_args.kwargs
         self.assertEqual(kwargs["message_id"], "m10")
 
+    def test_unknown_attachment_type_returns_explanatory_message(self) -> None:
+        router = MaxWebhookRouter()
+        router.role_resolver = _FakeRoleResolver("security")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message = MagicMock()
+        router.max_file_import_service = MagicMock()
+
+        payload = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(
+                    mid="m11",
+                    seq=1,
+                    text="Отчет",
+                    attachments=[
+                        MaxAttachment(
+                            type="sticker",
+                            filename="sticker.webp",
+                        )
+                    ],
+                ),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertIn("не умею его разобрать", response.outbound.text)
+        router.max_file_import_service.import_attachments.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

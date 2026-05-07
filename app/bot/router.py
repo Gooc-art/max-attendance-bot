@@ -67,6 +67,15 @@ class MaxWebhookRouter:
             return response
 
         if payload.message and payload.message.body.attachments:
+            attachment_types = [getattr(attachment, "type", "") for attachment in payload.message.body.attachments]
+            attachment_names = [getattr(attachment, "filename", "") for attachment in payload.message.body.attachments]
+            self.logger.info(
+                "MAX message attachments update_type=%s mid=%s types=%s filenames=%s",
+                payload.update_type,
+                payload.message.body.mid,
+                attachment_types,
+                attachment_names,
+            )
             file_attachments = [
                 attachment
                 for attachment in payload.message.body.attachments
@@ -86,6 +95,25 @@ class MaxWebhookRouter:
                 if response is not None:
                     self._send_outbound(payload, response.outbound)
                     return response
+            else:
+                response = MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text=(
+                            "Я вижу вложение, но пока не умею его разобрать.\n\n"
+                            "Попробуй отправить файл еще раз или скажи мне, как он выглядит в MAX."
+                        ),
+                        buttons=[
+                            MaxOutboundButton(title="Загрузить выгрузку СКУД", action=BotAction.MENU_SECURITY_IMPORT),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                        ],
+                    ),
+                    active_flow=None,
+                )
+                self._send_outbound(payload, response.outbound)
+                return response
 
         if active_state and active_state.flow == DialogFlow.SUBSTITUTION.value:
             result = self.substitution_flow.handle_input(event["user_id"], role, user_text, action, active_state)
@@ -1241,7 +1269,7 @@ class MaxWebhookRouter:
         payload = getattr(attachment, "payload", None)
         if payload and (getattr(payload, "url", "") or getattr(payload, "token", "")):
             return True
-        return bool(getattr(attachment, "filename", ""))
+        return False
 
     def _employee_cases(self, role: str, user_id: str) -> MaxWebhookResponse:
         rows = self.case_repository.list_for_employee_user(user_id)

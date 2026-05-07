@@ -20,6 +20,8 @@ class GoogleSheetsEmployeeRecord:
     manager_name: str = ""
     manager_user_id: str = ""
     department_name: str = ""
+    schedule_name: str = ""
+    schedule_id: str = ""
     role: str = "employee"
     is_active: bool = True
 
@@ -165,6 +167,8 @@ class GoogleSheetsDirectoryService:
                     manager_name=self._pick(data, "ФИО_руководителя", "manager_name"),
                     manager_user_id=self._pick(data, "ID_руководителя", "ID_руководителя_MAX", "manager_user_id"),
                     department_name=self._pick(data, "Подразделение", "department_name"),
+                    schedule_name=self._pick(data, "График", "schedule_name"),
+                    schedule_id=self._pick(data, "ID_графика", "schedule_id"),
                     role=self.normalize_role_value(self._pick(data, "Роль", "role") or "employee"),
                     is_active=self._to_bool(self._pick(data, "Работает", "Активен", "is_active"), default=True),
                 )

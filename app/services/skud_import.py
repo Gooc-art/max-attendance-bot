@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import date, datetime, time
 from io import StringIO
 from typing import Dict, List, Tuple
 
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
+from app.integrations.google_sheets.schedules import GoogleSheetsScheduleService
 from app.repositories.approval_repository import ApprovalRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
@@ -41,6 +42,7 @@ class SkudImportService:
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
         self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
+        self.google_schedule_service = GoogleSheetsScheduleService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
         self.import_repository = SkudImportRepository()
 
@@ -170,6 +172,9 @@ class SkudImportService:
                 if max_dt is None or event_dt > max_dt:
                     max_dt = event_dt
                 employee_directory = self._resolve_directory_record(employee_name)
+                planned_start = self._resolve_planned_start(employee_directory, event_dt.date())
+                if planned_start is None:
+                    continue
                 key = (employee_name, event_dt.date().isoformat())
                 current = first_entries.get(key)
                 if current is None or event_dt.isoformat() < current["event_dt"]:
@@ -185,16 +190,21 @@ class SkudImportService:
                         "employee_user_id": employee_directory["employee_user_id"] if employee_directory else "",
                         "manager_user_id": employee_directory["manager_user_id"] if employee_directory else "",
                         "manager_name": employee_directory["manager_name"] if employee_directory else "",
+                        "schedule_name": employee_directory.get("schedule_name", "") if employee_directory else "",
+                        "schedule_id": employee_directory.get("schedule_id", "") if employee_directory else "",
+                        "planned_start": planned_start,
                     }
             except Exception as exc:
                 errors.append(f"Строка {row_number}: {exc}")
 
         created_cases = 0
         samples: List[str] = []
-        planned_time = time(hour=8, minute=30)
         for item in first_entries.values():
             actual_dt = datetime.fromisoformat(item["event_dt"])
+            planned_time = self._parse_time(item["planned_start"])
             delay_minutes = int((actual_dt - datetime.combine(actual_dt.date(), planned_time)).total_seconds() // 60)
+            if delay_minutes <= self._resolve_late_after_minutes(item):
+                continue
             if delay_minutes <= 0:
                 continue
             if len(samples) < 5:
@@ -215,7 +225,7 @@ class SkudImportService:
                 case_type=AttendanceCaseType.LATE.value,
                 status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
                 event_date=item["event_date"],
-                planned_start="08:30",
+                planned_start=item["planned_start"],
                 actual_start=item["actual_start"],
                 delay_minutes=delay_minutes,
                 employee_reason="",
@@ -343,6 +353,14 @@ class SkudImportService:
                 google_record.department_name if google_record else "",
                 local_record.department_name if local_record else "",
             ),
+            "schedule_name": self._merge_directory_value(
+                google_record.schedule_name if google_record else "",
+                "",
+            ),
+            "schedule_id": self._merge_directory_value(
+                google_record.schedule_id if google_record else "",
+                "",
+            ),
             "role": self._merge_directory_value(
                 google_record.role if google_record else "",
                 local_record.role if local_record else "",
@@ -353,6 +371,35 @@ class SkudImportService:
     @staticmethod
     def _merge_directory_value(primary: str, secondary: str, fallback: str = "") -> str:
         return primary or secondary or fallback
+
+    def _resolve_planned_start(self, employee_directory: Dict[str, str], event_date: date) -> str | None:
+        schedule_id = employee_directory.get("schedule_id", "")
+        schedule_name = employee_directory.get("schedule_name", "")
+        planned_start = self.google_schedule_service.resolve_planned_start(
+            schedule_id=schedule_id,
+            schedule_name=schedule_name,
+            event_date=event_date,
+            fallback="08:30",
+        )
+        return planned_start or None
+
+    def _resolve_late_after_minutes(self, employee_directory: Dict[str, str]) -> int:
+        schedule_id = employee_directory.get("schedule_id", "")
+        schedule_name = employee_directory.get("schedule_name", "")
+        return self.google_schedule_service.resolve_late_after_minutes(
+            schedule_id=schedule_id,
+            schedule_name=schedule_name,
+            fallback=10,
+        )
+
+    @staticmethod
+    def _parse_time(value: str) -> time:
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt).time()
+            except ValueError:
+                continue
+        return time(hour=8, minute=30)
 
     @staticmethod
     def _parse_event_date(value: str) -> datetime | None:

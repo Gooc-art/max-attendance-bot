@@ -34,6 +34,7 @@ class Settings:
     google_service_account_file: str
     google_sheets_spreadsheet_id: str
     google_sheets_employee_range: str
+    google_sheets_schedule_range: str
     google_sheets_cache_ttl_seconds: int
 
 
@@ -59,5 +60,6 @@ def get_settings() -> Settings:
             "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54",
         ),
         google_sheets_employee_range=os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "Сотрудники!A:Q"),
+        google_sheets_schedule_range=os.getenv("GOOGLE_SHEETS_SCHEDULE_RANGE", "Графики!A:L"),
         google_sheets_cache_ttl_seconds=int(os.getenv("GOOGLE_SHEETS_CACHE_TTL_SECONDS", "300")),
     )

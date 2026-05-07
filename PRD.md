@@ -23,7 +23,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Restrict SKUD upload actions to the `Служба безопасности` role.
 - Support substitution drafts and future substitution CRUD.
 - Support substitution draft actions: list, cancel, and extend.
-- Generate downloadable `.xlsx` and `.pdf` reports with public download URLs.
+- Generate `.xlsx` and `.pdf` reports and send them to MAX as attachments, with public download URLs as fallback.
 - Send normal MAX replies with `send_message` on incoming message events, and use `answer_callback` for inline keyboard callbacks.
 
 ## Constraints

@@ -182,7 +182,7 @@ class MaxWebhookRouter:
             return response
 
         if action == BotAction.MENU_DIVISION_REPORTS or user_text == "Отчеты по подразделениям":
-            response = self._division_reports(role, event["user_id"])
+            response = self._division_reports(role, event["user_id"], event["chat_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -354,7 +354,7 @@ class MaxWebhookRouter:
             return response
 
         if action in {BotAction.REPORT_WEEK, BotAction.REPORT_MONTH, BotAction.REPORT_QUARTER}:
-            response = self._quick_report(role, event["user_id"], action)
+            response = self._quick_report(role, event["user_id"], event["chat_id"], action)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -682,18 +682,15 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _division_reports(self, role: str, user_id: str) -> MaxWebhookResponse:
+    def _division_reports(self, role: str, user_id: str, chat_id: str) -> MaxWebhookResponse:
         artifact = self.report_service.generate_division_report(user_id=user_id, role=role, period="month")
+        self._send_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
         text = (
             "Отчет по подразделениям готов.\n\n"
             "{summary}\n\n"
-            "Файлы сформированы:\n"
-            "XLSX: {xlsx_url}\n"
-            "PDF: {pdf_url}"
+            "Файлы отправлены в чат."
         ).format(
             summary=artifact.summary_text,
-            xlsx_url=artifact.download_url,
-            pdf_url=artifact.pdf_download_url,
         )
 
         return MaxWebhookResponse(
@@ -738,7 +735,7 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _quick_report(self, role: str, user_id: str, action: str) -> MaxWebhookResponse:
+    def _quick_report(self, role: str, user_id: str, chat_id: str, action: str) -> MaxWebhookResponse:
         label = {
             BotAction.REPORT_WEEK: "недельный",
             BotAction.REPORT_MONTH: "месячный",
@@ -750,17 +747,14 @@ class MaxWebhookRouter:
             BotAction.REPORT_QUARTER: "quarter",
         }.get(action, "week")
         artifact = self.report_service.generate_manager_report(user_id=user_id, role=role, period=period)
+        self._send_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
         text = (
             "{title} готов.\n\n"
             "{summary}\n\n"
-            "Файлы сформированы:\n"
-            "XLSX: {xlsx_url}\n"
-            "PDF: {pdf_url}"
+            "Файлы отправлены в чат."
         ).format(
             title=label.capitalize(),
             summary=artifact.summary_text,
-            xlsx_url=artifact.download_url,
-            pdf_url=artifact.pdf_download_url,
         )
         return MaxWebhookResponse(
             ok=True,
@@ -1867,6 +1861,25 @@ class MaxWebhookRouter:
                     buttons=outbound.buttons,
                 )
                 return
+        except Exception:
+            return
+
+    def _send_report_files(self, chat_id: str, user_id: str, title: str, xlsx_path: str, pdf_path: str) -> None:
+        if not self.max_client.is_configured():
+            return
+        try:
+            self.max_client.send_file_message(
+                chat_id=int(chat_id) if str(chat_id).isdigit() else None,
+                user_id=int(user_id) if str(user_id).isdigit() else None,
+                text=f"{title}: XLSX",
+                file_path=xlsx_path,
+            )
+            self.max_client.send_file_message(
+                chat_id=int(chat_id) if str(chat_id).isdigit() else None,
+                user_id=int(user_id) if str(user_id).isdigit() else None,
+                text=f"{title}: PDF",
+                file_path=pdf_path,
+            )
         except Exception:
             return
 

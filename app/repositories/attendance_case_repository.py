@@ -57,6 +57,15 @@ class AttendanceCaseRepository:
             ).scalars().all()
             return list(rows)
 
+    def list_all(self, limit: int = 5000) -> List[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(AttendanceCaseModel)
+                .order_by(AttendanceCaseModel.created_at.desc())
+                .limit(limit)
+            ).scalars().all()
+            return list(rows)
+
     def exists_for_employee(self, employee_name: str) -> bool:
         with SessionLocal() as session:
             row = session.execute(

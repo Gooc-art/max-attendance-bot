@@ -11,6 +11,9 @@ from app.services.report_service import ReportService
 
 
 class _FakeCaseRepository:
+    def __init__(self):
+        self.list_all_called = False
+
     def list_for_manager_user(self, user_id: str, limit: int = 500):
         return [
             SimpleNamespace(
@@ -40,6 +43,10 @@ class _FakeCaseRepository:
                 employee_reason="Больничный",
             ),
         ]
+
+    def list_all(self, limit: int = 5000):
+        self.list_all_called = True
+        return self.list_for_manager_user("all", limit=limit)
 
 
 class _FakeReportRepository:
@@ -90,8 +97,9 @@ class ReportServiceTests(unittest.TestCase):
             self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
 
     def test_generate_division_report_creates_department_breakdown(self) -> None:
+        repo = _FakeCaseRepository()
         service = ReportService()
-        service.case_repository = _FakeCaseRepository()
+        service.case_repository = repo
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -114,6 +122,7 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Подразделения", sheet_names)
                 self.assertIn("Разрез", sheet_names)
                 self.assertIn("Случаи", sheet_names)
+                self.assertTrue(repo.list_all_called)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
                 breakdown_xml = archive.read("xl/worksheets/sheet2.xml")

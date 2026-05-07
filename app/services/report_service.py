@@ -68,7 +68,10 @@ class ReportService:
         )
 
     def generate_division_report(self, *, user_id: str, role: str, period: str) -> ReportArtifact:
-        rows = self.case_repository.list_for_manager_user(user_id, limit=500)
+        if role in {"admin", "top_manager"}:
+            rows = self.case_repository.list_all(limit=5000)
+        else:
+            rows = self.case_repository.list_for_manager_user(user_id, limit=500)
         period_start, period_end = self._resolve_period_range(period)
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
         title = "Отчет по подразделениям"

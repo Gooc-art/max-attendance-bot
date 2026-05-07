@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.integrations.max.client import MaxApiClient
@@ -71,6 +73,38 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertEqual(rows[0][0].text, "🏁 Старт")
         self.assertEqual(rows[0][1].text, "👤 Кто я")
         self.assertEqual(rows[1][0].text, "📊 Отчеты")
+
+    def test_send_file_message_requests_upload_and_sends_file_attachment(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp:
+            tmp.write(b"report")
+            tmp.flush()
+            with patch.object(client, "_get_upload_endpoint", return_value={"url": "https://upload.example", "token": "upload-token"}) as get_upload:
+                with patch.object(client, "_multipart_upload", return_value={"token": "file-token"}) as multipart_upload:
+                    response = MagicMock()
+                    response.__enter__.return_value = response
+                    response.read.return_value = b"{}"
+                    response.status = 200
+
+                    with patch("app.integrations.max.client.urlopen", return_value=response) as mocked:
+                        with patch("pathlib.Path.stat") as stat_mock:
+                            stat_mock.return_value.st_size = 123
+                            client.send_file_message(chat_id=123, text="report", file_path=tmp.name)
+
+        get_upload.assert_called_once_with("file")
+        multipart_upload.assert_called_once()
+        request = mocked.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["attachments"][0]["type"], "file")
+        self.assertEqual(body["attachments"][0]["payload"]["token"], "file-token")
+        self.assertEqual(body["attachments"][0]["filename"], Path(tmp.name).name)
+        self.assertEqual(body["attachments"][0]["size"], 123)
 
 
 if __name__ == "__main__":

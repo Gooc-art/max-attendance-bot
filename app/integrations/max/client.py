@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from itertools import groupby
+from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import mimetypes
+from uuid import uuid4
 
 from app.config import get_settings
 from app.schemas.max import (
@@ -102,6 +105,43 @@ class MaxApiClient:
             body=body.model_dump(exclude_none=True),
         )
 
+    def send_file_message(
+        self,
+        *,
+        chat_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        text: str = "",
+        file_path: str | Path,
+        notify: bool = True,
+    ) -> Dict[str, object]:
+        path = Path(file_path)
+        upload_info = self.upload_file(path)
+        attachment = {
+            "type": "file",
+            "payload": {"token": upload_info["token"]},
+            "filename": path.name,
+            "size": path.stat().st_size,
+        }
+        body: Dict[str, object] = {
+            "text": text,
+            "attachments": [attachment],
+            "notify": notify,
+        }
+        if not self.is_configured():
+            return {
+                "status": "not_configured",
+                "body": body,
+            }
+        return self._request(
+            "POST",
+            "messages",
+            params={
+                "chat_id": chat_id,
+                "user_id": user_id,
+            },
+            body=body,
+        )
+
     def answer_callback(
         self,
         *,
@@ -150,6 +190,16 @@ class MaxApiClient:
             return {"status": "not_configured", "url": url}
         return self._request("DELETE", "subscriptions", params={"url": url}, body=None)
 
+    def upload_file(self, file_path: Path) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "token": ""}
+
+        endpoint = self._get_upload_endpoint("file")
+        with file_path.open("rb") as fh:
+            upload_result = self._multipart_upload(endpoint["url"], file_path.name, fh.read())
+        token = upload_result.get("token") or endpoint.get("token") or ""
+        return {"token": token, **upload_result}
+
     def _request(
         self,
         method: str,
@@ -185,3 +235,33 @@ class MaxApiClient:
             if not raw:
                 return {"status": response.status}
             return json.loads(raw)
+
+    def _get_upload_endpoint(self, upload_type: str) -> Dict[str, object]:
+        return self._request(
+            "POST",
+            "uploads",
+            params={"type": upload_type},
+            body=None,
+        )
+
+    def _multipart_upload(self, url: str, filename: str, content: bytes) -> Dict[str, object]:
+        boundary = f"----attendancebot{uuid4().hex}"
+        content_type = f"multipart/form-data; boundary={boundary}"
+        file_part = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="data"; filename="{filename}"\r\n'
+            f"Content-Type: {mimetypes.guess_type(filename)[0] or 'application/octet-stream'}\r\n\r\n"
+        ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        request = Request(
+            url=url,
+            data=file_part,
+            method="POST",
+            headers={
+                "Content-Type": content_type,
+                "User-Agent": "attendance-bot/0.1.0",
+            },
+        )
+        with urlopen(request, timeout=60) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {"status": response.status}

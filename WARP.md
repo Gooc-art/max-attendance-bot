@@ -20,7 +20,7 @@
 11. Send a push notification to the selected manager when an employee submits a reason, with approval actions attached.
 12. Restrict SKUD file uploads to the `Служба безопасности` role.
 13. Provide substitution draft actions in the bot: list, cancel, and extend.
-14. Generate downloadable `.xlsx` and `.pdf` reports, including department breakdown reports, and return public download URLs in report responses.
+14. Generate `.xlsx` and `.pdf` reports, including department breakdown reports, and send them to MAX as attachments with public download URLs as fallback.
 15. Bootstrap `Сотрудники` and `Подразделения` in Google Sheets from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
 16. Resolve SKUD planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned.
 17. Assign bootstrap employee schedules to the five-day schedules `ГР003` or `ГР004` automatically from the employee name pattern instead of using `ГР001` for everyone.

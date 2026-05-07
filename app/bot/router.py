@@ -378,10 +378,13 @@ class MaxWebhookRouter:
                 "action": BotAction.START,
             }
 
-        if payload.update_type == "message_callback" and payload.callback and payload.message:
+        if payload.update_type == "message_callback" and payload.callback:
             return {
                 "user_id": str(payload.callback.user.user_id),
-                "chat_id": str(payload.message.recipient.chat_id),
+                "chat_id": str(
+                    payload.chat_id
+                    or (payload.message.recipient.chat_id if payload.message else 0)
+                ),
                 "text": payload.callback.payload or "",
                 "action": payload.callback.payload or "",
             }

@@ -70,6 +70,26 @@ class SendOutboundTests(unittest.TestCase):
         kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(kwargs["callback_id"], "cb-1")
 
+    def test_callback_updates_without_message_still_route_actions(self) -> None:
+        router = MaxWebhookRouter()
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=777,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-2",
+                payload="menu.main",
+                user=MaxUser(user_id=456, first_name="Test"),
+            ),
+        )
+
+        event = router._normalize_event(payload)
+
+        self.assertEqual(event["user_id"], "456")
+        self.assertEqual(event["chat_id"], "777")
+        self.assertEqual(event["action"], "menu.main")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,6 +47,37 @@ class SendOutboundTests(unittest.TestCase):
         self.assertNotIn("user_id", kwargs)
         self.assertEqual(kwargs["text"], "Hello")
 
+    def test_message_updates_fallback_to_user_id_when_chat_id_fails(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message.side_effect = [RuntimeError("chat failed"), {"status": "ok"}]
+
+        inbound = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(
+            inbound,
+            MaxOutboundMessage(
+                text="Hello",
+                buttons=[MaxOutboundButton(title="Старт", action="/start")],
+            ),
+        )
+
+        self.assertEqual(router.max_client.send_message.call_count, 2)
+        first_call = router.max_client.send_message.call_args_list[0].kwargs
+        second_call = router.max_client.send_message.call_args_list[1].kwargs
+        self.assertEqual(first_call["chat_id"], 987)
+        self.assertEqual(second_call["user_id"], 123)
+
     def test_callback_updates_use_answer_callback(self) -> None:
         router = MaxWebhookRouter()
         router.max_client = MagicMock()

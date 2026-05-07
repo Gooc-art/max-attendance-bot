@@ -1869,12 +1869,28 @@ class MaxWebhookRouter:
                 return
 
             if inbound.update_type in {"bot_started", "message_created"}:
-                recipient_chat_id = inbound.chat_id or getattr(inbound.message.recipient, "chat_id", None)
-                self.max_client.send_message(
-                    chat_id=recipient_chat_id,
-                    text=outbound.text,
-                    buttons=outbound.buttons,
-                )
+                recipients = self._outbound_recipients(inbound)
+                last_error: Exception | None = None
+                for recipient_type, recipient_value in recipients:
+                    try:
+                        if recipient_type == "chat_id":
+                            self.max_client.send_message(
+                                chat_id=recipient_value,
+                                text=outbound.text,
+                                buttons=outbound.buttons,
+                            )
+                        else:
+                            self.max_client.send_message(
+                                user_id=recipient_value,
+                                text=outbound.text,
+                                buttons=outbound.buttons,
+                            )
+                        return
+                    except Exception as exc:
+                        last_error = exc
+                        continue
+                if last_error is not None:
+                    raise last_error
                 return
         except Exception:
             self.logger.exception(
@@ -1890,30 +1906,39 @@ class MaxWebhookRouter:
         if not self.max_client.is_configured():
             return
         try:
-            recipient_chat_id = int(chat_id) if str(chat_id).isdigit() else None
-            recipient_user_id = int(user_id) if str(user_id).isdigit() else None
-            if recipient_chat_id is not None:
-                self.max_client.send_file_message(
-                    chat_id=recipient_chat_id,
-                    text=f"{title} в Excel",
-                    file_path=xlsx_path,
-                )
-                self.max_client.send_file_message(
-                    chat_id=recipient_chat_id,
-                    text=f"{title} в PDF",
-                    file_path=pdf_path,
-                )
-            elif recipient_user_id is not None:
-                self.max_client.send_file_message(
-                    user_id=recipient_user_id,
-                    text=f"{title} в Excel",
-                    file_path=xlsx_path,
-                )
-                self.max_client.send_file_message(
-                    user_id=recipient_user_id,
-                    text=f"{title} в PDF",
-                    file_path=pdf_path,
-                )
+            recipients = []
+            if str(chat_id).isdigit():
+                recipients.append(("chat_id", int(chat_id)))
+            if str(user_id).isdigit():
+                recipients.append(("user_id", int(user_id)))
+
+            for recipient_type, recipient_value in recipients:
+                try:
+                    if recipient_type == "chat_id":
+                        self.max_client.send_file_message(
+                            chat_id=recipient_value,
+                            text=f"{title} в Excel",
+                            file_path=xlsx_path,
+                        )
+                        self.max_client.send_file_message(
+                            chat_id=recipient_value,
+                            text=f"{title} в PDF",
+                            file_path=pdf_path,
+                        )
+                    else:
+                        self.max_client.send_file_message(
+                            user_id=recipient_value,
+                            text=f"{title} в Excel",
+                            file_path=xlsx_path,
+                        )
+                        self.max_client.send_file_message(
+                            user_id=recipient_value,
+                            text=f"{title} в PDF",
+                            file_path=pdf_path,
+                        )
+                    return
+                except Exception:
+                    continue
         except Exception:
             self.logger.exception(
                 "Failed to send MAX report files chat_id=%s user_id=%s title=%s",
@@ -1933,6 +1958,27 @@ class MaxWebhookRouter:
             AttendanceCaseStatus.CLOSED.value: "Закрыт",
         }
         return labels.get(status, status)
+
+    def _outbound_recipients(self, inbound: MaxUpdate) -> list[tuple[str, int]]:
+        recipients: list[tuple[str, int]] = []
+        if inbound.chat_id is not None:
+            recipients.append(("chat_id", int(inbound.chat_id)))
+        recipient_chat_id = getattr(inbound.message.recipient, "chat_id", None) if inbound.message else None
+        if recipient_chat_id is not None:
+            recipients.append(("chat_id", int(recipient_chat_id)))
+        if inbound.user and inbound.user.user_id is not None:
+            recipients.append(("user_id", int(inbound.user.user_id)))
+        if inbound.message and inbound.message.sender and inbound.message.sender.user_id is not None:
+            recipients.append(("user_id", int(inbound.message.sender.user_id)))
+
+        unique: list[tuple[str, int]] = []
+        seen = set()
+        for recipient in recipients:
+            if recipient in seen:
+                continue
+            seen.add(recipient)
+            unique.append(recipient)
+        return unique
 
     def _approval_status_label(self, status: str) -> str:
         labels = {

@@ -163,6 +163,16 @@ class MaxApiClient:
             body=answer.model_dump(exclude_none=True),
         )
 
+    def get_message(self, message_id: str) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "message_id": message_id}
+        return self._request(
+            "GET",
+            f"messages/{message_id}",
+            params={},
+            body=None,
+        )
+
     def register_webhook(self, url: str, update_types: List[str], secret: str) -> Dict[str, object]:
         body = {
             "url": url,

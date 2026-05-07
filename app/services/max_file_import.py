@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Iterable, List
+from typing import Any, Iterable, List
 from urllib.request import Request, urlopen
 
 from app.config import BASE_DIR
@@ -36,20 +36,40 @@ class MaxFileImportService:
         self.upload_dir = BASE_DIR / "data" / "uploads" / "skud"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
 
-    def import_attachments(self, attachments: Iterable[MaxAttachment], created_by_user_id: str) -> List[AttachmentImportResult]:
+    def import_attachments(
+        self,
+        attachments: Iterable[MaxAttachment],
+        created_by_user_id: str,
+        message_id: str = "",
+    ) -> List[AttachmentImportResult]:
         results: List[AttachmentImportResult] = []
         for attachment in attachments:
             if attachment.type != "file":
                 continue
-            results.append(self._import_file_attachment(attachment, created_by_user_id))
+            results.append(self._import_file_attachment(attachment, created_by_user_id, message_id=message_id))
         return results
 
-    def _import_file_attachment(self, attachment: MaxAttachment, created_by_user_id: str) -> AttachmentImportResult:
-        if not attachment.payload or not attachment.payload.url:
+    def _import_file_attachment(
+        self,
+        attachment: MaxAttachment,
+        created_by_user_id: str,
+        message_id: str = "",
+    ) -> AttachmentImportResult:
+        payload = attachment.payload
+        if (not payload or not payload.url) and message_id:
+            resolved = self._resolve_attachment_from_message(message_id, attachment)
+            if resolved is not None:
+                attachment = resolved
+                payload = attachment.payload
+
+        if not payload or not payload.url:
             return AttachmentImportResult(
                 filename=attachment.filename or "unknown",
                 status="error",
-                message="Я получил файл, но не смог его открыть. Попробуй отправить его еще раз.",
+                message=(
+                    "Я получил файл, но не смог его открыть. "
+                    "Отправь его еще раз или проверь, что это обычный файл, а не ссылка."
+                ),
             )
 
         filename = attachment.filename or "attachment"
@@ -96,6 +116,47 @@ class MaxFileImportService:
                 status="error",
                 message="Не получилось разобрать файл `{0}`. Проверь формат и попробуй еще раз.".format(filename),
             )
+
+    def _resolve_attachment_from_message(self, message_id: str, attachment: MaxAttachment) -> MaxAttachment | None:
+        try:
+            message = self.max_client.get_message(message_id)
+        except Exception:
+            return None
+
+        candidate = self._extract_message_payload(message)
+        if candidate is None:
+            return None
+
+        attachments = candidate.get("attachments") or []
+        filename = attachment.filename or ""
+        token = attachment.payload.token if attachment.payload else ""
+
+        for item in attachments:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") != "file":
+                continue
+            if filename and item.get("filename") != filename:
+                continue
+            item_payload = item.get("payload") or {}
+            item_token = item_payload.get("token") or ""
+            if token and item_token and token != item_token:
+                continue
+            resolved = MaxAttachment.model_validate(item)
+            if resolved.payload and resolved.payload.url:
+                return resolved
+        return None
+
+    @staticmethod
+    def _extract_message_payload(message: Any) -> dict | None:
+        if isinstance(message, dict):
+            if isinstance(message.get("body"), dict):
+                return message["body"]
+            if isinstance(message.get("message"), dict):
+                nested = message["message"]
+                if isinstance(nested.get("body"), dict):
+                    return nested["body"]
+        return None
 
     def _download_file(self, url: str) -> bytes:
         headers = {"User-Agent": "attendance-bot/0.1.0"}

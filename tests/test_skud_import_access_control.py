@@ -55,6 +55,44 @@ class SkudImportAccessControlTests(unittest.TestCase):
         self.assertNotIn("user_id", kwargs)
         self.assertIn("службе безопасности", kwargs["text"].lower())
 
+    def test_file_upload_passes_message_id_to_import_service(self) -> None:
+        router = MaxWebhookRouter()
+        router.role_resolver = _FakeRoleResolver("security")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message = MagicMock()
+        router.max_file_import_service = MagicMock()
+        router.max_file_import_service.import_attachments.return_value = []
+
+        payload = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(
+                    mid="m9",
+                    seq=1,
+                    text="Отчет",
+                    attachments=[
+                        MaxAttachment(
+                            type="file",
+                            filename="Отчет по проходам.xlsx",
+                            payload=MaxAttachmentPayload(url="https://example.com/report.xlsx"),
+                        )
+                    ],
+                ),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router.handle_event(payload)
+
+        router.max_file_import_service.import_attachments.assert_called_once()
+        kwargs = router.max_file_import_service.import_attachments.call_args.kwargs
+        self.assertEqual(kwargs["created_by_user_id"], "123")
+        self.assertEqual(kwargs["message_id"], "m9")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,7 +77,12 @@ class MaxWebhookRouter:
                     response = self._stub_section(role, "Загрузка файлов доступна только службе безопасности.")
                     self._send_outbound(payload, response.outbound)
                     return response
-                response = self._handle_attachments(role, event["user_id"], payload.message.body.attachments)
+                response = self._handle_attachments(
+                    role,
+                    event["user_id"],
+                    payload.message.body.attachments,
+                    message_id=payload.message.body.mid,
+                )
                 if response is not None:
                     self._send_outbound(payload, response.outbound)
                     return response
@@ -1200,12 +1205,16 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _handle_attachments(self, role: str, user_id: str, attachments: list) -> MaxWebhookResponse | None:
+    def _handle_attachments(self, role: str, user_id: str, attachments: list, message_id: str = "") -> MaxWebhookResponse | None:
         file_attachments = [attachment for attachment in attachments if getattr(attachment, "type", "") == "file"]
         if not file_attachments:
             return None
 
-        results = self.max_file_import_service.import_attachments(file_attachments, created_by_user_id=user_id)
+        results = self.max_file_import_service.import_attachments(
+            file_attachments,
+            created_by_user_id=user_id,
+            message_id=message_id,
+        )
         if not results:
             return None
 

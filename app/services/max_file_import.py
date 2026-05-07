@@ -44,7 +44,7 @@ class MaxFileImportService:
     ) -> List[AttachmentImportResult]:
         results: List[AttachmentImportResult] = []
         for attachment in attachments:
-            if attachment.type != "file":
+            if attachment.type not in {"file", "document"} and not attachment.filename:
                 continue
             results.append(self._import_file_attachment(attachment, created_by_user_id, message_id=message_id))
         return results

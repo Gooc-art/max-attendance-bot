@@ -70,7 +70,7 @@ class MaxWebhookRouter:
             file_attachments = [
                 attachment
                 for attachment in payload.message.body.attachments
-                if getattr(attachment, "type", "") == "file"
+                if self._is_supported_file_attachment(attachment)
             ]
             if file_attachments:
                 if role != Role.SECURITY.value:
@@ -1206,7 +1206,7 @@ class MaxWebhookRouter:
         )
 
     def _handle_attachments(self, role: str, user_id: str, attachments: list, message_id: str = "") -> MaxWebhookResponse | None:
-        file_attachments = [attachment for attachment in attachments if getattr(attachment, "type", "") == "file"]
+        file_attachments = [attachment for attachment in attachments if self._is_supported_file_attachment(attachment)]
         if not file_attachments:
             return None
 
@@ -1232,6 +1232,16 @@ class MaxWebhookRouter:
             ),
             active_flow=None,
         )
+
+    @staticmethod
+    def _is_supported_file_attachment(attachment: object) -> bool:
+        attachment_type = getattr(attachment, "type", "")
+        if attachment_type in {"file", "document"}:
+            return True
+        payload = getattr(attachment, "payload", None)
+        if payload and (getattr(payload, "url", "") or getattr(payload, "token", "")):
+            return True
+        return bool(getattr(attachment, "filename", ""))
 
     def _employee_cases(self, role: str, user_id: str) -> MaxWebhookResponse:
         rows = self.case_repository.list_for_employee_user(user_id)

@@ -30,4 +30,11 @@ def receive_max_webhook(
         bool(payload.message),
         bool(payload.callback),
     )
+    if payload.message and payload.message.body.attachments:
+        logger.info(
+            "MAX webhook attachments mid=%s attachment_types=%s filenames=%s",
+            payload.message.body.mid,
+            [attachment.type for attachment in payload.message.body.attachments],
+            [attachment.filename for attachment in payload.message.body.attachments],
+        )
     return webhook_router.handle_event(payload)

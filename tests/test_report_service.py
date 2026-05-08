@@ -165,6 +165,12 @@ class ReportServiceTests(unittest.TestCase):
                     for sheet in root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
                 ]
                 self.assertIn("Сводка", sheet_names)
+                self.assertIn("Опоздавшие", sheet_names)
+                self.assertIn("Вовремя", sheet_names)
+                self.assertIn("Раньше", sheet_names)
+                self.assertIn("Ушли позже", sheet_names)
+                self.assertIn("Ушли вовремя", sheet_names)
+                self.assertIn("Ушли раньше", sheet_names)
                 self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
@@ -203,6 +209,12 @@ class ReportServiceTests(unittest.TestCase):
                 ]
                 self.assertIn("Подразделения", sheet_names)
                 self.assertIn("Разрез", sheet_names)
+                self.assertIn("Опоздавшие", sheet_names)
+                self.assertIn("Вовремя", sheet_names)
+                self.assertIn("Раньше", sheet_names)
+                self.assertIn("Ушли позже", sheet_names)
+                self.assertIn("Ушли вовремя", sheet_names)
+                self.assertIn("Ушли раньше", sheet_names)
                 self.assertIn("Случаи", sheet_names)
                 self.assertTrue(repo.list_all_called)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
@@ -210,7 +222,7 @@ class ReportServiceTests(unittest.TestCase):
                 breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
                 self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
                 self.assertIn("Согласовано", breakdown_xml.decode("utf-8"))
-                cases_xml = archive.read("xl/worksheets/sheet3.xml")
+                cases_xml = archive.read("xl/worksheets/sheet9.xml")
                 self.assertIn("Причина", cases_xml.decode("utf-8"))
                 self.assertIn("Кто согласовал", cases_xml.decode("utf-8"))
             pdf_lines = service._build_pdf_lines(
@@ -242,8 +254,21 @@ class ReportServiceTests(unittest.TestCase):
             self.assertTrue(Path(artifact.file_path).exists())
             self.assertTrue(Path(artifact.pdf_file_path).exists())
             with zipfile.ZipFile(artifact.file_path) as archive:
+                workbook_xml = archive.read("xl/workbook.xml")
+                root = ET.fromstring(workbook_xml)
+                sheet_names = [
+                    sheet.attrib["name"]
+                    for sheet in root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
+                ]
+                self.assertIn("Опоздавшие", sheet_names)
+                self.assertIn("Вовремя", sheet_names)
+                self.assertIn("Раньше", sheet_names)
+                self.assertIn("Ушли позже", sheet_names)
+                self.assertIn("Ушли вовремя", sheet_names)
+                self.assertIn("Ушли раньше", sheet_names)
+                self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-                cases_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+                cases_xml = archive.read("xl/worksheets/sheet8.xml").decode("utf-8")
                 self.assertIn("Недельный отчет", summary_xml)
                 self.assertIn("Иванов Иван Иванович", cases_xml)
                 self.assertIn("Причина", cases_xml)

@@ -70,6 +70,7 @@ class ReportService:
             entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         title = self._build_title(period)
         summary_rows = self._build_visit_summary_rows(entries, title, period_start, period_end)
+        detail_tabs = self._build_visit_status_tabs(entries)
         detail_rows = self._build_visit_detail_rows(entries)
         summary_text = self._rows_to_text(summary_rows)
         return self._create_report_artifact(
@@ -79,6 +80,7 @@ class ReportService:
             title=title,
             summary_rows=summary_rows,
             detail_rows=detail_rows,
+            detail_tabs=detail_tabs,
             summary_text=summary_text,
             filename_prefix=period,
             period_start=period_start,
@@ -103,6 +105,7 @@ class ReportService:
         if not entries and case_rows:
             entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         summary_rows, department_rows = self._build_division_summary_rows(entries, title, period_start, period_end)
+        detail_tabs = self._build_visit_status_tabs(entries)
         detail_rows = self._build_visit_detail_rows(entries)
         summary_text = self._rows_to_text(summary_rows + [["Разрез по подразделениям", ""]])
         if department_rows:
@@ -114,6 +117,7 @@ class ReportService:
             title=title,
             summary_rows=summary_rows,
             detail_rows=detail_rows,
+            detail_tabs=detail_tabs,
             summary_text=summary_text,
             filename_prefix=f"division_{period}",
             period_start=period_start,
@@ -169,6 +173,7 @@ class ReportService:
         title: str,
         summary_rows: List[List[str]],
         detail_rows: List[List[str]],
+        detail_tabs: List[Tuple[str, List[List[str]]]] | None = None,
         summary_text: str,
         filename_prefix: str,
         period_start: date,
@@ -182,7 +187,7 @@ class ReportService:
         file_path = self.reports_dir / file_name
         pdf_file_name = file_path.with_suffix(".pdf").name
         pdf_file_path = self.reports_dir / pdf_file_name
-        self._write_workbook(file_path, sheet1_name, summary_rows, detail_rows, extra_rows or [])
+        self._write_workbook(file_path, sheet1_name, summary_rows, detail_rows, detail_tabs or [], extra_rows or [])
         self._write_pdf(pdf_file_path, html_title, summary_rows, detail_rows, extra_rows or [])
         report_id = self.report_repository.create(
             token=token,
@@ -336,6 +341,42 @@ class ReportService:
                 ]
             )
         return detail_rows
+
+    def _build_visit_status_tabs(self, rows: List[VisitReportRow]) -> List[Tuple[str, List[List[str]]]]:
+        tabs: List[Tuple[str, List[List[str]]]] = []
+        arrival_tabs = [
+            ("Опоздавшие", "late"),
+            ("Вовремя", "on_time"),
+            ("Раньше", "early"),
+        ]
+        departure_tabs = [
+            ("Ушли позже", "late"),
+            ("Ушли вовремя", "on_time"),
+            ("Ушли раньше", "early"),
+        ]
+        for title, status in arrival_tabs:
+            filtered = self._filter_visit_rows(rows, arrival_status=status)
+            tabs.append((title, self._build_visit_detail_rows(filtered)))
+        for title, status in departure_tabs:
+            filtered = self._filter_visit_rows(rows, departure_status=status)
+            tabs.append((title, self._build_visit_detail_rows(filtered)))
+        return tabs
+
+    @staticmethod
+    def _filter_visit_rows(
+        rows: List[VisitReportRow],
+        *,
+        arrival_status: str | None = None,
+        departure_status: str | None = None,
+    ) -> List[VisitReportRow]:
+        filtered: List[VisitReportRow] = []
+        for row in rows:
+            if arrival_status is not None and str(getattr(row.record, "arrival_status", "") or "") != arrival_status:
+                continue
+            if departure_status is not None and str(getattr(row.record, "departure_status", "") or "") != departure_status:
+                continue
+            filtered.append(row)
+        return filtered
 
     def _build_visit_entries(self, rows, case_rows, approval_rows) -> List[VisitReportRow]:
         case_groups = defaultdict(list)
@@ -556,36 +597,53 @@ class ReportService:
             wrapped.extend(textwrap.wrap(line, width=width, break_long_words=False, drop_whitespace=False) or [""])
         return wrapped
 
-    def _write_workbook(self, file_path: Path, sheet1_name: str, summary_rows: List[List[str]], detail_rows: List[List[str]], extra_rows: List[List[str]] | None = None) -> None:
+    def _write_workbook(
+        self,
+        file_path: Path,
+        sheet1_name: str,
+        summary_rows: List[List[str]],
+        detail_rows: List[List[str]],
+        detail_tabs: List[Tuple[str, List[List[str]]]] | None = None,
+        extra_rows: List[List[str]] | None = None,
+    ) -> None:
         file_path.parent.mkdir(parents=True, exist_ok=True)
+        tabs = list(detail_tabs or [])
+        sheet_payloads: List[Tuple[str, List[List[str]]]] = []
+        if extra_rows:
+            sheet_payloads.append(("Разрез", extra_rows))
+        sheet_payloads.extend(tabs)
+        sheet_payloads.append(("Случаи", detail_rows))
         with zipfile.ZipFile(file_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("[Content_Types].xml", self._content_types_xml())
+            sheet_count = 1 + len(sheet_payloads)
+            archive.writestr("[Content_Types].xml", self._content_types_xml(sheet_count))
             archive.writestr("_rels/.rels", self._rels_xml())
-            sheet_names = [sheet1_name, "Случаи"]
-            if extra_rows:
-                sheet_names.insert(1, "Разрез")
+            sheet_names = [sheet1_name]
+            sheet_names.extend([title for title, _rows in sheet_payloads])
             archive.writestr("xl/workbook.xml", self._workbook_xml(sheet_names))
-            archive.writestr("xl/_rels/workbook.xml.rels", self._workbook_rels_xml(include_extra=bool(extra_rows)))
+            archive.writestr("xl/_rels/workbook.xml.rels", self._workbook_rels_xml(sheet_count))
             archive.writestr("xl/styles.xml", self._styles_xml())
             archive.writestr("xl/worksheets/sheet1.xml", self._sheet_xml(summary_rows))
-            if extra_rows:
-                archive.writestr("xl/worksheets/sheet2.xml", self._sheet_xml(extra_rows))
-                archive.writestr("xl/worksheets/sheet3.xml", self._sheet_xml(detail_rows))
-            else:
-                archive.writestr("xl/worksheets/sheet2.xml", self._sheet_xml(detail_rows))
+            next_sheet = 2
+            for _title, tab_rows in sheet_payloads:
+                archive.writestr(f"xl/worksheets/sheet{next_sheet}.xml", self._sheet_xml(tab_rows))
+                next_sheet += 1
 
-    def _content_types_xml(self) -> str:
+    def _content_types_xml(self, sheet_count: int) -> str:
+        overrides = [
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        ]
+        for index in range(1, sheet_count + 1):
+            overrides.append(
+                f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            )
+        overrides.append('<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>')
         return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  {overrides}
 </Types>
-"""
+""".format(overrides="\n  ".join(overrides))
 
     def _rels_xml(self) -> str:
         return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -606,22 +664,15 @@ class ReportService:
 </workbook>
 """.format(sheets="".join(sheets_xml))
 
-    def _workbook_rels_xml(self, include_extra: bool = False) -> str:
-        relationships = [
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>',
-            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>',
-        ]
-        if include_extra:
+    def _workbook_rels_xml(self, sheet_count: int) -> str:
+        relationships = []
+        for index in range(1, sheet_count + 1):
             relationships.append(
-                '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>'
+                f'<Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
             )
-            relationships.append(
-                '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            )
-        else:
-            relationships.append(
-                '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            )
+        relationships.append(
+            f'<Relationship Id="rId{sheet_count + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        )
         return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   {relationships}

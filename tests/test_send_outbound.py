@@ -13,6 +13,7 @@ from app.schemas.max import (
     MaxRecipient,
     MaxUpdate,
     MaxUser,
+    MaxWebhookResponse,
 )
 
 
@@ -120,6 +121,38 @@ class SendOutboundTests(unittest.TestCase):
         self.assertEqual(event["user_id"], "456")
         self.assertEqual(event["chat_id"], "777")
         self.assertEqual(event["action"], "menu.main")
+
+    def test_callback_routes_division_reports_action(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router.role_resolver.resolve_role = MagicMock(return_value="admin")
+        router._division_reports = MagicMock(
+            return_value=MaxWebhookResponse(
+                ok=True,
+                role="admin",
+                menu=[],
+                outbound=MaxOutboundMessage(text="done", buttons=[]),
+                active_flow=None,
+            )
+        )
+
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=777,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-division",
+                payload="menu.division_reports",
+                user=MaxUser(user_id=456, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        router._division_reports.assert_called_once_with("admin", "456", "777")
+        self.assertEqual(response.outbound.text, "done")
 
 
 if __name__ == "__main__":

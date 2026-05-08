@@ -52,34 +52,28 @@ class QuickReportLinkTests(unittest.TestCase):
     def test_quick_report_sends_xlsx_and_pdf_files_when_max_is_configured(self) -> None:
         router = MaxWebhookRouter()
         router.report_service = _FakeReportService()
-        router.max_client = MagicMock()
-        router.max_client.is_configured.return_value = True
-        router.max_client.send_file_message = MagicMock()
+        router._queue_report_files = MagicMock()
 
         response = router._quick_report("manager", "mgr-1", "777", "reports.week")
 
         self.assertIn("Я уже отправил его в чат.", response.outbound.text)
-        self.assertEqual(router.max_client.send_file_message.call_count, 2)
-        first_call = router.max_client.send_file_message.call_args_list[0].kwargs
-        second_call = router.max_client.send_file_message.call_args_list[1].kwargs
-        self.assertEqual(first_call["file_path"], "/tmp/report.xlsx")
-        self.assertEqual(second_call["file_path"], "/tmp/report.pdf")
+        router._queue_report_files.assert_called_once()
+        args = router._queue_report_files.call_args.args
+        self.assertEqual(args[3], "/tmp/report.xlsx")
+        self.assertEqual(args[4], "/tmp/report.pdf")
 
     def test_division_report_sends_xlsx_and_pdf_files_when_max_is_configured(self) -> None:
         router = MaxWebhookRouter()
         router.report_service = _FakeReportService()
-        router.max_client = MagicMock()
-        router.max_client.is_configured.return_value = True
-        router.max_client.send_file_message = MagicMock()
+        router._queue_report_files = MagicMock()
 
         response = router._division_reports("admin", "mgr-1", "777")
 
         self.assertIn("Я уже отправил его в чат.", response.outbound.text)
-        self.assertEqual(router.max_client.send_file_message.call_count, 2)
-        first_call = router.max_client.send_file_message.call_args_list[0].kwargs
-        second_call = router.max_client.send_file_message.call_args_list[1].kwargs
-        self.assertEqual(first_call["file_path"], "/tmp/division-report.xlsx")
-        self.assertEqual(second_call["file_path"], "/tmp/division-report.pdf")
+        router._queue_report_files.assert_called_once()
+        args = router._queue_report_files.call_args.args
+        self.assertEqual(args[3], "/tmp/division-report.xlsx")
+        self.assertEqual(args[4], "/tmp/division-report.pdf")
 
 
 if __name__ == "__main__":

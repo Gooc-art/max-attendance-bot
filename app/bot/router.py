@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
@@ -714,7 +715,7 @@ class MaxWebhookRouter:
 
     def _division_reports(self, role: str, user_id: str, chat_id: str) -> MaxWebhookResponse:
         artifact = self.report_service.generate_division_report(user_id=user_id, role=role, period="month")
-        self._send_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
+        self._queue_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
         text = (
             "Отчет по подразделениям готов.\n\n"
             "{summary}\n\n"
@@ -777,7 +778,7 @@ class MaxWebhookRouter:
             BotAction.REPORT_QUARTER: "quarter",
         }.get(action, "week")
         artifact = self.report_service.generate_manager_report(user_id=user_id, role=role, period=period)
-        self._send_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
+        self._queue_report_files(chat_id, user_id, artifact.title, artifact.file_path, artifact.pdf_file_path)
         text = (
             "{title} готов.\n\n"
             "{summary}\n\n"
@@ -1975,6 +1976,20 @@ class MaxWebhookRouter:
                 title,
             )
             return
+
+    def _queue_report_files(self, chat_id: str, user_id: str, title: str, xlsx_path: str, pdf_path: str) -> None:
+        thread = threading.Thread(
+            target=self._send_report_files,
+            kwargs={
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "title": title,
+                "xlsx_path": xlsx_path,
+                "pdf_path": pdf_path,
+            },
+            daemon=True,
+        )
+        thread.start()
 
     def _status_label(self, status: str) -> str:
         labels = {

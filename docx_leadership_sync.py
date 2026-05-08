@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+from difflib import SequenceMatcher
+import re
 
 
 PROJECT_TITLE = "Контроль_опозданий_MAX"
@@ -63,6 +65,32 @@ DEPARTMENT_OVERRIDES = {
     "Марникова Наталья Евгеньевна": "22-ПО№1",
 }
 
+DEPARTMENT_MANAGER_OVERRIDES = {
+    "1-ОКПКиПиБ": "Сафонов Алексей Валентинович",
+    "2-ОРП": "Огнева Анна Алексеевна",
+    "3-ООО": "Клоченок Анастасия Ивановна",
+    "4-ОФиХО": "Комаровский Андрей Петрович",
+    "5-ОИТиИБ": "Молчанова Яна Геннадьевна",
+    "6-ОВА": "Кондакова Юлия Борисовна",
+    "7-ООГУ": "Лебедев Александр Иванович",
+    "8-ОРиУН": "Антипина Луиза Николаевна",
+    "9-ОКК": "Лебедев Александр Иванович",
+    "10-ОККСНР": "Комаровский Андрей Петрович",
+    "11-ОККНИ": "Кузьменко Елена Викторовна",
+    "12-ОККНДФЛ": "Родина Наталья Николаевна",
+    "13-ОККНД": "Родина Наталья Николаевна",
+    "14-ОККНДС": "Лебедев Александр Иванович",
+    "15-ОНК№1": "Ковалкина Алена Александровна",
+    "16-ОНК№2": "Ковалкина Алена Александровна",
+    "17-ОНК№3": "Ковалкина Алена Александровна",
+    "18-ООК": "Назаров Дмитрий Алишерович",
+    "19-АО": "Огнева Анна Алексеевна",
+    "20-ОУЗ": "Огнева Анна Алексеевна",
+    "21-ООПиБ": "Дидович Елена Феодосеевна",
+    "22-ПО№1": "Марникова Наталья Евгеньевна",
+    "23-ПО№2": "Носко Кирилл Геннадьевич",
+}
+
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
 ]
@@ -106,6 +134,8 @@ class EmployeeSheetRow:
     row_number: int
     employee_name: str
     employee_user_id: str
+    department_name: str = ""
+    manager_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,6 +155,11 @@ class StructureNode:
 
 def normalize_text(value: object) -> str:
     return " ".join(str(value or "").strip().split())
+
+
+def normalize_department_key(value: object) -> str:
+    text = normalize_text(value).lower()
+    return re.sub(r"[^0-9a-zа-я]+", "", text)
 
 
 def parse_template_rows(values: List[List[str]]) -> List[LeadershipTemplateRow]:
@@ -169,6 +204,8 @@ def build_employee_index(values: List[List[str]]) -> Dict[str, EmployeeSheetRow]
             row_number=row_number,
             employee_name=employee_name,
             employee_user_id=employee_user_id,
+            department_name=get_cell(raw_row, index, "Подразделение"),
+            manager_name=get_cell(raw_row, index, "ФИО_руководителя"),
         )
     return result
 
@@ -191,6 +228,22 @@ def build_employee_updates(
             updates.append(EmployeeCellUpdate(employee.row_number, "G", department_name))
         if manager_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "E", manager_name))
+    return updates
+
+
+def build_employee_backfill_updates(
+    employee_index: Dict[str, EmployeeSheetRow],
+    department_manager_map: Dict[str, str],
+) -> List[EmployeeCellUpdate]:
+    updates: List[EmployeeCellUpdate] = []
+    for employee in employee_index.values():
+        department_name = normalize_text(employee.department_name)
+        manager_name = normalize_text(employee.manager_name)
+        if not department_name or manager_name:
+            continue
+        department_manager = resolve_department_manager(department_name, department_manager_map)
+        if department_manager:
+            updates.append(EmployeeCellUpdate(employee.row_number, "E", department_manager))
     return updates
 
 
@@ -241,8 +294,34 @@ def resolve_manager_name(
     if explicit_manager:
         return explicit_manager
     if department_name:
-        return normalize_text(department_manager_map.get(department_name, ""))
+        return resolve_department_manager(department_name, department_manager_map)
     return ""
+
+
+def resolve_department_manager(department_name: str, department_manager_map: Dict[str, str]) -> str:
+    direct_key = normalize_department_key(department_name)
+    if not direct_key:
+        return ""
+
+    for override_key, override_manager in DEPARTMENT_MANAGER_OVERRIDES.items():
+        if normalize_department_key(override_key) == direct_key:
+            return normalize_text(override_manager)
+
+    best_name = ""
+    best_score = 0.0
+    for candidate_key, manager_name in department_manager_map.items():
+        candidate_normalized = normalize_department_key(candidate_key)
+        if not candidate_normalized:
+            continue
+        if candidate_normalized == direct_key:
+            return normalize_text(manager_name)
+
+        score = SequenceMatcher(None, direct_key, candidate_normalized).ratio()
+        if score > best_score:
+            best_score = score
+            best_name = normalize_text(manager_name)
+
+    return best_name if best_score >= 0.78 else ""
 
 
 def resolve_top_manager_name(row: LeadershipTemplateRow) -> str:
@@ -426,6 +505,7 @@ def sync_leadership_template() -> dict[str, int]:
         department_nodes,
         department_manager_map,
     )
+    backfill_updates = build_employee_backfill_updates(employee_index, department_manager_map)
     normalized_rows = build_normalized_rows(
         template_rows,
         employee_index,
@@ -436,13 +516,20 @@ def sync_leadership_template() -> dict[str, int]:
 
     ensure_sheet(sheets_service, NORMALIZED_SHEET_TITLE)
     clear_and_write_rows(sheets_service, NORMALIZED_SHEET_TITLE, NORMALIZED_HEADERS, normalized_rows)
-    written_updates = apply_employee_updates(sheets_service, employee_updates)
+    written_updates = apply_employee_updates(sheets_service, dedupe_employee_updates([*employee_updates, *backfill_updates]))
 
     return {
         "template_rows": len(template_rows),
         "normalized_rows": len(normalized_rows),
         "employee_updates": written_updates,
     }
+
+
+def dedupe_employee_updates(updates: List[EmployeeCellUpdate]) -> List[EmployeeCellUpdate]:
+    deduped: Dict[tuple[int, str], EmployeeCellUpdate] = {}
+    for update in updates:
+        deduped[(update.row_number, update.column)] = update
+    return list(deduped.values())
 
 
 def main() -> None:

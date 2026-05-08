@@ -11,9 +11,11 @@ from docx_leadership_sync import (
     TOP_MANAGER_NAME,
     build_employee_index,
     build_employee_updates,
+    build_employee_backfill_updates,
     build_department_manager_map,
     build_normalized_rows,
     StructureNode,
+    resolve_department_manager,
     build_structure_index,
     parse_template_rows,
     resolve_manager_name,
@@ -177,6 +179,36 @@ class DocxLeadershipSyncTests(unittest.TestCase):
         )
 
         self.assertIn((2, "E", "Клоченок Анастасия Ивановна"), [(item.row_number, item.column, item.value) for item in updates])
+
+    def test_build_employee_backfill_updates_fills_blank_manager_from_department(self) -> None:
+        employee_index = {
+            "Иванов Иван Иванович": EmployeeSheetRow(
+                row_number=2,
+                employee_name="Иванов Иван Иванович",
+                employee_user_id="max_001",
+                department_name="3-ООО",
+                manager_name="",
+            )
+        }
+        department_manager_map = {"3-ООО": "Клоченок Анастасия Ивановна"}
+
+        updates = build_employee_backfill_updates(employee_index, department_manager_map)
+
+        self.assertEqual([(item.row_number, item.column, item.value) for item in updates], [(2, "E", "Клоченок Анастасия Ивановна")])
+
+    def test_resolve_department_manager_matches_messy_department_names(self) -> None:
+        department_manager_map = {"1-ОКПКиПиБ": "Сафонов Алексей Валентинович"}
+
+        self.assertEqual(
+            resolve_department_manager("1. ОКПКиПБ", department_manager_map),
+            "Сафонов Алексей Валентинович",
+        )
+
+    def test_resolve_department_manager_uses_explicit_override(self) -> None:
+        self.assertEqual(
+            resolve_department_manager("22. ПО1", {}),
+            "Марникова Наталья Евгеньевна",
+        )
 
     def test_resolve_manager_name_uses_explicit_hierarchy(self) -> None:
         row = parse_template_rows(

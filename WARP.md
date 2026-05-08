@@ -26,7 +26,7 @@
 17. Assign bootstrap employee schedules to the five-day schedules `ГР003` or `ГР004` automatically from the employee name pattern instead of using `ГР001` for everyone.
 18. Send ordinary MAX replies with `send_message` using a fallback recipient chain: try `chat_id` first for incoming message replies, then `user_id` if needed. Use the same fallback pattern for push notifications and proactive messages. Reserve `answer_callback` for inline keyboard callbacks.
 19. Ignore inline keyboard attachments when routing button clicks; only real file uploads should be handed to the SKUD importer.
-20. Keep `DOCX_Связи_ШАБЛОН` as a staging sheet for leadership data; `docx_leadership_sync.py` updates `Сотрудники` from filled manager fields, infers missing department managers from the DOCX branch structure, resolves the hierarchy as `Посунько Руслан Юрьевич -> direct deputies -> departments -> employees` using `DOCX_Структура`, and writes a normalized review sheet `DOCX_Связи_НОРМА`.
+20. Keep `DOCX_Связи_ШАБЛОН` as a staging sheet for leadership data; `docx_leadership_sync.py` updates `Сотрудники` from filled manager fields, infers missing department managers from the DOCX branch structure, backfills blank department managers across `Сотрудники`, resolves the hierarchy as `Посунько Руслан Юрьевич -> direct deputies -> departments -> employees` using `DOCX_Структура`, and writes a normalized review sheet `DOCX_Связи_НОРМА`.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

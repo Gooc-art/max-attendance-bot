@@ -179,6 +179,10 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Дней с причиной", summary_xml.decode("utf-8"))
 
             pdf_lines = service._build_pdf_lines("Недельный отчет", [["Параметр", "Значение"], ["Дней с причиной", "2"]], service._build_visit_detail_rows(service._build_visit_entries(service.visit_repository.list_for_manager_user("mgr-1"), service.case_repository.list_for_manager_user("mgr-1"), service.approval_repository.list_for_manager_user("mgr-1"))), [])
+            self.assertIn("Опоздавшие", "\n".join(pdf_lines))
+            self.assertIn("Вовремя", "\n".join(pdf_lines))
+            self.assertIn("Раньше", "\n".join(pdf_lines))
+            self.assertIn("Ушли позже", "\n".join(pdf_lines))
             self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
             self.assertIn("Кто согласовал: Петров Петр Сергеевич", "\n".join(pdf_lines))
 
@@ -237,6 +241,9 @@ class ReportServiceTests(unittest.TestCase):
                 ),
                 [["Подразделение", "Всего дней", "С опозданием", "С причиной", "Согласовано", "На согласовании", "Отклонено", "Ушли позже"], ["Отдел продаж", "2", "2", "2", "2", "0", "0", "1"]],
             )
+            self.assertIn("Опоздавшие", "\n".join(pdf_lines))
+            self.assertIn("Вовремя", "\n".join(pdf_lines))
+            self.assertIn("Раньше", "\n".join(pdf_lines))
             self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
             self.assertIn("Согласование: Согласовано", "\n".join(pdf_lines))
 

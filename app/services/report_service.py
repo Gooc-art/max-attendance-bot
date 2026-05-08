@@ -561,6 +561,40 @@ class ReportService:
                     lines.append(
                         f"{row[0]}: всего {row[1]}, с опозданием {row[2]}, с причиной {row[3]}, согласовано {row[4]}, на согласовании {row[5]}, отклонено {row[6]}, ушли позже {row[7]}"
                     )
+        for title_label, filtered_rows in [
+            ("Опоздавшие", self._filter_detail_rows_by_status(detail_rows, arrival_status="late")),
+            ("Вовремя", self._filter_detail_rows_by_status(detail_rows, arrival_status="on_time")),
+            ("Раньше", self._filter_detail_rows_by_status(detail_rows, arrival_status="early")),
+            ("Ушли позже", self._filter_detail_rows_by_status(detail_rows, departure_status="late")),
+            ("Ушли вовремя", self._filter_detail_rows_by_status(detail_rows, departure_status="on_time")),
+            ("Ушли раньше", self._filter_detail_rows_by_status(detail_rows, departure_status="early")),
+        ]:
+            lines.extend(["", title_label])
+            for row in filtered_rows:
+                lines.extend(
+                    self._wrap_text_block(
+                        [
+                            f"ID: {row[0]}",
+                            f"Сотрудник: {row[1]}",
+                            f"Подразделение: {row[2]}",
+                            f"Руководитель: {row[3]}",
+                            f"Дата: {row[4]}",
+                            f"Приход: {row[5]} ({row[6]})",
+                            f"План прихода: {row[7]}",
+                            f"Отклонение прихода: {row[8]} мин",
+                            f"Уход: {row[9]} ({row[10]})",
+                            f"План ухода: {row[11]}",
+                            f"Отклонение ухода: {row[12]} мин",
+                            f"Проходов за день: {row[13]}",
+                            f"Нарушения: {row[14]}",
+                            f"Причина: {row[15]}",
+                            f"Согласование: {row[16]}",
+                            f"Кто согласовал: {row[17]}",
+                            f"Комментарий: {row[18]}",
+                            "-" * 72,
+                        ]
+                    )
+                )
         lines.extend(["", "Случаи"])
         for row in detail_rows[1:]:
             if len(row) < 19:
@@ -590,6 +624,26 @@ class ReportService:
                 )
             )
         return lines
+
+    def _filter_detail_rows_by_status(
+        self,
+        rows: List[List[str]],
+        *,
+        arrival_status: str | None = None,
+        departure_status: str | None = None,
+    ) -> List[List[str]]:
+        if not rows:
+            return []
+        filtered: List[List[str]] = [rows[0]]
+        for row in rows[1:]:
+            if len(row) < 19:
+                continue
+            if arrival_status is not None and row[6] != self._status_label(arrival_status):
+                continue
+            if departure_status is not None and row[10] != self._status_label(departure_status):
+                continue
+            filtered.append(row)
+        return filtered
 
     def _wrap_text_block(self, lines: List[str], width: int = 96) -> List[str]:
         wrapped: List[str] = []

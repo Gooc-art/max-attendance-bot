@@ -25,6 +25,7 @@
 16. Resolve SKUD planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned, and continue from the last cached schedule snapshot if Google Sheets is temporarily unavailable.
 17. Assign bootstrap employee schedules to the five-day schedules `ГР003` or `ГР004` automatically from the employee name pattern instead of using `ГР001` for everyone.
 18. Send ordinary MAX replies with `send_message` using a fallback recipient chain: try `chat_id` first for incoming message replies, then `user_id` if needed. Use the same fallback pattern for push notifications and proactive messages. Reserve `answer_callback` for inline keyboard callbacks.
+19. Ignore inline keyboard attachments when routing button clicks; only real file uploads should be handed to the SKUD importer.
 
 ## Operational notes
 - Google service account path and spreadsheet id are configured in `.env`.

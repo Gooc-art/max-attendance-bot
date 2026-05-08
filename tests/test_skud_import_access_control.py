@@ -147,7 +147,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
                 body=MaxMessageBody(
                     mid="m11",
                     seq=1,
-                    text="Отчет",
+                    text="",
                     attachments=[
                         MaxAttachment(
                             type="sticker",
@@ -164,6 +164,43 @@ class SkudImportAccessControlTests(unittest.TestCase):
         self.assertIn("не умею его разобрать", response.outbound.text)
         router.max_file_import_service.import_attachments.assert_not_called()
         router.max_client.send_message.assert_called_once()
+
+    def test_inline_keyboard_attachment_does_not_override_text_buttons(self) -> None:
+        router = MaxWebhookRouter()
+        router.role_resolver = _FakeRoleResolver("admin")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message = MagicMock()
+        router.max_file_import_service = MagicMock()
+
+        payload = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(
+                    mid="m12",
+                    seq=1,
+                    text="Кто я",
+                    attachments=[
+                        MaxAttachment(
+                            type="inline_keyboard",
+                            filename="inline_keyboard",
+                        )
+                    ],
+                ),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        router.max_file_import_service.import_attachments.assert_not_called()
+        self.assertIn("Кто я:", response.outbound.text)
+        router.max_client.send_message.assert_called_once()
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertIn("Кто я:", kwargs["text"])
 
 
 if __name__ == "__main__":

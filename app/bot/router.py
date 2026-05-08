@@ -66,55 +66,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if payload.message and payload.message.body.attachments:
-            attachment_types = [getattr(attachment, "type", "") for attachment in payload.message.body.attachments]
-            attachment_names = [getattr(attachment, "filename", "") for attachment in payload.message.body.attachments]
-            self.logger.info(
-                "MAX message attachments update_type=%s mid=%s types=%s filenames=%s",
-                payload.update_type,
-                payload.message.body.mid,
-                attachment_types,
-                attachment_names,
-            )
-            file_attachments = [
-                attachment
-                for attachment in payload.message.body.attachments
-                if self._is_supported_file_attachment(attachment)
-            ]
-            if file_attachments:
-                if role != Role.SECURITY.value:
-                    response = self._stub_section(role, "Загрузка файлов доступна только службе безопасности.")
-                    self._send_outbound(payload, response.outbound)
-                    return response
-                response = self._handle_attachments(
-                    role,
-                    event["user_id"],
-                    payload.message.body.attachments,
-                    message_id=payload.message.body.mid,
-                )
-                if response is not None:
-                    self._send_outbound(payload, response.outbound)
-                    return response
-            else:
-                response = MaxWebhookResponse(
-                    ok=True,
-                    role=role,
-                    menu=get_menu_for_role(role),
-                    outbound=MaxOutboundMessage(
-                        text=(
-                            "Я вижу вложение, но пока не умею его разобрать.\n\n"
-                            "Попробуй отправить файл еще раз или скажи мне, как он выглядит в MAX."
-                        ),
-                        buttons=[
-                            MaxOutboundButton(title="Загрузить выгрузку СКУД", action=BotAction.MENU_SECURITY_IMPORT),
-                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                        ],
-                    ),
-                    active_flow=None,
-                )
-                self._send_outbound(payload, response.outbound)
-                return response
-
         if active_state and active_state.flow == DialogFlow.SUBSTITUTION.value:
             result = self.substitution_flow.handle_input(event["user_id"], role, user_text, action, active_state)
             self._send_outbound(payload, result.message)
@@ -392,6 +343,55 @@ class MaxWebhookRouter:
             response = self._quick_report(role, event["user_id"], event["chat_id"], action)
             self._send_outbound(payload, response.outbound)
             return response
+
+        if payload.update_type == "message_created" and payload.message and payload.message.body.attachments:
+            attachment_types = [getattr(attachment, "type", "") for attachment in payload.message.body.attachments]
+            attachment_names = [getattr(attachment, "filename", "") for attachment in payload.message.body.attachments]
+            self.logger.info(
+                "MAX message attachments update_type=%s mid=%s types=%s filenames=%s",
+                payload.update_type,
+                payload.message.body.mid,
+                attachment_types,
+                attachment_names,
+            )
+            file_attachments = [
+                attachment
+                for attachment in payload.message.body.attachments
+                if self._is_supported_file_attachment(attachment)
+            ]
+            if file_attachments:
+                if role != Role.SECURITY.value:
+                    response = self._stub_section(role, "Загрузка файлов доступна только службе безопасности.")
+                    self._send_outbound(payload, response.outbound)
+                    return response
+                response = self._handle_attachments(
+                    role,
+                    event["user_id"],
+                    payload.message.body.attachments,
+                    message_id=payload.message.body.mid,
+                )
+                if response is not None:
+                    self._send_outbound(payload, response.outbound)
+                    return response
+            elif not action and not user_text:
+                response = MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text=(
+                            "Я вижу вложение, но пока не умею его разобрать.\n\n"
+                            "Попробуй отправить файл еще раз или скажи мне, как он выглядит в MAX."
+                        ),
+                        buttons=[
+                            MaxOutboundButton(title="Загрузить выгрузку СКУД", action=BotAction.MENU_SECURITY_IMPORT),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                        ],
+                    ),
+                    active_flow=None,
+                )
+                self._send_outbound(payload, response.outbound)
+                return response
 
         menu = get_menu_for_role(role)
         message = MaxOutboundMessage(

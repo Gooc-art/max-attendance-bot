@@ -25,6 +25,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Support substitution draft actions: list, cancel, and extend.
 - Generate `.xlsx` and `.pdf` reports and send them to MAX as files, with public download URLs as fallback.
 - Send normal MAX replies with `send_message` using a fallback recipient chain: try `chat_id` first for incoming message replies, then `user_id` if needed. Use the same fallback pattern for push notifications and proactive messages. Use `answer_callback` for inline keyboard callbacks.
+- Ignore inline keyboard attachments when routing text/callback buttons; only real file uploads should reach the SKUD importer.
 
 ## Constraints
 - No manual file edits for runtime permissions.

@@ -138,10 +138,14 @@ def build_normalized_rows(
     for index, row in enumerate(rows, start=1):
         employee = employee_index.get(row.employee_name)
         status = "Готово"
+        top_manager_name = row.top_manager_name
         if employee is None:
             status = "Не найден в Сотрудники"
         elif not row.manager_name:
-            status = "Ожидает заполнения руководителя"
+            status = "Топ-уровень"
+            top_manager_name = row.employee_name
+        elif not row.top_manager_name:
+            top_manager_name = row.manager_name
         normalized_rows.append(
             [
                 str(index),
@@ -151,7 +155,7 @@ def build_normalized_rows(
                 row.manager_name,
                 "",
                 row.replacement_name,
-                row.top_manager_name,
+                top_manager_name,
                 row.comment,
                 status,
             ]

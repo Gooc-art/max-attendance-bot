@@ -85,7 +85,28 @@ class DocxLeadershipSyncTests(unittest.TestCase):
 
         self.assertEqual(normalized[0][1], "Иванов Иван Иванович")
         self.assertEqual(normalized[0][2], "max_001")
-        self.assertEqual(normalized[0][9], "Ожидает заполнения руководителя")
+        self.assertEqual(normalized[0][7], "Иванов Иван Иванович")
+        self.assertEqual(normalized[0][9], "Топ-уровень")
+
+    def test_build_normalized_rows_uses_manager_as_top_when_missing(self) -> None:
+        rows = parse_template_rows(
+            [
+                ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
+                ["1", "Иванов Иван Иванович", "", "Петров Петр Сергеевич", "", "", ""],
+            ]
+        )
+        employee_index = build_employee_index(
+            [
+                ["ФИО", "ID_пользователя_MAX"],
+                ["Иванов Иван Иванович", "max_001"],
+            ]
+        )
+
+        normalized = build_normalized_rows(rows, employee_index)
+
+        self.assertEqual(normalized[0][4], "Петров Петр Сергеевич")
+        self.assertEqual(normalized[0][7], "Петров Петр Сергеевич")
+        self.assertEqual(normalized[0][9], "Готово")
 
 
 if __name__ == "__main__":

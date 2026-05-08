@@ -102,6 +102,38 @@ class SendOutboundTests(unittest.TestCase):
         kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(kwargs["callback_id"], "cb-1")
 
+    def test_main_menu_callback_sends_visible_message(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+
+        inbound = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-main",
+                payload="menu.main",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(
+            inbound,
+            MaxOutboundMessage(
+                text="Главное меню готово.",
+                buttons=[MaxOutboundButton(title="Старт", action="/start")],
+            ),
+        )
+
+        router.max_client.send_message.assert_called_once()
+        router.max_client.answer_callback.assert_called_once()
+        answer_kwargs = router.max_client.answer_callback.call_args.kwargs
+        self.assertEqual(answer_kwargs["callback_id"], "cb-main")
+        self.assertEqual(answer_kwargs["notification"], "Главное меню открыто")
+        self.assertEqual(answer_kwargs["buttons"], [])
+
     def test_callback_updates_without_message_still_route_actions(self) -> None:
         router = MaxWebhookRouter()
         payload = MaxUpdate(

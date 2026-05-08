@@ -6,6 +6,12 @@ from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
 from app.bot.buttons import (
+    admin_personal_buttons,
+    admin_reports_buttons,
+    admin_settings_buttons,
+    admin_skud_buttons,
+    admin_structure_buttons,
+    admin_workflow_buttons,
     ATTENDANCE_REASON_LABELS,
     approval_card_buttons,
     approvals_menu_buttons,
@@ -220,6 +226,36 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_ADMIN_PANEL or user_text == "Админ-панель":
             response = self._admin_panel_menu(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_PERSONAL or user_text == "Личное":
+            response = self._admin_personal_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_STRUCTURE or user_text == "Структура":
+            response = self._admin_structure_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_SKUD or user_text == "СКУД":
+            response = self._admin_skud_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_WORKFLOW or user_text == "Процессы":
+            response = self._admin_workflow_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_REPORTS or user_text == "Отчеты":
+            response = self._admin_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.ADMIN_SETTINGS or user_text == "Настройки":
+            response = self._admin_settings_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1051,7 +1087,7 @@ class MaxWebhookRouter:
             "Текущая роль: {role}\n"
             "Профиль в таблице: {directory_state}\n\n"
             "Если ты видишь это меню, значит доступ к админскому интерфейсу уже выдан.\n"
-            "Если личные разделы пустые, проверь в таблице поля `ФИО`, `ID_пользователя_MAX`, `Подразделение`, `Роль`."
+            "Личный, структурный, СКУД и отчетный разделы теперь открываются отдельными кнопками, чтобы экран не был перегружен."
         ).format(directory_state=directory_state, role=display_role_name(role))
         return MaxWebhookResponse(
             ok=True,
@@ -1059,11 +1095,91 @@ class MaxWebhookRouter:
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Права доступа", action=BotAction.MENU_ACCESS_RIGHTS),
-                    MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+                buttons=main_menu_buttons(role),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_personal_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Личный раздел администратора доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Личный раздел администратора. Здесь быстрые проверки и привязки.",
+                buttons=admin_personal_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_structure_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел структуры доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Структура и справочники.",
+                buttons=admin_structure_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_skud_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел СКУД доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Импорт СКУД и очереди разборов.",
+                buttons=admin_skud_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_workflow_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел процессов доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Согласования, нарушения и замещения.",
+                buttons=admin_workflow_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_reports_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел отчетов доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Сводка и отчеты.",
+                buttons=admin_reports_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _admin_settings_menu(self, role: str) -> MaxWebhookResponse:
+        if role != Role.ADMIN.value:
+            return self._stub_section(role, "Раздел настроек доступен только администратору.")
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Системные настройки и параметры контроля.",
+                buttons=admin_settings_buttons(),
             ),
             active_flow=None,
         )

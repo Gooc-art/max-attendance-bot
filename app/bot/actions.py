@@ -36,6 +36,12 @@ class BotAction:
     MENU_SUMMARY = "menu.summary"
     MENU_DIVISION_REPORTS = "menu.division_reports"
     MENU_OVERDUE_APPROVALS = "menu.overdue_approvals"
+    ADMIN_PERSONAL = "admin.personal"
+    ADMIN_STRUCTURE = "admin.structure"
+    ADMIN_SKUD = "admin.skud"
+    ADMIN_WORKFLOW = "admin.workflow"
+    ADMIN_REPORTS = "admin.reports"
+    ADMIN_SETTINGS = "admin.settings"
 
     SUBSTITUTION_CREATE = "substitution.create"
     SUBSTITUTION_LIST = "substitution.list"

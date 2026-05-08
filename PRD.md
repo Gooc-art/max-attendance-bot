@@ -33,7 +33,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Google Sheets reads should be fresh for role resolution, may be cached for lower-priority lookups, and must fail gracefully to SQLite fallback.
 
 ## Success criteria
-- Admin users with `admin` role in Google Sheets see admin-only sections.
+- Admin users with `admin` role in Google Sheets see admin-only sections, grouped into compact panels so the keyboard stays readable on mobile.
 - Manager and employee menus reflect the spreadsheet without code changes.
 - User-facing role names are shown in Russian while internal role codes remain stable.
 - SKUD import still works when Google Sheets is unavailable, using local fallback.

@@ -20,7 +20,9 @@ class AdminPanelMenuTests(unittest.TestCase):
         self.assertIn("Админ-панель", response.outbound.text)
         self.assertIn("Текущая роль: Администратор", response.outbound.text)
         self.assertIn("Google Sheets", response.outbound.text)
-        self.assertIn("Права доступа", [button.title for button in response.outbound.buttons])
+        self.assertIn("Личное", [button.title for button in response.outbound.buttons])
+        self.assertIn("Структура", [button.title for button in response.outbound.buttons])
+        self.assertIn("СКУД", [button.title for button in response.outbound.buttons])
 
 
 if __name__ == "__main__":

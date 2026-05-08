@@ -11,6 +11,49 @@ SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
 TEMPLATE_SHEET_TITLE = "DOCX_Связи_ШАБЛОН"
 NORMALIZED_SHEET_TITLE = "DOCX_Связи_НОРМА"
 EMPLOYEE_SHEET_TITLE = "Сотрудники"
+TOP_MANAGER_NAME = "Посунько Руслан Юрьевич"
+DIRECT_DEPUTIES = {
+    "Слабенко Александр Владимирович",
+    "Кудрявцева Марина Алексеевна",
+    "Корсикова Ариадна Юрьевна",
+    "Комаровский Андрей Петрович",
+    "Кузьменко Елена Викторовна",
+    "Маркова Елена Борисовна",
+    "Сафонова Светлана Вячеславовна",
+}
+
+# Explicit hierarchy from the DOCX structure review.
+MANAGER_OVERRIDES = {
+    TOP_MANAGER_NAME: "",
+    "Слабенко Александр Владимирович": TOP_MANAGER_NAME,
+    "Кудрявцева Марина Алексеевна": TOP_MANAGER_NAME,
+    "Корсикова Ариадна Юрьевна": TOP_MANAGER_NAME,
+    "Комаровский Андрей Петрович": TOP_MANAGER_NAME,
+    "Кузьменко Елена Викторовна": TOP_MANAGER_NAME,
+    "Маркова Елена Борисовна": TOP_MANAGER_NAME,
+    "Сафонова Светлана Вячеславовна": TOP_MANAGER_NAME,
+    "Антипина Луиза Николаевна": "Слабенко Александр Владимирович",
+    "Назаров Дмитрий Алишерович": "Слабенко Александр Владимирович",
+    "Клоченок Анастасия Ивановна": "Кудрявцева Марина Алексеевна",
+    "Марникова Наталья Евгеньевна": "Кудрявцева Марина Алексеевна",
+    "Ковалкина Алена Александровна": "Корсикова Ариадна Юрьевна",
+    "Сафонов Алексей Валентинович": "Сафонова Светлана Вячеславовна",
+    "Филимоненко Виктория Викторовна": "Сафонов Алексей Валентинович",
+    "Соколова Елена Юрьевна": "Сафонов Алексей Валентинович",
+    "Дидович Елена Феодосеевна": "Сафонов Алексей Валентинович",
+    "Колеватых Наталья Николаевна": "Сафонов Алексей Валентинович",
+    "Баженов Станислав Сергеевич": "Марникова Наталья Евгеньевна",
+    "Молчанова Яна Геннадьевна": "Корсикова Ариадна Юрьевна",
+    "Лебедев Александр Иванович": "Молчанова Яна Геннадьевна",
+    "Огнева Анна Алексеевна": "Молчанова Яна Геннадьевна",
+    "Кондакова Юлия Борисовна": "Лебедев Александр Иванович",
+    "Носко Кирилл Геннадьевич": "Кондакова Юлия Борисовна",
+    "Волкова Эвелина Викторовна": "Кондакова Юлия Борисовна",
+    "Толкачева Татьяна Александровна": "Кондакова Юлия Борисовна",
+    "Кузьмина Надежда Юрьевна": "Кондакова Юлия Борисовна",
+    "Кислицын Максим Анатольевич": "Носко Кирилл Геннадьевич",
+    "Канева Валерия Игоревна": "Кислицын Максим Анатольевич",
+}
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -123,10 +166,11 @@ def build_employee_updates(
         employee = employee_index.get(row.employee_name)
         if employee is None:
             continue
+        manager_name = resolve_manager_name(row)
         if row.department_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "G", row.department_name))
-        if row.manager_name:
-            updates.append(EmployeeCellUpdate(employee.row_number, "E", row.manager_name))
+        if manager_name:
+            updates.append(EmployeeCellUpdate(employee.row_number, "E", manager_name))
     return updates
 
 
@@ -138,21 +182,22 @@ def build_normalized_rows(
     for index, row in enumerate(rows, start=1):
         employee = employee_index.get(row.employee_name)
         status = "Готово"
-        top_manager_name = row.top_manager_name
+        manager_name = resolve_manager_name(row)
+        top_manager_name = resolve_top_manager_name(row)
         if employee is None:
             status = "Не найден в Сотрудники"
-        elif not row.manager_name:
+        elif row.employee_name == TOP_MANAGER_NAME:
             status = "Топ-уровень"
-            top_manager_name = row.employee_name
-        elif not row.top_manager_name:
-            top_manager_name = row.manager_name
+            manager_name = ""
+        elif not manager_name:
+            status = "Требует_проверки"
         normalized_rows.append(
             [
                 str(index),
                 row.employee_name,
                 employee.employee_user_id if employee else "",
                 row.department_name,
-                row.manager_name,
+                manager_name,
                 "",
                 row.replacement_name,
                 top_manager_name,
@@ -161,6 +206,16 @@ def build_normalized_rows(
             ]
         )
     return normalized_rows
+
+
+def resolve_manager_name(row: LeadershipTemplateRow) -> str:
+    return normalize_text(MANAGER_OVERRIDES.get(row.employee_name, row.manager_name))
+
+
+def resolve_top_manager_name(row: LeadershipTemplateRow) -> str:
+    if row.employee_name == TOP_MANAGER_NAME:
+        return TOP_MANAGER_NAME
+    return TOP_MANAGER_NAME
 
 
 def get_cell(row: List[str], header_index: Dict[str, int], header_name: str) -> str:

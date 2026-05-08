@@ -8,10 +8,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from docx_leadership_sync import (
     EmployeeSheetRow,
+    TOP_MANAGER_NAME,
     build_employee_index,
     build_employee_updates,
     build_normalized_rows,
     parse_template_rows,
+    resolve_manager_name,
 )
 
 
@@ -67,46 +69,56 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             [(2, "G", "Отдел продаж"), (2, "E", "Петров Петр Сергеевич")],
         )
 
-    def test_build_normalized_rows_marks_missing_manager(self) -> None:
+    def test_build_normalized_rows_marks_top_manager(self) -> None:
         rows = parse_template_rows(
             [
                 ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
-                ["1", "Иванов Иван Иванович", "", "", "", "", ""],
+                [f"1", TOP_MANAGER_NAME, "", "", "", "", ""],
             ]
         )
         employee_index = build_employee_index(
             [
                 ["ФИО", "ID_пользователя_MAX"],
-                ["Иванов Иван Иванович", "max_001"],
+                [TOP_MANAGER_NAME, "max_001"],
             ]
         )
 
         normalized = build_normalized_rows(rows, employee_index)
 
-        self.assertEqual(normalized[0][1], "Иванов Иван Иванович")
+        self.assertEqual(normalized[0][1], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][2], "max_001")
-        self.assertEqual(normalized[0][7], "Иванов Иван Иванович")
+        self.assertEqual(normalized[0][7], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][9], "Топ-уровень")
 
-    def test_build_normalized_rows_uses_manager_as_top_when_missing(self) -> None:
+    def test_build_normalized_rows_uses_explicit_manager_override(self) -> None:
         rows = parse_template_rows(
             [
                 ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
-                ["1", "Иванов Иван Иванович", "", "Петров Петр Сергеевич", "", "", ""],
+                ["1", "Антипина Луиза Николаевна", "", "", "", "", ""],
             ]
         )
         employee_index = build_employee_index(
             [
                 ["ФИО", "ID_пользователя_MAX"],
-                ["Иванов Иван Иванович", "max_001"],
+                ["Антипина Луиза Николаевна", "max_001"],
             ]
         )
 
         normalized = build_normalized_rows(rows, employee_index)
 
-        self.assertEqual(normalized[0][4], "Петров Петр Сергеевич")
-        self.assertEqual(normalized[0][7], "Петров Петр Сергеевич")
+        self.assertEqual(normalized[0][4], "Слабенко Александр Владимирович")
+        self.assertEqual(normalized[0][7], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][9], "Готово")
+
+    def test_resolve_manager_name_uses_explicit_hierarchy(self) -> None:
+        row = parse_template_rows(
+            [
+                ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
+                ["1", "Канева Валерия Игоревна", "", "", "", "", ""],
+            ]
+        )[0]
+
+        self.assertEqual(resolve_manager_name(row), "Кислицын Максим Анатольевич")
 
 
 if __name__ == "__main__":

@@ -2280,24 +2280,27 @@ class MaxWebhookRouter:
                 if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"}:
                     recipients = self._outbound_recipients(inbound)
                     for recipient_type, recipient_value in recipients:
-                        if recipient_type == "chat_id":
-                            self.max_client.send_message(
-                                chat_id=recipient_value,
-                                text=outbound.text,
-                                buttons=outbound.buttons,
-                            )
+                        try:
+                            if recipient_type == "chat_id":
+                                self.max_client.send_message(
+                                    chat_id=recipient_value,
+                                    text=outbound.text,
+                                    buttons=outbound.buttons,
+                                )
+                            else:
+                                self.max_client.send_message(
+                                    user_id=recipient_value,
+                                    text=outbound.text,
+                                    buttons=outbound.buttons,
+                                )
                             break
-                        self.max_client.send_message(
-                            user_id=recipient_value,
-                            text=outbound.text,
-                            buttons=outbound.buttons,
-                        )
-                        break
+                        except Exception:
+                            continue
                 self.max_client.answer_callback(
                     callback_id=inbound.callback.callback_id,
                     notification="Главное меню открыто" if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else None,
-                    new_text=None if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.text,
-                    buttons=[] if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.buttons,
+                    new_text=outbound.text if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.text,
+                    buttons=outbound.buttons if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.buttons,
                 )
                 return
 

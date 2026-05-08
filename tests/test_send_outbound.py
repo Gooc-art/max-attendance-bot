@@ -132,7 +132,8 @@ class SendOutboundTests(unittest.TestCase):
         answer_kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(answer_kwargs["callback_id"], "cb-main")
         self.assertEqual(answer_kwargs["notification"], "Главное меню открыто")
-        self.assertEqual(answer_kwargs["buttons"], [])
+        self.assertEqual(answer_kwargs["new_text"], "Главное меню готово.")
+        self.assertEqual([button.title for button in answer_kwargs["buttons"]], ["Старт"])
 
     def test_callback_updates_without_message_still_route_actions(self) -> None:
         router = MaxWebhookRouter()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import re
 from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
@@ -82,7 +83,7 @@ class MaxWebhookRouter:
         user_text = event["text"]
         active_state = dialog_state_store.get(event["user_id"])
 
-        if action in {BotAction.START, BotAction.MAIN_MENU, "/start", "Главное меню"}:
+        if self._is_main_menu_action(action, user_text):
             dialog_state_store.reset(event["user_id"])
             response = self._menu_response(role, "Главное меню готово.")
             self._send_outbound(payload, response.outbound)
@@ -2277,7 +2278,7 @@ class MaxWebhookRouter:
         try:
             if inbound.update_type == "message_callback" and inbound.callback:
                 callback_action = inbound.callback.payload or ""
-                if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"}:
+                if self._is_main_menu_action(callback_action, ""):
                     recipients = self._outbound_recipients(inbound)
                     for recipient_type, recipient_value in recipients:
                         try:
@@ -2298,9 +2299,9 @@ class MaxWebhookRouter:
                             continue
                 self.max_client.answer_callback(
                     callback_id=inbound.callback.callback_id,
-                    notification="Главное меню открыто" if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else None,
-                    new_text=outbound.text if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.text,
-                    buttons=outbound.buttons if callback_action in {BotAction.MAIN_MENU, BotAction.START, "/start", "Главное меню"} else outbound.buttons,
+                    notification="Главное меню открыто" if self._is_main_menu_action(callback_action, "") else None,
+                    new_text=outbound.text if self._is_main_menu_action(callback_action, "") else outbound.text,
+                    buttons=outbound.buttons if self._is_main_menu_action(callback_action, "") else outbound.buttons,
                 )
                 return
 
@@ -2437,3 +2438,28 @@ class MaxWebhookRouter:
             ApprovalStatus.REJECTED.value: "Отклонено",
         }
         return labels.get(status, status)
+
+    @staticmethod
+    def _normalize_navigation_action(value: str) -> str:
+        return re.sub(r"[^0-9a-zа-я]+", "", (value or "").strip().lower())
+
+    @classmethod
+    def _is_main_menu_action(cls, action: str, user_text: str) -> bool:
+        normalized_action = cls._normalize_navigation_action(action)
+        normalized_text = cls._normalize_navigation_action(user_text)
+        return normalized_action in {
+            cls._normalize_navigation_action(BotAction.MAIN_MENU),
+            cls._normalize_navigation_action(BotAction.START),
+            cls._normalize_navigation_action("/start"),
+            cls._normalize_navigation_action("Главное меню"),
+            cls._normalize_navigation_action("menu_main"),
+            cls._normalize_navigation_action("main_menu"),
+            cls._normalize_navigation_action("главноеменю"),
+        } or normalized_text in {
+            cls._normalize_navigation_action(BotAction.START),
+            cls._normalize_navigation_action("/start"),
+            cls._normalize_navigation_action("Главное меню"),
+            cls._normalize_navigation_action("menu_main"),
+            cls._normalize_navigation_action("main_menu"),
+            cls._normalize_navigation_action("главноеменю"),
+        }

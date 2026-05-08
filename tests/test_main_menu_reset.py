@@ -7,7 +7,7 @@ from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
 from app.domain.enums import DialogFlow
 from app.services.dialog_state import dialog_state_store
-from app.schemas.max import MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
+from app.schemas.max import MaxCallback, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
 
 
 class MainMenuResetTests(unittest.TestCase):
@@ -57,6 +57,28 @@ class MainMenuResetTests(unittest.TestCase):
                 timestamp=1,
                 body=MaxMessageBody(mid="m2", seq=2, text="/start"),
                 sender=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertEqual(response.outbound.text, "Главное меню готово.")
+        self.assertIsNone(dialog_state_store.get("203302812"))
+
+    def test_main_menu_alias_opens_main_menu(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-main",
+                payload="menu_main",
+                user=MaxUser(user_id=203302812, first_name="Test"),
             ),
         )
 

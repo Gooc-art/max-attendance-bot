@@ -12,37 +12,39 @@ def btn(title: str, action: str, emoji: str | None = None, row: int = 0) -> MaxO
 
 
 def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
+    if role == Role.EMPLOYEE.value:
+        return [
+            btn("Старт", BotAction.START, "🏁", 0),
+            btn("Кто я", BotAction.WHOAMI, "👤", 0),
+            btn("Личное", BotAction.EMPLOYEE_PERSONAL, "👤", 1),
+            btn("Причины", BotAction.EMPLOYEE_REASONS, "✍️", 1),
+            btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 2),
+        ]
     if role == Role.MANAGER.value:
         return [
             btn("Старт", BotAction.START, "🏁", 0),
             btn("Кто я", BotAction.WHOAMI, "👤", 0),
-            btn("Мои сотрудники", BotAction.MENU_EMPLOYEES, "👥", 1),
-            btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
-            btn("Нарушения отдела", BotAction.MENU_DEPARTMENT_LATES, "⏱️", 2),
-            btn("Отчеты", BotAction.MENU_REPORTS, "📊", 2),
-            btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
+            btn("Управление", BotAction.MANAGER_MANAGEMENT, "👥", 1),
+            btn("Отчетный блок", BotAction.MANAGER_REPORTS, "📊", 1),
+            btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 2),
+            btn("Процессы", BotAction.MANAGER_WORKFLOW, "⏱️", 3),
         ]
     if role == Role.SECURITY.value:
         return [
             btn("Старт", BotAction.START, "🏁", 0),
             btn("Кто я", BotAction.WHOAMI, "👤", 0),
-            btn("Загрузить выгрузку СКУД", BotAction.MENU_SECURITY_IMPORT, "📥", 1),
-            btn("История импортов", BotAction.MENU_IMPORT_HISTORY, "🕘", 1),
-            btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS, "⚠️", 2),
-            btn("Необработанные записи", BotAction.MENU_UNPROCESSED, "🗂️", 2),
+            btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
+            btn("Журнал", BotAction.MENU_IMPORT_HISTORY, "🕘", 1),
+            btn("Очередь", BotAction.SECURITY_AUDIT, "🗂️", 2),
         ]
     if role == Role.HR.value:
         return [
             btn("Старт", BotAction.START, "🏁", 0),
             btn("Кто я", BotAction.WHOAMI, "👤", 0),
-            btn("Сотрудники", BotAction.MENU_STAFF, "👥", 1),
-            btn("Подразделения", BotAction.MENU_DEPARTMENTS, "🏢", 1),
-            btn("Графики", BotAction.MENU_SCHEDULES, "🗓️", 2),
-            btn("Исключения", BotAction.MENU_EXCEPTIONS, "🚪", 2),
-            btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
-            btn("Согласования", BotAction.MENU_APPROVALS, "✅", 3),
-            btn("Отчеты", BotAction.MENU_REPORTS, "📊", 4),
-            btn("Системные настройки", BotAction.MENU_SETTINGS, "⚙️", 4),
+            btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
+            btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
+            btn("Отчетный блок", BotAction.HR_REPORTS, "📊", 2),
+            btn("Параметры", BotAction.HR_SETTINGS, "⚙️", 2),
         ]
     if role == Role.ADMIN.value:
         return [
@@ -54,17 +56,16 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Структура", BotAction.ADMIN_STRUCTURE, "🏢", 2),
             btn("СКУД", BotAction.ADMIN_SKUD, "📥", 3),
             btn("Процессы", BotAction.ADMIN_WORKFLOW, "✅", 3),
-            btn("Отчеты", BotAction.ADMIN_REPORTS, "📊", 4),
-            btn("Настройки", BotAction.ADMIN_SETTINGS, "⚙️", 4),
+            btn("Отчетный блок", BotAction.ADMIN_REPORTS, "📊", 4),
+            btn("Параметры", BotAction.ADMIN_SETTINGS, "⚙️", 4),
         ]
     if role == Role.TOP_MANAGER.value:
         return [
             btn("Старт", BotAction.START, "🏁", 0),
             btn("Кто я", BotAction.WHOAMI, "👤", 0),
-            btn("Сводка", BotAction.MENU_SUMMARY, "📈", 1),
-            btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS, "🏢", 1),
-            btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 2),
-            btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 2),
+            btn("Аналитика", BotAction.TOP_SUMMARY, "📈", 1),
+            btn("Отчетный блок", BotAction.TOP_REPORTS, "🏢", 1),
+            btn("Процессы", BotAction.TOP_WORKFLOW, "⛔", 2),
         ]
     return [
         btn("Старт", BotAction.START, "🏁", 0),
@@ -146,6 +147,137 @@ def reports_menu_buttons() -> List[MaxOutboundButton]:
         btn("Месячный отчет", BotAction.REPORT_MONTH, "🗓️", 0),
         btn("Квартальный отчет", BotAction.REPORT_QUARTER, "📊", 1),
         btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def employee_personal_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Мои уведомления", BotAction.MENU_MY_NOTIFICATIONS, "🔔", 0),
+        btn("Мои опоздания", BotAction.MENU_MY_LATES, "⏰", 0),
+        btn("Мои статусы", BotAction.MENU_MY_STATUSES, "📎", 1),
+        btn("Мой руководитель", BotAction.MENU_MY_MANAGER, "👔", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def employee_reason_section_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Указать причину", BotAction.MENU_SUBMIT_REASON, "✍️", 0),
+        btn("Мои опоздания", BotAction.MENU_MY_LATES, "⏰", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def employee_manager_section_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Мой руководитель", BotAction.MENU_MY_MANAGER, "👔", 0),
+        btn("Мои уведомления", BotAction.MENU_MY_NOTIFICATIONS, "🔔", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def manager_management_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Мои сотрудники", BotAction.MENU_EMPLOYEES, "👥", 0),
+        btn("Опоздания отдела", BotAction.MENU_DEPARTMENT_LATES, "⏱️", 0),
+        btn("Неявки отдела", BotAction.MENU_DEPARTMENT_ABSENCES, "🚫", 1),
+        btn("Сводка", BotAction.MENU_SUMMARY, "📈", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def manager_reports_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Отчеты", BotAction.MENU_REPORTS, "📊", 0),
+        btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS, "🏢", 0),
+        btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 1),
+        btn("Сводка", BotAction.MENU_SUMMARY, "📈", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def manager_workflow_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Согласования", BotAction.MENU_APPROVALS, "✅", 0),
+        btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def security_skud_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Загрузить выгрузку СКУД", BotAction.MENU_SECURITY_IMPORT, "📥", 0),
+        btn("История импортов", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
+        btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS, "⚠️", 1),
+        btn("Необработанные записи", BotAction.MENU_UNPROCESSED, "🗂️", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def security_audit_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("История импортов", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
+        btn("Ошибки сопоставления", BotAction.MENU_MATCH_ERRORS, "⚠️", 0),
+        btn("Необработанные записи", BotAction.MENU_UNPROCESSED, "🗂️", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def hr_reference_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Сотрудники", BotAction.MENU_STAFF, "👥", 0),
+        btn("Подразделения", BotAction.MENU_DEPARTMENTS, "🏢", 0),
+        btn("Графики", BotAction.MENU_SCHEDULES, "🗓️", 1),
+        btn("Исключения", BotAction.MENU_EXCEPTIONS, "🚪", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
+    ]
+
+
+def hr_workflow_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 0),
+        btn("Согласования", BotAction.MENU_APPROVALS, "✅", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def hr_reports_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Отчеты", BotAction.MENU_REPORTS, "📊", 0),
+        btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS, "🏢", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def hr_settings_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Системные настройки", BotAction.MENU_SETTINGS, "⚙️", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def top_summary_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Сводка", BotAction.MENU_SUMMARY, "📈", 0),
+        btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def top_reports_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Отчеты по подразделениям", BotAction.MENU_DIVISION_REPORTS, "🏢", 0),
+        btn("Отчеты", BotAction.MENU_REPORTS, "📊", 0),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ]
+
+
+def top_workflow_buttons() -> List[MaxOutboundButton]:
+    return [
+        btn("Согласования", BotAction.MENU_APPROVALS, "✅", 0),
+        btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 0),
+        btn("Просроченные согласования", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
     ]
 
 

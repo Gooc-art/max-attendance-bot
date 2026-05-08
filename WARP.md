@@ -14,7 +14,7 @@
 5. Import SKUD files, create attendance cases, and persist daily visit records with first entry, last exit, and arrival/departure status. If a MAX file attachment arrives without a direct download URL, rehydrate the source message by `message_id` before rejecting the upload.
 6. Save runtime cases and approvals in SQLite.
 7. Expose a visible `Старт` button in every role menu; `/start` remains the underlying command.
-8. Expose a dedicated `Админ-панель` screen for users with the `admin` role, split into compact sections so the keyboard fits comfortably on mobile.
+8. Expose compact sectioned menus for every role, not only `admin`, so the keyboard fits comfortably on mobile.
 9. Expose read-only admin diagnostics for current MAX identity and Google Sheets binding.
 10. Let the employee pick a manager from a shortlist before submitting a reason.
 11. Send a push notification to the selected manager when an employee submits a reason, with approval actions attached.

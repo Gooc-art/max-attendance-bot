@@ -35,9 +35,14 @@ class AdminButtonsTests(unittest.TestCase):
         self.assertEqual(buttons[4].title, "Личное")
         self.assertEqual(buttons[4].action, BotAction.ADMIN_PERSONAL)
 
-    def test_admin_menu_shows_reports_section(self) -> None:
+    def test_admin_menu_shows_structure_section(self) -> None:
         buttons = main_menu_buttons("admin")
-        self.assertIn("Отчеты", [button.title for button in buttons])
+        self.assertIn("Структура", [button.title for button in buttons])
+        self.assertIn(BotAction.ADMIN_STRUCTURE, [button.action for button in buttons])
+
+    def test_admin_menu_shows_report_block_section(self) -> None:
+        buttons = main_menu_buttons("admin")
+        self.assertIn("Отчетный блок", [button.title for button in buttons])
         self.assertIn(BotAction.ADMIN_REPORTS, [button.action for button in buttons])
 
 

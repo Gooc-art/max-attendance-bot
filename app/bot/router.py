@@ -17,8 +17,23 @@ from app.bot.buttons import (
     approvals_menu_buttons,
     attendance_reason_buttons,
     employee_case_buttons,
+    employee_manager_section_buttons,
+    employee_personal_buttons,
+    employee_reason_section_buttons,
+    hr_reference_buttons,
+    hr_reports_buttons,
+    hr_settings_buttons,
+    hr_workflow_buttons,
+    manager_management_buttons,
+    manager_reports_buttons,
+    manager_workflow_buttons,
     main_menu_buttons,
     reports_menu_buttons,
+    security_audit_buttons,
+    security_skud_buttons,
+    top_reports_buttons,
+    top_summary_buttons,
+    top_workflow_buttons,
     substitutions_menu_buttons,
 )
 from app.bot.menus import get_menu_for_role
@@ -105,6 +120,81 @@ class MaxWebhookRouter:
             }[action]
             self.user_role_override_repository.set_role(event["user_id"], target_role)
             response = self._menu_response(target_role, "Роль переключена на: {0}".format(display_role_name(target_role)))
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.EMPLOYEE_PERSONAL:
+            response = self._employee_personal_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.EMPLOYEE_REASONS:
+            response = self._employee_reason_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.EMPLOYEE_MANAGER:
+            response = self._employee_manager_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MANAGER_MANAGEMENT:
+            response = self._manager_management_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MANAGER_REPORTS:
+            response = self._manager_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MANAGER_WORKFLOW:
+            response = self._manager_workflow_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.SECURITY_SKUD:
+            response = self._security_skud_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.SECURITY_AUDIT:
+            response = self._security_audit_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.HR_REFERENCE:
+            response = self._hr_reference_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.HR_WORKFLOW:
+            response = self._hr_workflow_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.HR_REPORTS:
+            response = self._hr_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.HR_SETTINGS:
+            response = self._hr_settings_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.TOP_SUMMARY:
+            response = self._top_summary_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.TOP_REPORTS:
+            response = self._top_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.TOP_WORKFLOW:
+            response = self._top_workflow_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -229,32 +319,32 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_PERSONAL or user_text == "Личное":
+        if action == BotAction.ADMIN_PERSONAL:
             response = self._admin_personal_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_STRUCTURE or user_text == "Структура":
+        if action == BotAction.ADMIN_STRUCTURE:
             response = self._admin_structure_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_SKUD or user_text == "СКУД":
+        if action == BotAction.ADMIN_SKUD:
             response = self._admin_skud_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_WORKFLOW or user_text == "Процессы":
+        if action == BotAction.ADMIN_WORKFLOW:
             response = self._admin_workflow_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_REPORTS or user_text == "Отчеты":
+        if action == BotAction.ADMIN_REPORTS:
             response = self._admin_reports_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_SETTINGS or user_text == "Настройки":
+        if action == BotAction.ADMIN_SETTINGS:
             response = self._admin_settings_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -481,6 +571,186 @@ class MaxWebhookRouter:
             role=role,
             menu=menu,
             outbound=MaxOutboundMessage(text=prefix + text, buttons=main_menu_buttons(role)),
+            active_flow=None,
+        )
+
+    def _employee_personal_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Личный раздел сотрудника.",
+                buttons=employee_personal_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _employee_reason_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Раздел причин и опозданий.",
+                buttons=employee_reason_section_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _employee_manager_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Раздел руководства.",
+                buttons=employee_manager_section_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _manager_management_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Управление сотрудниками и нарушениями.",
+                buttons=manager_management_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _manager_reports_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Отчетный блок руководителя.",
+                buttons=manager_reports_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _manager_workflow_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Процессы согласований и замещений.",
+                buttons=manager_workflow_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _security_skud_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Раздел СКУД.",
+                buttons=security_skud_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _security_audit_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Журнал и очередь разборов.",
+                buttons=security_audit_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _hr_reference_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Справочники HR.",
+                buttons=hr_reference_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _hr_workflow_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Процессы HR.",
+                buttons=hr_workflow_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _hr_reports_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Отчетный блок HR.",
+                buttons=hr_reports_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _hr_settings_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Параметры HR.",
+                buttons=hr_settings_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _top_summary_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Аналитика верхнего уровня.",
+                buttons=top_summary_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _top_reports_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Отчетный блок верхнего уровня.",
+                buttons=top_reports_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _top_workflow_menu(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Процессы верхнего уровня.",
+                buttons=top_workflow_buttons(),
+            ),
             active_flow=None,
         )
 

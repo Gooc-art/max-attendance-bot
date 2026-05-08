@@ -2451,6 +2451,7 @@ class MaxWebhookRouter:
             cls._normalize_navigation_action(BotAction.MAIN_MENU),
             cls._normalize_navigation_action(BotAction.START),
             cls._normalize_navigation_action("/start"),
+            cls._normalize_navigation_action("Старт"),
             cls._normalize_navigation_action("Главное меню"),
             cls._normalize_navigation_action("menu_main"),
             cls._normalize_navigation_action("main_menu"),
@@ -2458,6 +2459,7 @@ class MaxWebhookRouter:
         } or normalized_text in {
             cls._normalize_navigation_action(BotAction.START),
             cls._normalize_navigation_action("/start"),
+            cls._normalize_navigation_action("Старт"),
             cls._normalize_navigation_action("Главное меню"),
             cls._normalize_navigation_action("menu_main"),
             cls._normalize_navigation_action("main_menu"),

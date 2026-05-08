@@ -12,6 +12,7 @@ from docx_leadership_sync import (
     build_employee_index,
     build_employee_updates,
     build_normalized_rows,
+    build_structure_index,
     parse_template_rows,
     resolve_manager_name,
 )
@@ -62,12 +63,27 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             "Иванов Иван Иванович": EmployeeSheetRow(row_number=2, employee_name="Иванов Иван Иванович", employee_user_id="max_001")
         }
 
-        updates = build_employee_updates(rows, employee_index)
+        updates = build_employee_updates(rows, employee_index, {}, [])
 
         self.assertEqual(
             [(item.row_number, item.column, item.value) for item in updates],
             [(2, "G", "Отдел продаж"), (2, "E", "Петров Петр Сергеевич")],
         )
+
+    def test_build_employee_updates_uses_structure_department_override(self) -> None:
+        rows = parse_template_rows(
+            [
+                ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
+                ["1", "Антипина Луиза Николаевна", "", "", "", "", ""],
+            ]
+        )
+        employee_index = {
+            "Антипина Луиза Николаевна": EmployeeSheetRow(row_number=2, employee_name="Антипина Луиза Николаевна", employee_user_id="max_001")
+        }
+
+        updates = build_employee_updates(rows, employee_index, {"Антипина Луиза Николаевна": object()}, [])
+
+        self.assertIn((2, "G", "8-ОРиУН"), [(item.row_number, item.column, item.value) for item in updates])
 
     def test_build_normalized_rows_marks_top_manager(self) -> None:
         rows = parse_template_rows(
@@ -83,7 +99,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ]
         )
 
-        normalized = build_normalized_rows(rows, employee_index)
+        normalized = build_normalized_rows(rows, employee_index, {}, [])
 
         self.assertEqual(normalized[0][1], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][2], "max_001")
@@ -104,11 +120,24 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ]
         )
 
-        normalized = build_normalized_rows(rows, employee_index)
+        normalized = build_normalized_rows(rows, employee_index, {}, [])
 
         self.assertEqual(normalized[0][4], "Слабенко Александр Владимирович")
         self.assertEqual(normalized[0][7], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][9], "Готово")
+
+    def test_build_structure_index_uses_department_codes(self) -> None:
+        values = [
+            ["№", "Тип", "Текст", "X", "Y"],
+            ["1", "ФИО", "Иванов Иван Иванович", "10", "20"],
+            ["2", "Код_подразделения", "3-ООО", "15", "30"],
+        ]
+
+        structure_index, department_nodes = build_structure_index(values)
+
+        self.assertIn("Иванов Иван Иванович", structure_index)
+        self.assertEqual(len(department_nodes), 1)
+        self.assertEqual(department_nodes[0].text, "3-ООО")
 
     def test_resolve_manager_name_uses_explicit_hierarchy(self) -> None:
         row = parse_template_rows(

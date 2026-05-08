@@ -11,6 +11,7 @@ SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
 TEMPLATE_SHEET_TITLE = "DOCX_Связи_ШАБЛОН"
 NORMALIZED_SHEET_TITLE = "DOCX_Связи_НОРМА"
 EMPLOYEE_SHEET_TITLE = "Сотрудники"
+STRUCTURE_SHEET_TITLE = "DOCX_Структура"
 TOP_MANAGER_NAME = "Посунько Руслан Юрьевич"
 DIRECT_DEPUTIES = {
     "Слабенко Александр Владимирович",
@@ -53,6 +54,13 @@ MANAGER_OVERRIDES = {
     "Кузьмина Надежда Юрьевна": "Кондакова Юлия Борисовна",
     "Кислицын Максим Анатольевич": "Носко Кирилл Геннадьевич",
     "Канева Валерия Игоревна": "Кислицын Максим Анатольевич",
+}
+
+DEPARTMENT_OVERRIDES = {
+    "Антипина Луиза Николаевна": "8-ОРиУН",
+    "Назаров Дмитрий Алишерович": "18-ООК",
+    "Клоченок Анастасия Ивановна": "3-ООО",
+    "Марникова Наталья Евгеньевна": "22-ПО№1",
 }
 
 SCOPES = [
@@ -105,6 +113,14 @@ class EmployeeCellUpdate:
     row_number: int
     column: str
     value: str
+
+
+@dataclass(frozen=True)
+class StructureNode:
+    kind: str
+    text: str
+    x: int
+    y: int
 
 
 def normalize_text(value: object) -> str:
@@ -160,6 +176,8 @@ def build_employee_index(values: List[List[str]]) -> Dict[str, EmployeeSheetRow]
 def build_employee_updates(
     rows: Iterable[LeadershipTemplateRow],
     employee_index: Dict[str, EmployeeSheetRow],
+    structure_index: Dict[str, StructureNode],
+    department_nodes: List[StructureNode],
 ) -> List[EmployeeCellUpdate]:
     updates: List[EmployeeCellUpdate] = []
     for row in rows:
@@ -167,8 +185,9 @@ def build_employee_updates(
         if employee is None:
             continue
         manager_name = resolve_manager_name(row)
-        if row.department_name:
-            updates.append(EmployeeCellUpdate(employee.row_number, "G", row.department_name))
+        department_name = resolve_department_name(row, structure_index, department_nodes)
+        if department_name:
+            updates.append(EmployeeCellUpdate(employee.row_number, "G", department_name))
         if manager_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "E", manager_name))
     return updates
@@ -177,6 +196,8 @@ def build_employee_updates(
 def build_normalized_rows(
     rows: Iterable[LeadershipTemplateRow],
     employee_index: Dict[str, EmployeeSheetRow],
+    structure_index: Dict[str, StructureNode],
+    department_nodes: List[StructureNode],
 ) -> List[List[str]]:
     normalized_rows: List[List[str]] = []
     for index, row in enumerate(rows, start=1):
@@ -184,6 +205,7 @@ def build_normalized_rows(
         status = "Готово"
         manager_name = resolve_manager_name(row)
         top_manager_name = resolve_top_manager_name(row)
+        department_name = resolve_department_name(row, structure_index, department_nodes)
         if employee is None:
             status = "Не найден в Сотрудники"
         elif row.employee_name == TOP_MANAGER_NAME:
@@ -196,7 +218,7 @@ def build_normalized_rows(
                 str(index),
                 row.employee_name,
                 employee.employee_user_id if employee else "",
-                row.department_name,
+                department_name,
                 manager_name,
                 "",
                 row.replacement_name,
@@ -218,11 +240,63 @@ def resolve_top_manager_name(row: LeadershipTemplateRow) -> str:
     return TOP_MANAGER_NAME
 
 
+def resolve_department_name(
+    row: LeadershipTemplateRow,
+    structure_index: Dict[str, StructureNode],
+    department_nodes: List[StructureNode],
+) -> str:
+    explicit_department = normalize_text(DEPARTMENT_OVERRIDES.get(row.employee_name, row.department_name))
+    if explicit_department:
+        return explicit_department
+
+    employee_node = structure_index.get(row.employee_name)
+    if employee_node is None or not department_nodes:
+        return ""
+
+    candidates = [node for node in department_nodes if node.y > employee_node.y]
+    if not candidates:
+        candidates = department_nodes
+
+    def score(node: StructureNode) -> tuple[int, int, int]:
+        vertical = max(node.y - employee_node.y, 0)
+        horizontal = abs(node.x - employee_node.x)
+        return (vertical, horizontal, node.y)
+
+    best = min(candidates, key=score)
+    return normalize_text(best.text)
+
+
 def get_cell(row: List[str], header_index: Dict[str, int], header_name: str) -> str:
     idx = header_index.get(header_name)
     if idx is None or idx >= len(row):
         return ""
     return normalize_text(row[idx])
+
+
+def build_structure_index(values: List[List[str]]) -> tuple[Dict[str, StructureNode], List[StructureNode]]:
+    if not values:
+        return {}, []
+
+    headers = [normalize_text(cell) for cell in values[0]]
+    index = {name: idx for idx, name in enumerate(headers) if name}
+    nodes: Dict[str, StructureNode] = {}
+    department_nodes: List[StructureNode] = []
+
+    for raw_row in values[1:]:
+        kind = get_cell(raw_row, index, "Тип")
+        text = get_cell(raw_row, index, "Текст")
+        x = get_cell(raw_row, index, "X")
+        y = get_cell(raw_row, index, "Y")
+        if not kind or not text:
+            continue
+        if not x.lstrip("-").isdigit() or not y.lstrip("-").isdigit():
+            continue
+        node = StructureNode(kind=kind, text=text, x=int(x), y=int(y))
+        if kind == "ФИО" and text not in nodes:
+            nodes[text] = node
+        elif kind == "Код_подразделения":
+            department_nodes.append(node)
+    return nodes, department_nodes
 
 
 def load_credentials():
@@ -303,12 +377,17 @@ def sync_leadership_template() -> dict[str, int]:
         spreadsheetId=SPREADSHEET_ID,
         range=f"{EMPLOYEE_SHEET_TITLE}!A:Q",
     ).execute().get("values", [])
+    structure_values = sheets_service.spreadsheets().values().get(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{STRUCTURE_SHEET_TITLE}!A:E",
+    ).execute().get("values", [])
 
     template_rows = parse_template_rows(template_values)
     employee_index = build_employee_index(employee_values)
+    structure_index, department_nodes = build_structure_index(structure_values)
 
-    employee_updates = build_employee_updates(template_rows, employee_index)
-    normalized_rows = build_normalized_rows(template_rows, employee_index)
+    employee_updates = build_employee_updates(template_rows, employee_index, structure_index, department_nodes)
+    normalized_rows = build_normalized_rows(template_rows, employee_index, structure_index, department_nodes)
 
     ensure_sheet(sheets_service, NORMALIZED_SHEET_TITLE)
     clear_and_write_rows(sheets_service, NORMALIZED_SHEET_TITLE, NORMALIZED_HEADERS, normalized_rows)

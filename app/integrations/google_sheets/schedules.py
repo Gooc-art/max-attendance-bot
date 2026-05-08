@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -57,6 +58,7 @@ class GoogleSheetsScheduleService:
         self.cache_ttl_seconds = cache_ttl_seconds or settings.google_sheets_cache_ttl_seconds
         self._cached_records: List[GoogleSheetsScheduleRecord] = []
         self._cached_at: datetime | None = None
+        self.logger = logging.getLogger(__name__)
 
     @classmethod
     def from_settings(cls) -> "GoogleSheetsScheduleService":
@@ -76,11 +78,18 @@ class GoogleSheetsScheduleService:
             return []
         if not refresh and self._cache_is_fresh():
             return list(self._cached_records)
-        values = self._fetch_values()
-        records = self._parse_values(values)
-        self._cached_records = records
-        self._cached_at = datetime.utcnow()
-        return list(records)
+        try:
+            values = self._fetch_values()
+            records = self._parse_values(values)
+            self._cached_records = records
+            self._cached_at = datetime.now(timezone.utc)
+            return list(records)
+        except Exception as exc:
+            if self._cached_records:
+                self.logger.warning("Google Sheets schedule fetch failed, using cached records: %s", exc)
+                return list(self._cached_records)
+            self.logger.warning("Google Sheets schedule fetch failed and cache is empty: %s", exc)
+            return []
 
     def get_by_schedule_id(self, schedule_id: str, refresh: bool = False) -> Optional[GoogleSheetsScheduleRecord]:
         if not schedule_id:
@@ -106,9 +115,9 @@ class GoogleSheetsScheduleService:
         event_date: date,
         fallback: str = "08:30",
     ) -> str:
-        record = self.get_by_schedule_id(schedule_id, refresh=True) if schedule_id else None
+        record = self.get_by_schedule_id(schedule_id, refresh=False) if schedule_id else None
         if record is None and schedule_name:
-            record = self.get_by_schedule_name(schedule_name, refresh=True)
+            record = self.get_by_schedule_name(schedule_name, refresh=False)
         if record is None:
             return fallback
         planned = record.planned_start_for(event_date)
@@ -121,9 +130,9 @@ class GoogleSheetsScheduleService:
         schedule_name: str = "",
         fallback: int = 10,
     ) -> int:
-        record = self.get_by_schedule_id(schedule_id, refresh=True) if schedule_id else None
+        record = self.get_by_schedule_id(schedule_id, refresh=False) if schedule_id else None
         if record is None and schedule_name:
-            record = self.get_by_schedule_name(schedule_name, refresh=True)
+            record = self.get_by_schedule_name(schedule_name, refresh=False)
         if record is None:
             return fallback
         return record.late_after_minutes
@@ -131,7 +140,7 @@ class GoogleSheetsScheduleService:
     def _cache_is_fresh(self) -> bool:
         if self._cached_at is None:
             return False
-        return (datetime.utcnow() - self._cached_at).total_seconds() <= self.cache_ttl_seconds
+        return datetime.now(timezone.utc) - self._cached_at <= timedelta(seconds=self.cache_ttl_seconds)
 
     def _fetch_values(self) -> List[List[str]]:
         credentials = self._load_credentials()

@@ -22,7 +22,7 @@
 13. Provide substitution draft actions in the bot: list, cancel, and extend.
 14. Generate `.xlsx` and `.pdf` reports, including department breakdown reports, and send them to MAX as files with public download URLs as fallback.
 15. Bootstrap `Сотрудники` and `Подразделения` in Google Sheets from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
-16. Resolve SKUD planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned.
+16. Resolve SKUD planned start times and grace windows from Google Sheets `Графики` when an employee has a schedule assigned, and continue from the last cached schedule snapshot if Google Sheets is temporarily unavailable.
 17. Assign bootstrap employee schedules to the five-day schedules `ГР003` or `ГР004` automatically from the employee name pattern instead of using `ГР001` for everyone.
 18. Send ordinary MAX replies with `send_message` using a fallback recipient chain: try `chat_id` first for incoming message replies, then `user_id` if needed. Use the same fallback pattern for push notifications and proactive messages. Reserve `answer_callback` for inline keyboard callbacks.
 

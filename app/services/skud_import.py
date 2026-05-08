@@ -10,6 +10,7 @@ from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCas
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.integrations.google_sheets.schedules import GoogleSheetsScheduleService
 from app.repositories.approval_repository import ApprovalRepository
+from app.repositories.attendance_day_record_repository import AttendanceDayRecordRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
 from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.skud_import_repository import SkudImportRepository
@@ -33,6 +34,12 @@ class SkudImportResult:
     unique_employees: int = 0
     period_start: str = ""
     period_end: str = ""
+    arrivals_early: int = 0
+    arrivals_on_time: int = 0
+    arrivals_late: int = 0
+    departures_early: int = 0
+    departures_on_time: int = 0
+    departures_late: int = 0
     samples: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
@@ -44,6 +51,7 @@ class SkudImportService:
         self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.google_schedule_service = GoogleSheetsScheduleService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
+        self.day_record_repository = AttendanceDayRecordRepository()
         self.import_repository = SkudImportRepository()
 
     def import_csv(self, *, filename: str, content: bytes, created_by_user_id: str = "") -> SkudImportResult:
@@ -141,11 +149,17 @@ class SkudImportService:
         while data_start < len(rows) and rows[data_start] and rows[data_start][0].strip() == "Ф.И.О":
             data_start += 1
 
-        first_entries: Dict[Tuple[str, str], Dict[str, str]] = {}
+        daily_records: Dict[Tuple[str, str], Dict[str, object]] = {}
         total_rows = 0
         errors: List[str] = []
         min_dt: datetime | None = None
         max_dt: datetime | None = None
+        arrivals_early = 0
+        arrivals_on_time = 0
+        arrivals_late = 0
+        departures_early = 0
+        departures_on_time = 0
+        departures_late = 0
 
         for row_number, row in enumerate(rows[data_start:], start=data_start + 1):
             if len(row) < 8:
@@ -163,8 +177,6 @@ class SkudImportService:
                     continue
                 if event_value != "Проход":
                     continue
-                if zone_value != "Здание":
-                    continue
 
                 event_dt = datetime.strptime(dt_value, "%d.%m.%Y %H:%M:%S")
                 if min_dt is None or event_dt < min_dt:
@@ -173,65 +185,139 @@ class SkudImportService:
                     max_dt = event_dt
                 employee_directory = self._resolve_directory_record(employee_name)
                 planned_start = self._resolve_planned_start(employee_directory, event_dt.date())
-                if planned_start is None:
+                planned_end = self._resolve_planned_end(employee_directory, event_dt.date())
+                if not planned_start and not planned_end:
                     continue
                 key = (employee_name, event_dt.date().isoformat())
-                current = first_entries.get(key)
-                if current is None or event_dt.isoformat() < current["event_dt"]:
-                    first_entries[key] = {
+                current = daily_records.get(key)
+                if current is None:
+                    current = {
+                        "record_key": self._build_record_key(employee_directory, employee_name, event_dt.date().isoformat()),
                         "employee_name": employee_name,
                         "department_name": (
                             employee_directory["department_name"] if employee_directory and employee_directory["department_name"] else department_name
                         )
                         or "Не указано",
                         "event_date": event_dt.date().isoformat(),
-                        "actual_start": event_dt.strftime("%H:%M"),
-                        "event_dt": event_dt.isoformat(),
                         "employee_user_id": employee_directory["employee_user_id"] if employee_directory else "",
                         "manager_user_id": employee_directory["manager_user_id"] if employee_directory else "",
                         "manager_name": employee_directory["manager_name"] if employee_directory else "",
                         "schedule_name": employee_directory.get("schedule_name", "") if employee_directory else "",
                         "schedule_id": employee_directory.get("schedule_id", "") if employee_directory else "",
-                        "planned_start": planned_start,
+                        "planned_start": planned_start or "",
+                        "planned_end": planned_end or "",
+                        "first_entry_dt": "",
+                        "last_exit_dt": "",
+                        "total_passes": 0,
                     }
+                    daily_records[key] = current
+                current["total_passes"] = int(current.get("total_passes", 0) or 0) + 1
+                is_entry = zone_value == "Здание"
+                is_exit = zone_value == "Внешний мир"
+                if is_entry:
+                    current_first = str(current.get("first_entry_dt", ""))
+                    if not current_first or event_dt.isoformat() < current_first:
+                        current["first_entry_dt"] = event_dt.isoformat()
+                if is_exit:
+                    current_last = str(current.get("last_exit_dt", ""))
+                    if not current_last or event_dt.isoformat() > current_last:
+                        current["last_exit_dt"] = event_dt.isoformat()
             except Exception as exc:
                 errors.append(f"Строка {row_number}: {exc}")
 
         created_cases = 0
         samples: List[str] = []
-        for item in first_entries.values():
-            actual_dt = datetime.fromisoformat(item["event_dt"])
-            planned_time = self._parse_time(item["planned_start"])
-            delay_minutes = int((actual_dt - datetime.combine(actual_dt.date(), planned_time)).total_seconds() // 60)
-            if delay_minutes <= self._resolve_late_after_minutes(item):
+        attendance_rows: List[Dict[str, object]] = []
+        for item in daily_records.values():
+            planned_start = str(item.get("planned_start", "")).strip()
+            planned_end = str(item.get("planned_end", "")).strip()
+            event_date_str = str(item.get("event_date", "")).strip()
+            event_date = self._parse_event_date(event_date_str)
+            if event_date is None:
                 continue
-            if delay_minutes <= 0:
-                continue
-            if len(samples) < 5:
-                samples.append(
-                    "{name} | {date} | {time} | +{delay} мин".format(
-                        name=item["employee_name"],
-                        date=item["event_date"],
-                        time=item["actual_start"],
-                        delay=delay_minutes,
-                    )
+
+            arrival_dt = self._parse_iso_datetime(str(item.get("first_entry_dt", "")).strip())
+            departure_dt = self._parse_iso_datetime(str(item.get("last_exit_dt", "")).strip())
+            arrival_status = ""
+            arrival_delta = 0
+            departure_status = ""
+            departure_delta = 0
+
+            if arrival_dt and planned_start:
+                arrival_status, arrival_delta = self._classify_arrival(
+                    arrival_dt=arrival_dt,
+                    planned_start=planned_start,
+                    grace_minutes=self._resolve_late_after_minutes(item),
                 )
-            self.case_repository.create_case(
-                employee_user_id=item.get("employee_user_id", ""),
-                employee_name=item["employee_name"],
-                department_name=item["department_name"],
-                manager_user_id=item.get("manager_user_id", ""),
-                manager_name=item.get("manager_name", ""),
-                case_type=AttendanceCaseType.LATE.value,
-                status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
-                event_date=item["event_date"],
-                planned_start=item["planned_start"],
-                actual_start=item["actual_start"],
-                delay_minutes=delay_minutes,
-                employee_reason="",
-                source="skud_report",
+                if arrival_status == "early":
+                    arrivals_early += 1
+                elif arrival_status == "on_time":
+                    arrivals_on_time += 1
+                else:
+                    arrivals_late += 1
+                    if len(samples) < 5:
+                        samples.append(
+                            "{name} | {date} | {time} | +{delay} мин".format(
+                                name=item["employee_name"],
+                                date=event_date_str,
+                                time=arrival_dt.strftime("%H:%M"),
+                                delay=arrival_delta,
+                            )
+                        )
+                    self.case_repository.create_case(
+                        employee_user_id=str(item.get("employee_user_id", "")),
+                        employee_name=str(item["employee_name"]),
+                        department_name=str(item["department_name"]),
+                        manager_user_id=str(item.get("manager_user_id", "")),
+                        manager_name=str(item.get("manager_name", "")),
+                        case_type=AttendanceCaseType.LATE.value,
+                        status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
+                        event_date=event_date_str,
+                        planned_start=planned_start,
+                        actual_start=arrival_dt.strftime("%H:%M"),
+                        delay_minutes=arrival_delta,
+                        employee_reason="",
+                        source="skud_report",
+                    )
+                    created_cases += 1
+
+            if departure_dt and planned_end:
+                departure_status, departure_delta = self._classify_departure(
+                    departure_dt=departure_dt,
+                    planned_end=planned_end,
+                )
+                if departure_status == "early":
+                    departures_early += 1
+                elif departure_status == "on_time":
+                    departures_on_time += 1
+                else:
+                    departures_late += 1
+
+            attendance_rows.append(
+                {
+                    "record_key": str(item.get("record_key", "")),
+                    "employee_user_id": str(item.get("employee_user_id", "")),
+                    "employee_name": str(item.get("employee_name", "")),
+                    "department_name": str(item.get("department_name", "")),
+                    "manager_user_id": str(item.get("manager_user_id", "")),
+                    "manager_name": str(item.get("manager_name", "")),
+                    "schedule_name": str(item.get("schedule_name", "")),
+                    "schedule_id": str(item.get("schedule_id", "")),
+                    "event_date": event_date_str,
+                    "planned_start": planned_start,
+                    "planned_end": planned_end,
+                    "first_entry_time": arrival_dt.strftime("%H:%M") if arrival_dt else "",
+                    "arrival_status": arrival_status,
+                    "arrival_delta_minutes": arrival_delta,
+                    "last_exit_time": departure_dt.strftime("%H:%M") if departure_dt else "",
+                    "departure_status": departure_status,
+                    "departure_delta_minutes": departure_delta,
+                    "total_passes": int(item.get("total_passes", 0) or 0),
+                    "source": "skud_report",
+                }
             )
-            created_cases += 1
+
+        self.day_record_repository.upsert_many(attendance_rows)
 
         import_id = self.import_repository.create(
             filename=filename,
@@ -239,7 +325,7 @@ class SkudImportService:
             status="completed" if not errors else "completed_with_errors",
             period_start=min_dt.date().isoformat() if min_dt else "",
             period_end=max_dt.date().isoformat() if max_dt else "",
-            unique_employees=len({key[0] for key in first_entries.keys()}),
+            unique_employees=len({key[0] for key in daily_records.keys()}),
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
@@ -251,9 +337,15 @@ class SkudImportService:
             total_rows=total_rows,
             created_cases=created_cases,
             error_rows=len(errors),
-            unique_employees=len({key[0] for key in first_entries.keys()}),
+            unique_employees=len({key[0] for key in daily_records.keys()}),
             period_start=min_dt.date().isoformat() if min_dt else "",
             period_end=max_dt.date().isoformat() if max_dt else "",
+            arrivals_early=arrivals_early,
+            arrivals_on_time=arrivals_on_time,
+            arrivals_late=arrivals_late,
+            departures_early=departures_early,
+            departures_on_time=departures_on_time,
+            departures_late=departures_late,
             samples=samples,
             errors=errors,
         )
@@ -392,6 +484,17 @@ class SkudImportService:
             fallback=10,
         )
 
+    def _resolve_planned_end(self, employee_directory: Dict[str, str], event_date: date) -> str:
+        schedule_id = employee_directory.get("schedule_id", "")
+        schedule_name = employee_directory.get("schedule_name", "")
+        planned_end = self.google_schedule_service.resolve_planned_end(
+            schedule_id=schedule_id,
+            schedule_name=schedule_name,
+            event_date=event_date,
+            fallback="18:00",
+        )
+        return planned_end or ""
+
     @staticmethod
     def _parse_time(value: str) -> time:
         for fmt in ("%H:%M", "%H:%M:%S"):
@@ -409,3 +512,41 @@ class SkudImportService:
             except ValueError:
                 continue
         return None
+
+    @staticmethod
+    def _parse_iso_datetime(value: str) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _classify_arrival(*, arrival_dt: datetime, planned_start: str, grace_minutes: int) -> tuple[str, int]:
+        planned_time = SkudImportService._parse_time(planned_start)
+        planned_dt = datetime.combine(arrival_dt.date(), planned_time)
+        delta_minutes = int((arrival_dt - planned_dt).total_seconds() // 60)
+        if delta_minutes < 0:
+            return "early", delta_minutes
+        if delta_minutes <= grace_minutes:
+            return "on_time", delta_minutes
+        return "late", delta_minutes
+
+    @staticmethod
+    def _classify_departure(*, departure_dt: datetime, planned_end: str) -> tuple[str, int]:
+        planned_time = SkudImportService._parse_time(planned_end)
+        planned_dt = datetime.combine(departure_dt.date(), planned_time)
+        delta_minutes = int((departure_dt - planned_dt).total_seconds() // 60)
+        if delta_minutes < 0:
+            return "early", delta_minutes
+        if delta_minutes == 0:
+            return "on_time", delta_minutes
+        return "late", delta_minutes
+
+    @staticmethod
+    def _build_record_key(employee_directory: Dict[str, str], employee_name: str, event_date: str) -> str:
+        employee_user_id = employee_directory.get("employee_user_id", "")
+        if employee_user_id:
+            return f"user:{employee_user_id}:{event_date}"
+        return f"name:{employee_name}:{event_date}"

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from app.services.report_service import ReportService
 
 
-class _FakeCaseRepository:
+class _FakeVisitRepository:
     def __init__(self):
         self.list_all_called = False
 
@@ -18,29 +18,37 @@ class _FakeCaseRepository:
         return [
             SimpleNamespace(
                 id=1,
+                employee_user_id="emp_1",
                 employee_name="Иванов Иван Иванович",
                 department_name="Отдел продаж",
                 manager_name="Петров Петр Сергеевич",
-                case_type="late",
-                status="awaiting_manager_approval",
                 event_date="2026-05-01",
                 planned_start="08:30",
-                actual_start="08:44",
-                delay_minutes=14,
-                employee_reason="Личная причина",
+                planned_end="17:15",
+                first_entry_time="08:44",
+                arrival_status="late",
+                arrival_delta_minutes=14,
+                last_exit_time="17:40",
+                departure_status="late",
+                departure_delta_minutes=25,
+                total_passes=12,
             ),
             SimpleNamespace(
                 id=2,
+                employee_user_id="emp_2",
                 employee_name="Смирнов Сергей Олегович",
                 department_name="Отдел продаж",
                 manager_name="Петров Петр Сергеевич",
-                case_type="absent",
-                status="justified",
                 event_date="2026-05-02",
                 planned_start="08:30",
-                actual_start="",
-                delay_minutes=0,
-                employee_reason="Больничный",
+                planned_end="17:15",
+                first_entry_time="08:20",
+                arrival_status="early",
+                arrival_delta_minutes=-10,
+                last_exit_time="17:15",
+                departure_status="on_time",
+                departure_delta_minutes=0,
+                total_passes=10,
             ),
         ]
 
@@ -67,7 +75,7 @@ class _FakeReportRepository:
 class ReportServiceTests(unittest.TestCase):
     def test_generate_manager_report_creates_xlsx_and_download_link(self) -> None:
         service = ReportService()
-        service.case_repository = _FakeCaseRepository()
+        service.visit_repository = _FakeVisitRepository()
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -92,14 +100,16 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
+                self.assertIn("Пришли раньше", summary_xml.decode("utf-8"))
+                self.assertIn("Ушли позже", summary_xml.decode("utf-8"))
 
             pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
             self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
 
     def test_generate_division_report_creates_department_breakdown(self) -> None:
-        repo = _FakeCaseRepository()
+        repo = _FakeVisitRepository()
         service = ReportService()
-        service.case_repository = repo
+        service.visit_repository = repo
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -127,6 +137,7 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
                 breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
                 self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
+                self.assertIn("Ушли позже", breakdown_xml.decode("utf-8"))
             pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
             self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
 

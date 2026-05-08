@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.integrations.max.client import MaxApiClient
@@ -24,7 +25,7 @@ class MaxFileImportTests(unittest.TestCase):
             }
         }
         service.skud_import_service = MagicMock()
-        service.skud_import_service.import_csv.return_value = MagicMock(
+        service.skud_import_service.import_csv.return_value = SimpleNamespace(
             filename="Отчет по проходам.xlsx",
             period_start="2026-05-01",
             period_end="2026-05-01",
@@ -32,6 +33,12 @@ class MaxFileImportTests(unittest.TestCase):
             total_rows=1,
             created_cases=1,
             error_rows=0,
+            arrivals_early=1,
+            arrivals_on_time=0,
+            arrivals_late=0,
+            departures_early=0,
+            departures_on_time=1,
+            departures_late=0,
             samples=[],
         )
 
@@ -52,6 +59,8 @@ class MaxFileImportTests(unittest.TestCase):
         xlsx_to_csv.assert_called_once_with(b"content")
         self.assertEqual(result.status, "imported")
         self.assertIn("Файл `Отчет по проходам.xlsx` обработан.", result.message)
+        self.assertIn("Пришли раньше", result.message)
+        self.assertIn("Ушли позже", result.message)
 
     def test_get_message_uses_expected_endpoint(self) -> None:
         client = MaxApiClient(

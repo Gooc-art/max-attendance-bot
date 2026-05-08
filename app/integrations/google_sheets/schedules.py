@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -19,12 +20,19 @@ class GoogleSheetsScheduleRecord:
     schedule_id: str = ""
     schedule_name: str = ""
     monday_start: str = ""
+    monday_end: str = ""
     tuesday_start: str = ""
+    tuesday_end: str = ""
     wednesday_start: str = ""
+    wednesday_end: str = ""
     thursday_start: str = ""
+    thursday_end: str = ""
     friday_start: str = ""
+    friday_end: str = ""
     saturday_start: str = ""
+    saturday_end: str = ""
     sunday_start: str = ""
+    sunday_end: str = ""
     late_after_minutes: int = 10
     is_active: bool = True
     comment: str = ""
@@ -39,6 +47,19 @@ class GoogleSheetsScheduleRecord:
             4: self.friday_start,
             5: self.saturday_start,
             6: self.sunday_start,
+        }
+        return mapping.get(weekday, "")
+
+    def planned_end_for(self, event_date: date) -> str:
+        weekday = event_date.weekday()
+        mapping = {
+            0: self.monday_end,
+            1: self.tuesday_end,
+            2: self.wednesday_end,
+            3: self.thursday_end,
+            4: self.friday_end,
+            5: self.saturday_end,
+            6: self.sunday_end,
         }
         return mapping.get(weekday, "")
 
@@ -137,6 +158,24 @@ class GoogleSheetsScheduleService:
             return fallback
         return record.late_after_minutes
 
+    def resolve_planned_end(
+        self,
+        *,
+        schedule_id: str = "",
+        schedule_name: str = "",
+        event_date: date,
+        fallback: str = "18:00",
+    ) -> str:
+        record = self.get_by_schedule_id(schedule_id, refresh=False) if schedule_id else None
+        if record is None and schedule_name:
+            record = self.get_by_schedule_name(schedule_name, refresh=False)
+        if record is None:
+            return self._parse_end_from_schedule_name(schedule_name) or fallback
+        planned = record.planned_end_for(event_date)
+        if planned:
+            return planned
+        return self._parse_end_from_schedule_name(record.schedule_name) or fallback
+
     def _cache_is_fresh(self) -> bool:
         if self._cached_at is None:
             return False
@@ -192,12 +231,19 @@ class GoogleSheetsScheduleService:
                     schedule_id=schedule_id,
                     schedule_name=schedule_name,
                     monday_start=self._pick(data, "Понедельник_начало", "monday_start"),
+                    monday_end=self._pick(data, "Понедельник_окончание", "Понедельник_конец", "monday_end"),
                     tuesday_start=self._pick(data, "Вторник_начало", "tuesday_start"),
+                    tuesday_end=self._pick(data, "Вторник_окончание", "Вторник_конец", "tuesday_end"),
                     wednesday_start=self._pick(data, "Среда_начало", "wednesday_start"),
+                    wednesday_end=self._pick(data, "Среда_окончание", "Среда_конец", "wednesday_end"),
                     thursday_start=self._pick(data, "Четверг_начало", "thursday_start"),
+                    thursday_end=self._pick(data, "Четверг_окончание", "Четверг_конец", "thursday_end"),
                     friday_start=self._pick(data, "Пятница_начало", "friday_start"),
+                    friday_end=self._pick(data, "Пятница_окончание", "Пятница_конец", "friday_end"),
                     saturday_start=self._pick(data, "Суббота_начало", "saturday_start"),
+                    saturday_end=self._pick(data, "Суббота_окончание", "Суббота_конец", "saturday_end"),
                     sunday_start=self._pick(data, "Воскресенье_начало", "sunday_start"),
+                    sunday_end=self._pick(data, "Воскресенье_окончание", "Воскресенье_конец", "sunday_end"),
                     late_after_minutes=self._to_int(self._pick(data, "Допустимое_опоздание_мин", "late_after_minutes"), default=10),
                     is_active=self._to_bool(self._pick(data, "Активен", "is_active"), default=True),
                     comment=self._pick(data, "Комментарий", "comment"),
@@ -215,6 +261,15 @@ class GoogleSheetsScheduleService:
             value = data.get(key, "")
             if value:
                 return value
+        return ""
+
+    @staticmethod
+    def _parse_end_from_schedule_name(schedule_name: str) -> str:
+        if not schedule_name:
+            return ""
+        matches = re.findall(r"(\d{2}:\d{2})", schedule_name)
+        if len(matches) >= 2:
+            return matches[-1]
         return ""
 
     @staticmethod

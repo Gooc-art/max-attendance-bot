@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -52,6 +52,36 @@ class AttendanceCaseModel(Base):
     delay_minutes: Mapped[int] = mapped_column(Integer, default=0)
     employee_reason: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(String(50), default="manual", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AttendanceDayRecordModel(Base):
+    __tablename__ = "attendance_day_records"
+    __table_args__ = (
+        UniqueConstraint("record_key", name="uq_attendance_day_records_record_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    record_key: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    employee_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    employee_name: Mapped[str] = mapped_column(String(255), index=True)
+    department_name: Mapped[str] = mapped_column(String(255), index=True)
+    manager_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    manager_name: Mapped[str] = mapped_column(String(255), default="")
+    schedule_name: Mapped[str] = mapped_column(String(255), default="")
+    schedule_id: Mapped[str] = mapped_column(String(255), default="")
+    event_date: Mapped[str] = mapped_column(String(20), index=True)
+    planned_start: Mapped[str] = mapped_column(String(20), default="")
+    planned_end: Mapped[str] = mapped_column(String(20), default="")
+    first_entry_time: Mapped[str] = mapped_column(String(20), default="")
+    arrival_status: Mapped[str] = mapped_column(String(20), default="")
+    arrival_delta_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    last_exit_time: Mapped[str] = mapped_column(String(20), default="")
+    departure_status: Mapped[str] = mapped_column(String(20), default="")
+    departure_delta_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    total_passes: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(50), default="skud_report", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

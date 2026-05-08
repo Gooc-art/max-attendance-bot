@@ -290,6 +290,12 @@ class MaxFileImportService:
             "Сотрудников найдено: {count}".format(count=result.unique_employees),
             "Строк проверено: {total}".format(total=result.total_rows),
             "Новых случаев: {created}".format(created=result.created_cases),
+            "Пришли раньше: {count}".format(count=result.arrivals_early),
+            "Пришли вовремя: {count}".format(count=result.arrivals_on_time),
+            "Пришли с опозданием: {count}".format(count=result.arrivals_late),
+            "Ушли раньше: {count}".format(count=result.departures_early),
+            "Ушли вовремя: {count}".format(count=result.departures_on_time),
+            "Ушли позже: {count}".format(count=result.departures_late),
             "Не получилось разобрать: {errors}".format(errors=result.error_rows),
         ]
         if result.samples:

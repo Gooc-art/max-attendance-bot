@@ -11,7 +11,7 @@
 2. If Google Sheets returns a quota or transport error, fall back to the last cached directory and then to local role overrides and local employee directory.
 3. Render role-based MAX menus.
 4. Display role names in Russian in user-facing interfaces while keeping technical role codes internal.
-5. Import SKUD files and create attendance cases. If a MAX file attachment arrives without a direct download URL, rehydrate the source message by `message_id` before rejecting the upload.
+5. Import SKUD files, create attendance cases, and persist daily visit records with first entry, last exit, and arrival/departure status. If a MAX file attachment arrives without a direct download URL, rehydrate the source message by `message_id` before rejecting the upload.
 6. Save runtime cases and approvals in SQLite.
 7. Expose a visible `Старт` button in every role menu; `/start` remains the underlying command.
 8. Expose a dedicated `Админ-панель` screen for users with the `admin` role.

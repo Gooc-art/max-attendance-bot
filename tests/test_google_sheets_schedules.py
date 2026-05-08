@@ -76,6 +76,13 @@ class GoogleSheetsScheduleServiceTests(unittest.TestCase):
             ),
             "",
         )
+        self.assertEqual(
+            service.resolve_planned_end(
+                schedule_id="ГР003",
+                event_date=date(2026, 5, 4),
+            ),
+            "17:15",
+        )
 
     def test_uses_cached_records_when_refresh_fails(self) -> None:
         service = _FakeGoogleSheetsScheduleService(
@@ -121,6 +128,13 @@ class GoogleSheetsScheduleServiceTests(unittest.TestCase):
         cached_records = service.list_schedules(refresh=True)
         self.assertEqual(len(cached_records), 1)
         self.assertEqual(cached_records[0].schedule_id, "ГР004")
+        self.assertEqual(
+            service.resolve_planned_end(
+                schedule_id="ГР004",
+                event_date=date(2026, 5, 4),
+            ),
+            "18:15",
+        )
 
 
 if __name__ == "__main__":

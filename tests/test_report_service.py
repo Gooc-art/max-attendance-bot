@@ -57,6 +57,64 @@ class _FakeVisitRepository:
         return self.list_for_manager_user("all", limit=limit)
 
 
+class _FakeCaseRepository:
+    def __init__(self):
+        self.list_all_called = False
+        self.list_for_manager_called = False
+
+    def list_for_manager_user(self, user_id: str, limit: int = 500):
+        self.list_for_manager_called = True
+        return [
+            SimpleNamespace(
+                id=1,
+                employee_user_id="emp_1",
+                employee_name="Иванов Иван Иванович",
+                department_name="Отдел продаж",
+                manager_user_id="mgr-1",
+                manager_name="Петров Петр Сергеевич",
+                case_type="late",
+                employee_reason="Был у врача",
+                event_date="2026-05-01",
+            ),
+            SimpleNamespace(
+                id=2,
+                employee_user_id="emp_2",
+                employee_name="Смирнов Сергей Олегович",
+                department_name="Отдел продаж",
+                manager_user_id="mgr-1",
+                manager_name="Петров Петр Сергеевич",
+                case_type="late",
+                employee_reason="Согласованное опоздание",
+                event_date="2026-05-02",
+            ),
+        ]
+
+    def list_all(self, limit: int = 5000):
+        self.list_all_called = True
+        return self.list_for_manager_user("all", limit=limit)
+
+
+class _FakeApprovalRepository:
+    def __init__(self):
+        self.list_all_called = False
+        self.list_for_manager_called = False
+
+    def list_for_manager_user(self, manager_user_id: str, limit: int = 500):
+        self.list_for_manager_called = True
+        cases = _FakeCaseRepository().list_for_manager_user(manager_user_id, limit=limit)
+        return [
+            (
+                SimpleNamespace(case_id=case.id, manager_name="Петров Петр Сергеевич", status="approved", comment=""),
+                case,
+            )
+            for case in cases
+        ]
+
+    def list_all(self, limit: int = 5000):
+        self.list_all_called = True
+        return self.list_for_manager_user("all", limit=limit)
+
+
 class _FakeReportRepository:
     def __init__(self):
         self.created = []
@@ -76,6 +134,8 @@ class ReportServiceTests(unittest.TestCase):
     def test_generate_manager_report_creates_xlsx_and_download_link(self) -> None:
         service = ReportService()
         service.visit_repository = _FakeVisitRepository()
+        service.case_repository = _FakeCaseRepository()
+        service.approval_repository = _FakeApprovalRepository()
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -102,14 +162,18 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
                 self.assertIn("Пришли раньше", summary_xml.decode("utf-8"))
                 self.assertIn("Ушли позже", summary_xml.decode("utf-8"))
+                self.assertIn("Дней с причиной", summary_xml.decode("utf-8"))
 
-            pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
-            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+            pdf_lines = service._build_pdf_lines("Недельный отчет", [["Параметр", "Значение"], ["Дней с причиной", "2"]], service._build_visit_detail_rows(service._build_visit_entries(service.visit_repository.list_for_manager_user("mgr-1"), service.case_repository.list_for_manager_user("mgr-1"), service.approval_repository.list_for_manager_user("mgr-1"))), [])
+            self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
+            self.assertIn("Кто согласовал: Петров Петр Сергеевич", "\n".join(pdf_lines))
 
     def test_generate_division_report_creates_department_breakdown(self) -> None:
         repo = _FakeVisitRepository()
         service = ReportService()
         service.visit_repository = repo
+        service.case_repository = _FakeCaseRepository()
+        service.approval_repository = _FakeApprovalRepository()
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,9 +201,24 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
                 breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
                 self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
-                self.assertIn("Ушли позже", breakdown_xml.decode("utf-8"))
-            pdf_bytes = Path(artifact.pdf_file_path).read_bytes()
-            self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+                self.assertIn("Согласовано", breakdown_xml.decode("utf-8"))
+                cases_xml = archive.read("xl/worksheets/sheet3.xml")
+                self.assertIn("Причина", cases_xml.decode("utf-8"))
+                self.assertIn("Кто согласовал", cases_xml.decode("utf-8"))
+            pdf_lines = service._build_pdf_lines(
+                "Отчет по подразделениям",
+                [["Параметр", "Значение"], ["Согласовано", "2"]],
+                service._build_visit_detail_rows(
+                    service._build_visit_entries(
+                        service.visit_repository.list_all(),
+                        service.case_repository.list_all(),
+                        service.approval_repository.list_all(),
+                    )
+                ),
+                [["Подразделение", "Всего дней", "С опозданием", "С причиной", "Согласовано", "На согласовании", "Отклонено", "Ушли позже"], ["Отдел продаж", "2", "2", "2", "2", "0", "0", "1"]],
+            )
+            self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
+            self.assertIn("Согласование: Согласовано", "\n".join(pdf_lines))
 
     def test_get_report_path_uses_token_lookup(self) -> None:
         service = ReportService()

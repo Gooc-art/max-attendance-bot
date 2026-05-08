@@ -12,6 +12,8 @@ from xml.sax.saxutils import escape
 import zipfile
 
 from app.config import BASE_DIR, get_settings
+from app.repositories.approval_repository import ApprovalRepository
+from app.repositories.attendance_case_repository import AttendanceCaseRepository
 from app.repositories.attendance_day_record_repository import AttendanceDayRecordRepository
 from app.repositories.report_repository import ReportRepository
 from app.services.simple_pdf import SimplePdfWriter
@@ -36,20 +38,36 @@ class ReportArtifact:
     pdf_download_url: str
 
 
+@dataclass(frozen=True)
+class VisitReportRow:
+    record: object
+    case_count: int
+    kinds_text: str
+    reason_text: str
+    approval_status_text: str
+    approver_text: str
+    approval_comment_text: str
+
+
 class ReportService:
     def __init__(self) -> None:
         self.visit_repository = AttendanceDayRecordRepository()
+        self.case_repository = AttendanceCaseRepository()
+        self.approval_repository = ApprovalRepository()
         self.report_repository = ReportRepository()
         self.reports_dir = BASE_DIR / "data" / "reports"
         self.reports_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_manager_report(self, *, user_id: str, role: str, period: str) -> ReportArtifact:
         rows = self.visit_repository.list_for_manager_user(user_id, limit=500)
+        case_rows = self.case_repository.list_for_manager_user(user_id, limit=500)
+        approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500)
         period_start, period_end = self._resolve_period_range(period)
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
+        entries = self._build_visit_entries(filtered, case_rows, approval_rows)
         title = self._build_title(period)
-        summary_rows = self._build_visit_summary_rows(filtered, title, period_start, period_end)
-        detail_rows = self._build_visit_detail_rows(filtered)
+        summary_rows = self._build_visit_summary_rows(entries, title, period_start, period_end)
+        detail_rows = self._build_visit_detail_rows(entries)
         summary_text = self._rows_to_text(summary_rows)
         return self._create_report_artifact(
             user_id=user_id,
@@ -69,13 +87,18 @@ class ReportService:
     def generate_division_report(self, *, user_id: str, role: str, period: str) -> ReportArtifact:
         if role in {"admin", "top_manager"}:
             rows = self.visit_repository.list_all(limit=5000)
+            case_rows = self.case_repository.list_all(limit=5000)
+            approval_rows = self.approval_repository.list_all(limit=5000)
         else:
             rows = self.visit_repository.list_for_manager_user(user_id, limit=500)
+            case_rows = self.case_repository.list_for_manager_user(user_id, limit=500)
+            approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500)
         period_start, period_end = self._resolve_period_range(period)
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
         title = "Отчет по подразделениям"
-        summary_rows, department_rows = self._build_division_summary_rows(filtered, title, period_start, period_end)
-        detail_rows = self._build_visit_detail_rows(filtered)
+        entries = self._build_visit_entries(filtered, case_rows, approval_rows)
+        summary_rows, department_rows = self._build_division_summary_rows(entries, title, period_start, period_end)
+        detail_rows = self._build_visit_detail_rows(entries)
         summary_text = self._rows_to_text(summary_rows + [["Разрез по подразделениям", ""]])
         if department_rows:
             summary_text = summary_text + "\n" + self._rows_to_text(department_rows)
@@ -118,7 +141,7 @@ class ReportService:
         try:
             event_date = date.fromisoformat(str(value))
         except Exception:
-            return True
+            return False
         return start <= event_date <= end
 
     def _build_title(self, period: str) -> str:
@@ -192,12 +215,16 @@ class ReportService:
 
     def _build_visit_summary_rows(self, rows, title: str, period_start: date, period_end: date) -> List[List[str]]:
         total = len(rows)
-        arrival_early = sum(1 for row in rows if row.arrival_status == "early")
-        arrival_on_time = sum(1 for row in rows if row.arrival_status == "on_time")
-        arrival_late = sum(1 for row in rows if row.arrival_status == "late")
-        departure_early = sum(1 for row in rows if row.departure_status == "early")
-        departure_on_time = sum(1 for row in rows if row.departure_status == "on_time")
-        departure_late = sum(1 for row in rows if row.departure_status == "late")
+        arrival_early = sum(1 for row in rows if row.record.arrival_status == "early")
+        arrival_on_time = sum(1 for row in rows if row.record.arrival_status == "on_time")
+        arrival_late = sum(1 for row in rows if row.record.arrival_status == "late")
+        departure_early = sum(1 for row in rows if row.record.departure_status == "early")
+        departure_on_time = sum(1 for row in rows if row.record.departure_status == "on_time")
+        departure_late = sum(1 for row in rows if row.record.departure_status == "late")
+        with_reason = sum(1 for row in rows if row.reason_text != "-")
+        approved = sum(1 for row in rows if row.approval_status_text == "Согласовано")
+        pending = sum(1 for row in rows if row.approval_status_text == "Ожидает")
+        rejected = sum(1 for row in rows if row.approval_status_text == "Отклонено")
         return [
             ["Параметр", "Значение"],
             ["Название", title],
@@ -210,6 +237,10 @@ class ReportService:
             ["Ушли раньше", str(departure_early)],
             ["Ушли вовремя", str(departure_on_time)],
             ["Ушли позже", str(departure_late)],
+            ["Дней с причиной", str(with_reason)],
+            ["Согласовано", str(approved)],
+            ["На согласовании", str(pending)],
+            ["Отклонено", str(rejected)],
         ]
 
     def _build_division_summary_rows(
@@ -222,21 +253,30 @@ class ReportService:
         summary_rows = self._build_visit_summary_rows(rows, title, period_start, period_end)
         grouped = defaultdict(list)
         for row in rows:
-            grouped[row.department_name or "Не указано"].append(row)
+            grouped[row.record.department_name or "Не указано"].append(row)
 
-        department_rows: List[List[str]] = [["Подразделение", "Всего дней", "Пришли раньше", "Пришли вовремя", "Пришли с опозданием", "Ушли раньше", "Ушли вовремя", "Ушли позже"]]
+        department_rows: List[List[str]] = [[
+            "Подразделение",
+            "Всего дней",
+            "С опозданием",
+            "С причиной",
+            "Согласовано",
+            "На согласовании",
+            "Отклонено",
+            "Ушли позже",
+        ]]
         for department_name in sorted(grouped.keys()):
             department_cases = grouped[department_name]
             department_rows.append(
                 [
                     department_name,
                     str(len(department_cases)),
-                    str(sum(1 for case in department_cases if case.arrival_status == "early")),
-                    str(sum(1 for case in department_cases if case.arrival_status == "on_time")),
-                    str(sum(1 for case in department_cases if case.arrival_status == "late")),
-                    str(sum(1 for case in department_cases if case.departure_status == "early")),
-                    str(sum(1 for case in department_cases if case.departure_status == "on_time")),
-                    str(sum(1 for case in department_cases if case.departure_status == "late")),
+                    str(sum(1 for case in department_cases if case.record.arrival_status == "late")),
+                    str(sum(1 for case in department_cases if case.reason_text != "-")),
+                    str(sum(1 for case in department_cases if case.approval_status_text == "Согласовано")),
+                    str(sum(1 for case in department_cases if case.approval_status_text == "Ожидает")),
+                    str(sum(1 for case in department_cases if case.approval_status_text == "Отклонено")),
+                    str(sum(1 for case in department_cases if case.record.departure_status == "late")),
                 ]
             )
 
@@ -259,28 +299,113 @@ class ReportService:
                 "План ухода",
                 "Отклонение ухода, мин",
                 "Количество проходов",
+                "Нарушения",
+                "Причина",
+                "Статус согласования",
+                "Кто согласовал",
+                "Комментарий согласующего",
             ]
         ]
         for row in rows:
             detail_rows.append(
                 [
-                    str(row.id),
-                    row.employee_name,
-                    row.department_name,
-                    row.manager_name or "",
-                    row.event_date,
-                    row.first_entry_time or "-",
-                    self._status_label(row.arrival_status),
-                    row.planned_start or "-",
-                    str(row.arrival_delta_minutes),
-                    row.last_exit_time or "-",
-                    self._status_label(row.departure_status),
-                    row.planned_end or "-",
-                    str(row.departure_delta_minutes),
-                    str(row.total_passes),
+                    str(row.record.id),
+                    row.record.employee_name,
+                    row.record.department_name,
+                    row.record.manager_name or "",
+                    row.record.event_date,
+                    row.record.first_entry_time or "-",
+                    self._status_label(row.record.arrival_status),
+                    row.record.planned_start or "-",
+                    str(row.record.arrival_delta_minutes),
+                    row.record.last_exit_time or "-",
+                    self._status_label(row.record.departure_status),
+                    row.record.planned_end or "-",
+                    str(row.record.departure_delta_minutes),
+                    str(row.record.total_passes),
+                    row.kinds_text,
+                    row.reason_text,
+                    row.approval_status_text,
+                    row.approver_text,
+                    row.approval_comment_text,
                 ]
             )
         return detail_rows
+
+    def _build_visit_entries(self, rows, case_rows, approval_rows) -> List[VisitReportRow]:
+        case_groups = defaultdict(list)
+        for case in case_rows:
+            employee_user_id = str(getattr(case, "employee_user_id", "") or "").strip()
+            event_date = str(getattr(case, "event_date", "") or "").strip()
+            if not employee_user_id or not event_date:
+                continue
+            case_groups[(employee_user_id, event_date)].append(case)
+
+        approval_by_case_id = {approval.case_id: approval for approval, _case in approval_rows}
+
+        entries: List[VisitReportRow] = []
+        for record in rows:
+            matched_cases = case_groups.get((str(record.employee_user_id or "").strip(), str(record.event_date or "").strip()), [])
+            kinds = []
+            reasons = []
+            approver_names = []
+            approval_statuses = []
+            approval_comments = []
+            for case in matched_cases:
+                case_type = str(getattr(case, "case_type", "") or "").strip()
+                if case_type == "late":
+                    kinds.append("Опоздание")
+                elif case_type == "absent":
+                    kinds.append("Неявка")
+                else:
+                    kinds.append(case_type or "Нарушение")
+                reason_text = str(getattr(case, "employee_reason", "") or "").strip()
+                if reason_text:
+                    reasons.append(reason_text)
+                approval = approval_by_case_id.get(int(getattr(case, "id", 0) or 0))
+                if approval is not None:
+                    approval_statuses.append(self._approval_status_label(approval.status))
+                    manager_name = str(getattr(approval, "manager_name", "") or "").strip()
+                    if manager_name:
+                        approver_names.append(manager_name)
+                    comment = str(getattr(approval, "comment", "") or "").strip()
+                    if comment:
+                        approval_comments.append(comment)
+            entries.append(
+                VisitReportRow(
+                    record=record,
+                    case_count=len(matched_cases),
+                    kinds_text=self._join_unique(kinds) or "-",
+                    reason_text=self._join_unique(reasons) or "-",
+                    approval_status_text=self._merge_approval_statuses(approval_statuses),
+                    approver_text=self._join_unique(approver_names) or "-",
+                    approval_comment_text=self._join_unique(approval_comments) or "-",
+                )
+            )
+        return entries
+
+    def _join_unique(self, values: Sequence[str]) -> str:
+        seen = set()
+        ordered = []
+        for value in values:
+            text = str(value or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            ordered.append(text)
+        return "; ".join(ordered)
+
+    def _merge_approval_statuses(self, statuses: Sequence[str]) -> str:
+        if not statuses:
+            return "-"
+        normalized = self._join_unique(statuses)
+        if "Отклонено" in normalized:
+            return "Отклонено"
+        if "Ожидает" in normalized:
+            return "Ожидает"
+        if "Согласовано" in normalized:
+            return "Согласовано"
+        return normalized
 
     @staticmethod
     def _status_label(status: str) -> str:
@@ -288,6 +413,15 @@ class ReportService:
             "early": "Раньше",
             "on_time": "Вовремя",
             "late": "Позже",
+        }
+        return labels.get(status, status or "-")
+
+    @staticmethod
+    def _approval_status_label(status: str) -> str:
+        labels = {
+            "pending": "Ожидает",
+            "approved": "Согласовано",
+            "rejected": "Отклонено",
         }
         return labels.get(status, status or "-")
 
@@ -309,11 +443,11 @@ class ReportService:
             for row in extra_rows[1:]:
                 if len(row) >= 8:
                     lines.append(
-                        f"{row[0]}: всего {row[1]}, раньше {row[2]}, вовремя {row[3]}, опозданий {row[4]}, ушли раньше {row[5]}, ушли вовремя {row[6]}, ушли позже {row[7]}"
+                        f"{row[0]}: всего {row[1]}, с опозданием {row[2]}, с причиной {row[3]}, согласовано {row[4]}, на согласовании {row[5]}, отклонено {row[6]}, ушли позже {row[7]}"
                     )
         lines.extend(["", "Случаи"])
         for row in detail_rows[1:]:
-            if len(row) < 14:
+            if len(row) < 19:
                 continue
             lines.extend(
                 self._wrap_text_block(
@@ -330,6 +464,11 @@ class ReportService:
                         f"План ухода: {row[11]}",
                         f"Отклонение ухода: {row[12]} мин",
                         f"Проходов за день: {row[13]}",
+                        f"Нарушения: {row[14]}",
+                        f"Причина: {row[15]}",
+                        f"Согласование: {row[16]}",
+                        f"Кто согласовал: {row[17]}",
+                        f"Комментарий: {row[18]}",
                         "-" * 72,
                     ]
                 )

@@ -11,6 +11,16 @@ from app.domain.enums import ApprovalStatus, AttendanceCaseStatus
 
 
 class ApprovalRepository:
+    def list_all(self, limit: int = 5000) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(ApprovalModel, AttendanceCaseModel)
+                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
+                .order_by(ApprovalModel.created_at.desc())
+                .limit(limit)
+            ).all()
+            return list(rows)
+
     def list_pending_for_manager(self, manager_user_id: str) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
         with SessionLocal() as session:
             rows = session.execute(

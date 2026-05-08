@@ -79,6 +79,8 @@ class GoogleSheetsScheduleService:
         self.cache_ttl_seconds = cache_ttl_seconds or settings.google_sheets_cache_ttl_seconds
         self._cached_records: List[GoogleSheetsScheduleRecord] = []
         self._cached_at: datetime | None = None
+        self._cached_by_schedule_id: dict[str, GoogleSheetsScheduleRecord] = {}
+        self._cached_by_schedule_name: dict[str, GoogleSheetsScheduleRecord] = {}
         self.logger = logging.getLogger(__name__)
 
     @classmethod
@@ -103,6 +105,7 @@ class GoogleSheetsScheduleService:
             values = self._fetch_values()
             records = self._parse_values(values)
             self._cached_records = records
+            self._rebuild_indexes(records)
             self._cached_at = datetime.now(timezone.utc)
             return list(records)
         except Exception as exc:
@@ -115,6 +118,8 @@ class GoogleSheetsScheduleService:
     def get_by_schedule_id(self, schedule_id: str, refresh: bool = False) -> Optional[GoogleSheetsScheduleRecord]:
         if not schedule_id:
             return None
+        if not refresh and self._cache_is_fresh() and self._cached_by_schedule_id:
+            return self._cached_by_schedule_id.get(schedule_id)
         for record in self.list_schedules(refresh=refresh):
             if record.schedule_id == schedule_id:
                 return record
@@ -123,6 +128,8 @@ class GoogleSheetsScheduleService:
     def get_by_schedule_name(self, schedule_name: str, refresh: bool = False) -> Optional[GoogleSheetsScheduleRecord]:
         if not schedule_name:
             return None
+        if not refresh and self._cache_is_fresh() and self._cached_by_schedule_name:
+            return self._cached_by_schedule_name.get(schedule_name)
         for record in self.list_schedules(refresh=refresh):
             if record.schedule_name == schedule_name:
                 return record
@@ -250,6 +257,18 @@ class GoogleSheetsScheduleService:
                 )
             )
         return records
+
+    def _rebuild_indexes(self, records: List[GoogleSheetsScheduleRecord]) -> None:
+        self._cached_by_schedule_id = {
+            record.schedule_id: record
+            for record in records
+            if record.schedule_id
+        }
+        self._cached_by_schedule_name = {
+            record.schedule_name: record
+            for record in records
+            if record.schedule_name
+        }
 
     @staticmethod
     def _normalize_cell(value: object) -> str:

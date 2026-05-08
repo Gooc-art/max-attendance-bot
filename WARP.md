@@ -7,7 +7,7 @@
 - Prefer reversible, observable terminal commands.
 
 ## Current runtime data flow
-1. Resolve role from Google Sheets `Сотрудники` with a short-lived cache on incoming events.
+1. Resolve role from Google Sheets `Сотрудники` with a short-lived cached and indexed lookup on incoming events.
 2. If Google Sheets returns a quota or transport error, fall back to the last cached directory and then to local role overrides and local employee directory.
 3. Render role-based MAX menus.
 4. Display role names in Russian in user-facing interfaces while keeping technical role codes internal.

@@ -61,6 +61,9 @@ class GoogleSheetsDirectoryService:
         self.cache_ttl_seconds = cache_ttl_seconds or settings.google_sheets_cache_ttl_seconds
         self._cached_records: List[GoogleSheetsEmployeeRecord] = []
         self._cached_at: datetime | None = None
+        self._cached_by_user_id: dict[str, GoogleSheetsEmployeeRecord] = {}
+        self._cached_by_employee_name: dict[str, GoogleSheetsEmployeeRecord] = {}
+        self._cached_by_manager_user_id: dict[str, List[GoogleSheetsEmployeeRecord]] = {}
         self.logger = logging.getLogger(__name__)
 
     @classmethod
@@ -85,6 +88,7 @@ class GoogleSheetsDirectoryService:
             values = self._fetch_values()
             records = self._parse_values(values)
             self._cached_records = records
+            self._rebuild_indexes(records)
             self._cached_at = datetime.now(timezone.utc)
             return list(records)
         except Exception as exc:
@@ -97,7 +101,10 @@ class GoogleSheetsDirectoryService:
     def get_by_user_id(self, user_id: str, refresh: bool = False) -> Optional[GoogleSheetsEmployeeRecord]:
         if not user_id:
             return None
-        for record in self.list_employees(refresh=refresh):
+        if not refresh and self._cache_is_fresh() and self._cached_by_user_id:
+            return self._cached_by_user_id.get(user_id)
+        records = self.list_employees(refresh=refresh)
+        for record in records:
             if record.employee_user_id == user_id:
                 return record
         return None
@@ -105,7 +112,10 @@ class GoogleSheetsDirectoryService:
     def get_by_employee_name(self, employee_name: str, refresh: bool = False) -> Optional[GoogleSheetsEmployeeRecord]:
         if not employee_name:
             return None
-        for record in self.list_employees(refresh=refresh):
+        if not refresh and self._cache_is_fresh() and self._cached_by_employee_name:
+            return self._cached_by_employee_name.get(employee_name)
+        records = self.list_employees(refresh=refresh)
+        for record in records:
             if record.employee_name == employee_name:
                 return record
         return None
@@ -113,6 +123,8 @@ class GoogleSheetsDirectoryService:
     def get_by_manager_user_id(self, manager_user_id: str, refresh: bool = False) -> List[GoogleSheetsEmployeeRecord]:
         if not manager_user_id:
             return []
+        if not refresh and self._cache_is_fresh() and self._cached_by_manager_user_id:
+            return list(self._cached_by_manager_user_id.get(manager_user_id, []))
         return [
             record
             for record in self.list_employees(refresh=refresh)
@@ -183,6 +195,24 @@ class GoogleSheetsDirectoryService:
                 )
             )
         return records
+
+    def _rebuild_indexes(self, records: List[GoogleSheetsEmployeeRecord]) -> None:
+        self._cached_by_user_id = {
+            record.employee_user_id: record
+            for record in records
+            if record.employee_user_id
+        }
+        self._cached_by_employee_name = {
+            record.employee_name: record
+            for record in records
+            if record.employee_name
+        }
+        manager_index: dict[str, List[GoogleSheetsEmployeeRecord]] = {}
+        for record in records:
+            if not record.manager_user_id or not record.is_active:
+                continue
+            manager_index.setdefault(record.manager_user_id, []).append(record)
+        self._cached_by_manager_user_id = manager_index
 
     @classmethod
     def normalize_role_value(cls, value: str) -> str:

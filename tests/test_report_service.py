@@ -57,6 +57,14 @@ class _FakeVisitRepository:
         return self.list_for_manager_user("all", limit=limit)
 
 
+class _EmptyVisitRepository:
+    def list_for_manager_user(self, user_id: str, limit: int = 500):
+        return []
+
+    def list_all(self, limit: int = 5000):
+        return []
+
+
 class _FakeCaseRepository:
     def __init__(self):
         self.list_all_called = False
@@ -219,6 +227,27 @@ class ReportServiceTests(unittest.TestCase):
             )
             self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
             self.assertIn("Согласование: Согласовано", "\n".join(pdf_lines))
+
+    def test_generate_manager_report_falls_back_to_cases_when_day_records_are_empty(self) -> None:
+        service = ReportService()
+        service.visit_repository = _EmptyVisitRepository()
+        service.case_repository = _FakeCaseRepository()
+        service.approval_repository = _FakeApprovalRepository()
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_manager_report(user_id="mgr-1", role="manager", period="week")
+
+            self.assertTrue(Path(artifact.file_path).exists())
+            self.assertTrue(Path(artifact.pdf_file_path).exists())
+            with zipfile.ZipFile(artifact.file_path) as archive:
+                summary_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+                cases_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+                self.assertIn("Недельный отчет", summary_xml)
+                self.assertIn("Иванов Иван Иванович", cases_xml)
+                self.assertIn("Причина", cases_xml)
+                self.assertIn("Статус согласования", cases_xml)
 
     def test_get_report_path_uses_token_lookup(self) -> None:
         service = ReportService()

@@ -23,7 +23,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Restrict SKUD upload actions to the `Служба безопасности` role.
 - Support substitution drafts and future substitution CRUD.
 - Support substitution draft actions: list, cancel, and extend.
-- Generate `.xlsx` and `.pdf` reports and send them to MAX as files, with public download URLs as fallback. Queue file delivery in the background so callbacks stay responsive. Reports should include first entry, last exit, arrival/departure status, employee reason, approver, and approval comment for each day record when available.
+- Generate `.xlsx` and `.pdf` reports and send them to MAX as files, with public download URLs as fallback. Queue file delivery in the background so callbacks stay responsive. Reports should include first entry, last exit, arrival/departure status, employee reason, approver, and approval comment for each day record when available. If daily visit records are temporarily empty, fall back to attendance cases so reports still render useful data.
 - Send normal MAX replies with `send_message` using a fallback recipient chain: try `chat_id` first for incoming message replies, then `user_id` if needed. Use the same fallback pattern for push notifications and proactive messages. Use `answer_callback` for inline keyboard callbacks.
 - Ignore inline keyboard attachments when routing text/callback buttons; only real file uploads should reach the SKUD importer.
 

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from collections import defaultdict
 from pathlib import Path
 import textwrap
+from types import SimpleNamespace
 from typing import List, Sequence, Tuple
 from xml.sax.saxutils import escape
 import zipfile
@@ -65,6 +66,8 @@ class ReportService:
         period_start, period_end = self._resolve_period_range(period)
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
         entries = self._build_visit_entries(filtered, case_rows, approval_rows)
+        if not entries and case_rows:
+            entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         title = self._build_title(period)
         summary_rows = self._build_visit_summary_rows(entries, title, period_start, period_end)
         detail_rows = self._build_visit_detail_rows(entries)
@@ -97,6 +100,8 @@ class ReportService:
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
         title = "Отчет по подразделениям"
         entries = self._build_visit_entries(filtered, case_rows, approval_rows)
+        if not entries and case_rows:
+            entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         summary_rows, department_rows = self._build_division_summary_rows(entries, title, period_start, period_end)
         detail_rows = self._build_visit_detail_rows(entries)
         summary_text = self._rows_to_text(summary_rows + [["Разрез по подразделениям", ""]])
@@ -371,6 +376,76 @@ class ReportService:
                     comment = str(getattr(approval, "comment", "") or "").strip()
                     if comment:
                         approval_comments.append(comment)
+            entries.append(
+                VisitReportRow(
+                    record=record,
+                    case_count=len(matched_cases),
+                    kinds_text=self._join_unique(kinds) or "-",
+                    reason_text=self._join_unique(reasons) or "-",
+                    approval_status_text=self._merge_approval_statuses(approval_statuses),
+                    approver_text=self._join_unique(approver_names) or "-",
+                    approval_comment_text=self._join_unique(approval_comments) or "-",
+                )
+            )
+        return entries
+
+    def _build_visit_entries_from_cases(self, case_rows, approval_rows) -> List[VisitReportRow]:
+        case_groups = defaultdict(list)
+        for case in case_rows:
+            employee_user_id = str(getattr(case, "employee_user_id", "") or "").strip()
+            event_date = str(getattr(case, "event_date", "") or "").strip()
+            employee_name = str(getattr(case, "employee_name", "") or "").strip()
+            group_key = (employee_user_id or employee_name, event_date)
+            if not group_key[1]:
+                continue
+            case_groups[group_key].append(case)
+
+        approval_by_case_id = {approval.case_id: approval for approval, _case in approval_rows}
+        entries: List[VisitReportRow] = []
+        for (employee_key, event_date), matched_cases in case_groups.items():
+            first_case = matched_cases[0]
+            kinds = []
+            reasons = []
+            approver_names = []
+            approval_statuses = []
+            approval_comments = []
+            for case in matched_cases:
+                case_type = str(getattr(case, "case_type", "") or "").strip()
+                if case_type == "late":
+                    kinds.append("Опоздание")
+                elif case_type == "absent":
+                    kinds.append("Неявка")
+                else:
+                    kinds.append(case_type or "Нарушение")
+                reason_text = str(getattr(case, "employee_reason", "") or "").strip()
+                if reason_text:
+                    reasons.append(reason_text)
+                approval = approval_by_case_id.get(int(getattr(case, "id", 0) or 0))
+                if approval is not None:
+                    approval_statuses.append(self._approval_status_label(approval.status))
+                    manager_name = str(getattr(approval, "manager_name", "") or "").strip()
+                    if manager_name:
+                        approver_names.append(manager_name)
+                    comment = str(getattr(approval, "comment", "") or "").strip()
+                    if comment:
+                        approval_comments.append(comment)
+
+            record = SimpleNamespace(
+                id=getattr(first_case, "id", 0),
+                employee_name=str(getattr(first_case, "employee_name", "") or employee_key),
+                department_name=str(getattr(first_case, "department_name", "") or "Не указано"),
+                manager_name=str(getattr(first_case, "manager_name", "") or ""),
+                event_date=event_date,
+                first_entry_time=str(getattr(first_case, "actual_start", "") or "-"),
+                arrival_status="late" if any(str(getattr(case, "case_type", "") or "").strip() == "late" for case in matched_cases) else "",
+                arrival_delta_minutes=int(getattr(first_case, "delay_minutes", 0) or 0),
+                last_exit_time="",
+                departure_status="",
+                departure_delta_minutes=0,
+                planned_start=str(getattr(first_case, "planned_start", "") or ""),
+                planned_end="",
+                total_passes=len(matched_cases),
+            )
             entries.append(
                 VisitReportRow(
                     record=record,

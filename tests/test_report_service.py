@@ -137,6 +137,25 @@ class _FakeReportRepository:
     def get_by_token(self, token: str):
         return self.records.get(token)
 
+    def list_by_user_and_type(self, user_id: str, report_type: str):
+        return [
+            record
+            for record in self.records.values()
+            if record.user_id == user_id and record.report_type == report_type
+        ]
+
+    def delete_by_user_and_type(self, user_id: str, report_type: str, exclude_token: str | None = None):
+        removed = []
+        for token, record in list(self.records.items()):
+            if record.user_id != user_id or record.report_type != report_type:
+                continue
+            if exclude_token is not None and token == exclude_token:
+                continue
+            removed.append(Path(record.file_path))
+            removed.append(Path(record.file_path).with_suffix(".pdf"))
+            self.records.pop(token, None)
+        return removed
+
 
 class ReportServiceTests(unittest.TestCase):
     def test_generate_manager_report_creates_xlsx_and_download_link(self) -> None:
@@ -306,6 +325,42 @@ class ReportServiceTests(unittest.TestCase):
 
             self.assertEqual(service.get_report_path("abc123"), file_path)
             self.assertEqual(service.get_report_path("abc123", format="pdf"), pdf_path)
+
+    def test_new_report_removes_previous_same_type_files(self) -> None:
+        service = ReportService()
+        service.visit_repository = _FakeVisitRepository()
+        service.case_repository = _FakeCaseRepository()
+        service.approval_repository = _FakeApprovalRepository()
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            old_xlsx = Path(tmpdir) / "week_mgr-1_old.xlsx"
+            old_pdf = old_xlsx.with_suffix(".pdf")
+            old_xlsx.write_text("old")
+            old_pdf.write_text("old")
+            service.report_repository.records["oldtoken"] = SimpleNamespace(
+                id=1,
+                token="oldtoken",
+                report_type="week",
+                user_id="mgr-1",
+                role="manager",
+                title="Недельный отчет",
+                period_start="2026-05-01",
+                period_end="2026-05-05",
+                file_name=old_xlsx.name,
+                file_path=str(old_xlsx),
+                summary_text="summary",
+                status="ready",
+            )
+
+            artifact = service.generate_manager_report(user_id="mgr-1", role="manager", period="week")
+
+            self.assertFalse(old_xlsx.exists())
+            self.assertFalse(old_pdf.exists())
+            self.assertTrue(Path(artifact.file_path).exists())
+            self.assertTrue(Path(artifact.pdf_file_path).exists())
+            self.assertEqual(len(service.report_repository.records), 1)
 
 
 if __name__ == "__main__":

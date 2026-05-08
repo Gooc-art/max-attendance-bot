@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.db.base import SessionLocal
 from app.db.models import ReportModel
@@ -57,3 +58,35 @@ class ReportRepository:
                 .limit(limit)
             ).scalars().all()
             return list(rows)
+
+    def list_by_user_and_type(self, user_id: str, report_type: str) -> List[ReportModel]:
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(ReportModel)
+                .where(ReportModel.user_id == user_id)
+                .where(ReportModel.report_type == report_type)
+                .order_by(ReportModel.created_at.desc())
+            ).scalars().all()
+            return list(rows)
+
+    def delete_by_user_and_type(
+        self,
+        user_id: str,
+        report_type: str,
+        exclude_token: str | None = None,
+    ) -> List[Path]:
+        removed_paths: List[Path] = []
+        with SessionLocal() as session:
+            query = select(ReportModel).where(ReportModel.user_id == user_id).where(ReportModel.report_type == report_type)
+            if exclude_token:
+                query = query.where(ReportModel.token != exclude_token)
+            rows = session.execute(query).scalars().all()
+            for row in rows:
+                removed_paths.append(Path(row.file_path))
+                removed_paths.append(Path(row.file_path).with_suffix(".pdf"))
+            delete_query = delete(ReportModel).where(ReportModel.user_id == user_id).where(ReportModel.report_type == report_type)
+            if exclude_token:
+                delete_query = delete_query.where(ReportModel.token != exclude_token)
+            session.execute(delete_query)
+            session.commit()
+        return removed_paths

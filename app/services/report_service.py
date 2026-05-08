@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ class VisitReportRow:
 
 class ReportService:
     def __init__(self) -> None:
+        self.logger = logging.getLogger(__name__)
         self.visit_repository = AttendanceDayRecordRepository()
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
@@ -164,6 +166,19 @@ class ReportService:
         safe_user = SAFE_USER_RE.sub("_", user_id).strip("._") or "user"
         return f"{period}_{safe_user}_{token[:8]}.xlsx"
 
+    def _cleanup_previous_reports(self, *, user_id: str, report_type: str, keep_token: str) -> None:
+        removed_paths = self.report_repository.delete_by_user_and_type(
+            user_id,
+            report_type,
+            exclude_token=keep_token,
+        )
+        for path in removed_paths:
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception as exc:  # pragma: no cover - best effort cleanup
+                self.logger.warning("Failed to remove old report file %s: %s", path, exc)
+
     def _create_report_artifact(
         self,
         *,
@@ -201,6 +216,7 @@ class ReportService:
             file_path=str(file_path),
             summary_text=summary_text,
         )
+        self._cleanup_previous_reports(user_id=user_id, report_type=report_type, keep_token=token)
         return ReportArtifact(
             report_id=report_id,
             token=token,

@@ -54,13 +54,21 @@ class SkudImportService:
         self.day_record_repository = AttendanceDayRecordRepository()
         self.import_repository = SkudImportRepository()
 
-    def import_csv(self, *, filename: str, content: bytes, created_by_user_id: str = "") -> SkudImportResult:
+    def import_csv(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        created_by_user_id: str = "",
+        create_cases: bool = True,
+    ) -> SkudImportResult:
         text = content.decode("utf-8-sig")
         if self._looks_like_access_report(text):
             return self._import_access_report(
                 filename=filename,
                 text=text,
                 created_by_user_id=created_by_user_id,
+                create_cases=create_cases,
             )
 
         sample = text[:1024]
@@ -138,7 +146,14 @@ class SkudImportService:
             errors=errors,
         )
 
-    def _import_access_report(self, *, filename: str, text: str, created_by_user_id: str) -> SkudImportResult:
+    def _import_access_report(
+        self,
+        *,
+        filename: str,
+        text: str,
+        created_by_user_id: str,
+        create_cases: bool = True,
+    ) -> SkudImportResult:
         reader = csv.reader(StringIO(text), delimiter=";")
         rows = [row for row in reader]
         header_index = self._find_access_report_header_row(rows)
@@ -264,22 +279,23 @@ class SkudImportService:
                                 delay=arrival_delta,
                             )
                         )
-                    self.case_repository.create_case(
-                        employee_user_id=str(item.get("employee_user_id", "")),
-                        employee_name=str(item["employee_name"]),
-                        department_name=str(item["department_name"]),
-                        manager_user_id=str(item.get("manager_user_id", "")),
-                        manager_name=str(item.get("manager_name", "")),
-                        case_type=AttendanceCaseType.LATE.value,
-                        status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
-                        event_date=event_date_str,
-                        planned_start=planned_start,
-                        actual_start=arrival_dt.strftime("%H:%M"),
-                        delay_minutes=arrival_delta,
-                        employee_reason="",
-                        source="skud_report",
-                    )
-                    created_cases += 1
+                    if create_cases:
+                        self.case_repository.create_case(
+                            employee_user_id=str(item.get("employee_user_id", "")),
+                            employee_name=str(item["employee_name"]),
+                            department_name=str(item["department_name"]),
+                            manager_user_id=str(item.get("manager_user_id", "")),
+                            manager_name=str(item.get("manager_name", "")),
+                            case_type=AttendanceCaseType.LATE.value,
+                            status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
+                            event_date=event_date_str,
+                            planned_start=planned_start,
+                            actual_start=arrival_dt.strftime("%H:%M"),
+                            delay_minutes=arrival_delta,
+                            employee_reason="",
+                            source="skud_report",
+                        )
+                        created_cases += 1
 
             if departure_dt and planned_end:
                 departure_status, departure_delta = self._classify_departure(
@@ -319,18 +335,20 @@ class SkudImportService:
 
         self.day_record_repository.upsert_many(attendance_rows)
 
-        import_id = self.import_repository.create(
-            filename=filename,
-            created_by_user_id=created_by_user_id,
-            status="completed" if not errors else "completed_with_errors",
-            period_start=min_dt.date().isoformat() if min_dt else "",
-            period_end=max_dt.date().isoformat() if max_dt else "",
-            unique_employees=len({key[0] for key in daily_records.keys()}),
-            total_rows=total_rows,
-            created_cases=created_cases,
-            error_rows=len(errors),
-            samples_text="\n".join(samples),
-        )
+        import_id = 0
+        if create_cases:
+            import_id = self.import_repository.create(
+                filename=filename,
+                created_by_user_id=created_by_user_id,
+                status="completed" if not errors else "completed_with_errors",
+                period_start=min_dt.date().isoformat() if min_dt else "",
+                period_end=max_dt.date().isoformat() if max_dt else "",
+                unique_employees=len({key[0] for key in daily_records.keys()}),
+                total_rows=total_rows,
+                created_cases=created_cases,
+                error_rows=len(errors),
+                samples_text="\n".join(samples),
+            )
         return SkudImportResult(
             import_id=import_id,
             filename=filename,

@@ -193,6 +193,58 @@ class SkudImportServiceTests(unittest.TestCase):
         self.assertEqual(record["departure_status"], "late")
         self.assertEqual(record["planned_end"], "17:15")
 
+    def test_access_report_backfill_skips_case_creation_but_populates_day_records(self) -> None:
+        access_report = (
+            "Отчет по проходам\n"
+            "Ф.И.О;Таб.№;Подразделение;Подразделение;Дата и время;Точка;Событие;Зона\n"
+            "Иванова Анна Сергеевна;;;Отдел продаж;04.05.2026 08:20:00;Вход;Проход;Здание\n"
+            "Иванова Анна Сергеевна;;;Отдел продаж;04.05.2026 17:40:00;Выход;Проход;Внешний мир\n"
+        ).encode("utf-8")
+
+        day_repo = _FakeAttendanceDayRecordRepository()
+
+        with patch("app.services.skud_import.AttendanceCaseRepository", _FakeAttendanceCaseRepository), patch(
+            "app.services.skud_import.ApprovalRepository", _FakeApprovalRepository
+        ), patch(
+            "app.services.skud_import.EmployeeDirectoryRepository", _FakeEmployeeDirectoryRepository
+        ), patch(
+            "app.services.skud_import.SkudImportRepository", _FakeSkudImportRepository
+        ), patch(
+            "app.services.skud_import.AttendanceDayRecordRepository", lambda: day_repo
+        ), patch(
+            "app.services.skud_import.GoogleSheetsDirectoryService.from_settings",
+            return_value=SimpleNamespace(
+                get_by_employee_name=lambda employee_name: SimpleNamespace(
+                    employee_name=employee_name,
+                    employee_user_id="max_010",
+                    manager_name="Петров Петр Сергеевич",
+                    manager_user_id="max_020",
+                    department_name="Отдел продаж",
+                    schedule_name="Пятидневка - Девушки 08:30-12:30 / 14:00-17:15",
+                    schedule_id="ГР003",
+                    role="employee",
+                    is_active=True,
+                )
+            ),
+        ), patch(
+            "app.services.skud_import.GoogleSheetsScheduleService.from_settings",
+            return_value=_FakeGoogleSheetsScheduleService(),
+        ):
+            service = SkudImportService()
+            result = service.import_csv(
+                filename="report.txt",
+                content=access_report,
+                created_by_user_id="sec_001",
+                create_cases=False,
+            )
+
+        self.assertEqual(result.created_cases, 0)
+        self.assertEqual(len(day_repo.rows), 1)
+        record = day_repo.rows[0]
+        self.assertEqual(record["arrival_status"], "early")
+        self.assertEqual(record["departure_status"], "late")
+        self.assertEqual(record["planned_end"], "17:15")
+
 
 if __name__ == "__main__":
     unittest.main()

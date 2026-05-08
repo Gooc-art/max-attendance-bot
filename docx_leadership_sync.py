@@ -178,14 +178,15 @@ def build_employee_updates(
     employee_index: Dict[str, EmployeeSheetRow],
     structure_index: Dict[str, StructureNode],
     department_nodes: List[StructureNode],
+    department_manager_map: Dict[str, str],
 ) -> List[EmployeeCellUpdate]:
     updates: List[EmployeeCellUpdate] = []
     for row in rows:
         employee = employee_index.get(row.employee_name)
         if employee is None:
             continue
-        manager_name = resolve_manager_name(row)
         department_name = resolve_department_name(row, structure_index, department_nodes)
+        manager_name = resolve_manager_name(row, department_name, department_manager_map)
         if department_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "G", department_name))
         if manager_name:
@@ -198,14 +199,15 @@ def build_normalized_rows(
     employee_index: Dict[str, EmployeeSheetRow],
     structure_index: Dict[str, StructureNode],
     department_nodes: List[StructureNode],
+    department_manager_map: Dict[str, str],
 ) -> List[List[str]]:
     normalized_rows: List[List[str]] = []
     for index, row in enumerate(rows, start=1):
         employee = employee_index.get(row.employee_name)
         status = "Готово"
-        manager_name = resolve_manager_name(row)
-        top_manager_name = resolve_top_manager_name(row)
         department_name = resolve_department_name(row, structure_index, department_nodes)
+        manager_name = resolve_manager_name(row, department_name, department_manager_map)
+        top_manager_name = resolve_top_manager_name(row)
         if employee is None:
             status = "Не найден в Сотрудники"
         elif row.employee_name == TOP_MANAGER_NAME:
@@ -230,8 +232,17 @@ def build_normalized_rows(
     return normalized_rows
 
 
-def resolve_manager_name(row: LeadershipTemplateRow) -> str:
-    return normalize_text(MANAGER_OVERRIDES.get(row.employee_name, row.manager_name))
+def resolve_manager_name(
+    row: LeadershipTemplateRow,
+    department_name: str,
+    department_manager_map: Dict[str, str],
+) -> str:
+    explicit_manager = normalize_text(MANAGER_OVERRIDES.get(row.employee_name, row.manager_name))
+    if explicit_manager:
+        return explicit_manager
+    if department_name:
+        return normalize_text(department_manager_map.get(department_name, ""))
+    return ""
 
 
 def resolve_top_manager_name(row: LeadershipTemplateRow) -> str:
@@ -273,14 +284,15 @@ def get_cell(row: List[str], header_index: Dict[str, int], header_name: str) -> 
     return normalize_text(row[idx])
 
 
-def build_structure_index(values: List[List[str]]) -> tuple[Dict[str, StructureNode], List[StructureNode]]:
+def build_structure_index(values: List[List[str]]) -> tuple[Dict[str, StructureNode], List[StructureNode], List[StructureNode]]:
     if not values:
-        return {}, []
+        return {}, [], []
 
     headers = [normalize_text(cell) for cell in values[0]]
     index = {name: idx for idx, name in enumerate(headers) if name}
     nodes: Dict[str, StructureNode] = {}
     department_nodes: List[StructureNode] = []
+    fio_nodes: List[StructureNode] = []
 
     for raw_row in values[1:]:
         kind = get_cell(raw_row, index, "Тип")
@@ -294,9 +306,29 @@ def build_structure_index(values: List[List[str]]) -> tuple[Dict[str, StructureN
         node = StructureNode(kind=kind, text=text, x=int(x), y=int(y))
         if kind == "ФИО" and text not in nodes:
             nodes[text] = node
+            fio_nodes.append(node)
         elif kind == "Код_подразделения":
             department_nodes.append(node)
-    return nodes, department_nodes
+    return nodes, department_nodes, fio_nodes
+
+
+def build_department_manager_map(
+    fio_nodes: List[StructureNode],
+    department_nodes: List[StructureNode],
+) -> Dict[str, str]:
+    department_manager_map: Dict[str, str] = {}
+    for department_node in department_nodes:
+        candidates = [node for node in fio_nodes if node.y < department_node.y]
+        if not candidates:
+            continue
+
+        def score(node: StructureNode) -> tuple[int, int, int]:
+            vertical = department_node.y - node.y
+            horizontal = abs(node.x - department_node.x)
+            return (vertical, horizontal, -node.y)
+
+        department_manager_map[department_node.text] = normalize_text(min(candidates, key=score).text)
+    return department_manager_map
 
 
 def load_credentials():
@@ -384,10 +416,23 @@ def sync_leadership_template() -> dict[str, int]:
 
     template_rows = parse_template_rows(template_values)
     employee_index = build_employee_index(employee_values)
-    structure_index, department_nodes = build_structure_index(structure_values)
+    structure_index, department_nodes, fio_nodes = build_structure_index(structure_values)
+    department_manager_map = build_department_manager_map(fio_nodes, department_nodes)
 
-    employee_updates = build_employee_updates(template_rows, employee_index, structure_index, department_nodes)
-    normalized_rows = build_normalized_rows(template_rows, employee_index, structure_index, department_nodes)
+    employee_updates = build_employee_updates(
+        template_rows,
+        employee_index,
+        structure_index,
+        department_nodes,
+        department_manager_map,
+    )
+    normalized_rows = build_normalized_rows(
+        template_rows,
+        employee_index,
+        structure_index,
+        department_nodes,
+        department_manager_map,
+    )
 
     ensure_sheet(sheets_service, NORMALIZED_SHEET_TITLE)
     clear_and_write_rows(sheets_service, NORMALIZED_SHEET_TITLE, NORMALIZED_HEADERS, normalized_rows)

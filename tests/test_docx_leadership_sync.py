@@ -11,7 +11,9 @@ from docx_leadership_sync import (
     TOP_MANAGER_NAME,
     build_employee_index,
     build_employee_updates,
+    build_department_manager_map,
     build_normalized_rows,
+    StructureNode,
     build_structure_index,
     parse_template_rows,
     resolve_manager_name,
@@ -63,7 +65,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             "Иванов Иван Иванович": EmployeeSheetRow(row_number=2, employee_name="Иванов Иван Иванович", employee_user_id="max_001")
         }
 
-        updates = build_employee_updates(rows, employee_index, {}, [])
+        updates = build_employee_updates(rows, employee_index, {}, [], {})
 
         self.assertEqual(
             [(item.row_number, item.column, item.value) for item in updates],
@@ -81,7 +83,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             "Антипина Луиза Николаевна": EmployeeSheetRow(row_number=2, employee_name="Антипина Луиза Николаевна", employee_user_id="max_001")
         }
 
-        updates = build_employee_updates(rows, employee_index, {"Антипина Луиза Николаевна": object()}, [])
+        updates = build_employee_updates(rows, employee_index, {"Антипина Луиза Николаевна": object()}, [], {})
 
         self.assertIn((2, "G", "8-ОРиУН"), [(item.row_number, item.column, item.value) for item in updates])
 
@@ -99,7 +101,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ]
         )
 
-        normalized = build_normalized_rows(rows, employee_index, {}, [])
+        normalized = build_normalized_rows(rows, employee_index, {}, [], {})
 
         self.assertEqual(normalized[0][1], TOP_MANAGER_NAME)
         self.assertEqual(normalized[0][2], "max_001")
@@ -120,7 +122,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ]
         )
 
-        normalized = build_normalized_rows(rows, employee_index, {}, [])
+        normalized = build_normalized_rows(rows, employee_index, {}, [], {})
 
         self.assertEqual(normalized[0][4], "Слабенко Александр Владимирович")
         self.assertEqual(normalized[0][7], TOP_MANAGER_NAME)
@@ -133,11 +135,48 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ["2", "Код_подразделения", "3-ООО", "15", "30"],
         ]
 
-        structure_index, department_nodes = build_structure_index(values)
+        structure_index, department_nodes, fio_nodes = build_structure_index(values)
 
         self.assertIn("Иванов Иван Иванович", structure_index)
         self.assertEqual(len(department_nodes), 1)
         self.assertEqual(department_nodes[0].text, "3-ООО")
+        self.assertEqual(len(fio_nodes), 1)
+
+    def test_build_department_manager_map_uses_nearest_fio_above_department(self) -> None:
+        fio_nodes = [
+            # Top manager is intentionally farther away.
+            StructureNode(kind="ФИО", text="Посунько Руслан Юрьевич", x=0, y=10),
+            StructureNode(kind="ФИО", text="Антипина Луиза Николаевна", x=0, y=100),
+        ]
+        department_nodes = [
+            StructureNode(kind="Код_подразделения", text="8-ОРиУН", x=10, y=130),
+        ]
+
+        mapping = build_department_manager_map(fio_nodes, department_nodes)
+
+        self.assertEqual(mapping["8-ОРиУН"], "Антипина Луиза Николаевна")
+
+    def test_build_employee_updates_uses_department_manager_when_row_manager_is_blank(self) -> None:
+        rows = parse_template_rows(
+            [
+                ["№", "ФИО", "Подразделение", "ФИО_руководителя", "ФИО_замещающего", "ФИО_топ_руководителя", "Комментарий"],
+                ["1", "Иванов Иван Иванович", "", "", "", "", ""],
+            ]
+        )
+        employee_index = {
+            "Иванов Иван Иванович": EmployeeSheetRow(row_number=2, employee_name="Иванов Иван Иванович", employee_user_id="max_001")
+        }
+        department_manager_map = {"3-ООО": "Клоченок Анастасия Ивановна"}
+
+        updates = build_employee_updates(
+            rows,
+            employee_index,
+            {"Иванов Иван Иванович": StructureNode(kind="ФИО", text="Иванов Иван Иванович", x=10, y=20)},
+            [StructureNode(kind="Код_подразделения", text="3-ООО", x=15, y=30)],
+            department_manager_map,
+        )
+
+        self.assertIn((2, "E", "Клоченок Анастасия Ивановна"), [(item.row_number, item.column, item.value) for item in updates])
 
     def test_resolve_manager_name_uses_explicit_hierarchy(self) -> None:
         row = parse_template_rows(
@@ -147,7 +186,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
             ]
         )[0]
 
-        self.assertEqual(resolve_manager_name(row), "Кислицын Максим Анатольевич")
+        self.assertEqual(resolve_manager_name(row, "", {}), "Кислицын Максим Анатольевич")
 
 
 if __name__ == "__main__":

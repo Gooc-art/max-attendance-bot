@@ -9,7 +9,7 @@ Build a MAX bot for attendance control that reads employee rights and directory 
 - Google Sheets reads are cached briefly; if Sheets returns a quota error, the bot must continue from the last valid cached directory instead of failing the webhook. Schedule reads must follow the same fail-soft behavior so SKUD imports do not break on large files.
 - The initial spreadsheet population is bootstrapped from `staff_catalog.json` and `staff_bindings.json` via `create_google_sheet.py`.
 - During bootstrap, employee schedules are assigned automatically to the five-day schedules `ГР003` or `ГР004` based on the name pattern, so the attendance importer can use weekday schedules without manual per-row edits.
-- A separate staging sheet `DOCX_Связи_ШАБЛОН` is used for leadership and substitution preparation; `docx_leadership_sync.py` reads it back into `Сотрудники`, keeps `Посунько Руслан Юрьевич` as the top of the hierarchy, uses `DOCX_Структура` to infer departments, and creates a normalized review sheet.
+- A separate staging sheet `DOCX_Связи_ШАБЛОН` is used for leadership and substitution preparation; `docx_leadership_sync.py` reads it back into `Сотрудники`, keeps `Посунько Руслан Юрьевич` as the top of the hierarchy, uses `DOCX_Структура` to infer departments, infers missing department managers from the branch layout, and creates a normalized review sheet.
 - Local SQLite remains a fallback/cache for imported data and runtime cases.
 
 ## Functional scope

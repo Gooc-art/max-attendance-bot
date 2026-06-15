@@ -18,5 +18,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Write runtime env
+        env:
+          SKUD_ENV: ${{ secrets.SKUD_ENV }}
+        run: |
+          if [ -n "$SKUD_ENV" ]; then
+            mkdir -p "$HOME/skud"
+            printf '%s\n' "$SKUD_ENV" > "$HOME/skud/.env"
+            chmod 600 "$HOME/skud/.env"
+          fi
+
       - name: Deploy to local host
         run: bash scripts/deploy_local_linux.sh

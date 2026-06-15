@@ -32,6 +32,7 @@ if [ -f .env ]; then
 fi
 export HOME="$ORIGINAL_HOME"
 export SKUD_DEPLOY_DIR="$DEPLOY_DIR"
+mkdir -p "$HOME/.cache/pip" || true
 "$PYTHON_BIN" -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip

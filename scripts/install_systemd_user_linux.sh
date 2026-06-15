@@ -7,6 +7,10 @@ ROOT_DIR="${SKUD_DEPLOY_DIR:-$USER_HOME/skud}"
 SYSTEMD_USER_DIR="$USER_HOME/.config/systemd/user"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
+if ! mkdir -p "$SYSTEMD_USER_DIR" "$ROOT_DIR/logs" "$ROOT_DIR/run" "$ROOT_DIR/data" 2>/dev/null; then
+  sudo mkdir -p "$SYSTEMD_USER_DIR" "$ROOT_DIR/logs" "$ROOT_DIR/run" "$ROOT_DIR/data"
+  sudo chown -R "$(id -u):$(id -g)" "$USER_HOME/.config" "$ROOT_DIR"
+fi
 mkdir -p "$SYSTEMD_USER_DIR" "$ROOT_DIR/logs" "$ROOT_DIR/run" "$ROOT_DIR/data"
 
 cat > "$SYSTEMD_USER_DIR/skud-backend.service" <<EOF

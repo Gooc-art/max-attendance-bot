@@ -112,6 +112,29 @@ class SendOutboundTests(unittest.TestCase):
             message_id="bot-2",
         )
 
+    def test_fast_mode_skips_previous_message_delete(self) -> None:
+        router = self._build_router()
+        router.delete_previous_message = False
+        router.bot_message_cursor_store.get.return_value = "previous-mid"
+        router.max_client.send_message.return_value = {"mid": "bot-fast"}
+
+        inbound = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
+
+        router.max_client.delete_message.assert_not_called()
+        router.max_client.soft_clear_message.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+
     def test_callback_updates_acknowledge_and_send_visible_message(self) -> None:
         router = self._build_router()
         router.max_client.send_message.return_value = {"mid": "bot-callback"}

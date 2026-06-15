@@ -32,6 +32,7 @@ class Settings:
     max_bot_secret: str
     max_bot_webhook_url: str
     max_api_timeout_seconds: int
+    max_delete_previous_message: bool
     google_service_account_file: str
     google_sheets_spreadsheet_id: str
     google_sheets_employee_range: str
@@ -58,6 +59,7 @@ def get_settings() -> Settings:
         max_bot_secret=os.getenv("MAX_BOT_SECRET", ""),
         max_bot_webhook_url=os.getenv("MAX_BOT_WEBHOOK_URL", ""),
         max_api_timeout_seconds=int(os.getenv("MAX_API_TIMEOUT_SECONDS", "10")),
+        max_delete_previous_message=_to_bool(os.getenv("MAX_DELETE_PREVIOUS_MESSAGE"), default=True),
         google_service_account_file=os.getenv(
             "GOOGLE_SERVICE_ACCOUNT_FILE",
             "/Users/goocbk.ru/secure/attendance-max-bot-service-account.json",

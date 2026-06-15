@@ -45,6 +45,7 @@ from app.bot.buttons import (
     substitutions_menu_buttons,
 )
 from app.bot.menus import get_menu_for_role
+from app.config import get_settings
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType, AttendanceReasonCode, DialogFlow, Role
 from app.domain.dialog_state import UserDialogState
 from app.domain.role_labels import display_role_name
@@ -83,6 +84,7 @@ class MaxWebhookRouter:
         self.skud_import_repository = SkudImportRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
+        self.delete_previous_message = get_settings().max_delete_previous_message
         self.max_file_import_service = MaxFileImportService()
         self.office_sealing_service = OfficeSealingService(
             directory_service=self.google_directory_service,
@@ -4662,7 +4664,7 @@ class MaxWebhookRouter:
 
     def _send_visible_outbound(self, inbound: MaxUpdate, outbound: MaxOutboundMessage) -> dict[str, float | int | str]:
         delete_started_at = perf_counter()
-        deleted_messages = self._delete_previous_bot_message(inbound)
+        deleted_messages = self._delete_previous_bot_message(inbound) if self.delete_previous_message else 0
         delete_ms = (perf_counter() - delete_started_at) * 1000
 
         recipients = self._outbound_recipients(inbound)

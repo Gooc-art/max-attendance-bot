@@ -44,6 +44,11 @@ bash scripts/install_systemd_user_linux.sh
 systemctl --user restart skud-backend.service
 systemctl --user restart skud-tunnel.service
 
-sleep 3
-curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null
+sleep 8
+if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
+  systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service || true
+  journalctl --user --no-pager -u skud-backend.service -n 100 || true
+  journalctl --user --no-pager -u skud-tunnel.service -n 80 || true
+  exit 1
+fi
 systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service

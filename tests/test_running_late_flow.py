@@ -1,0 +1,437 @@
+from __future__ import annotations
+
+import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from app.bot.router import MaxWebhookRouter
+from app.domain.dialog_state import UserDialogState
+from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType, DialogFlow
+from app.integrations.google_sheets.directory import GoogleSheetsEmployeeRecord
+
+
+class _FakeDirectoryService:
+    def __init__(self, rows=None):
+        self.rows = rows or []
+
+    def list_employees(self, refresh: bool = False):
+        return list(self.rows)
+
+    def get_by_user_id(self, user_id: str, refresh: bool = False):
+        for row in self.rows:
+            if row.employee_user_id == user_id:
+                return row
+        return None
+
+
+class _FakeScheduleService:
+    def resolve_planned_start(self, **kwargs):
+        return "08:30"
+
+
+class _FakeCaseRepository:
+    def __init__(self):
+        self.created_cases = []
+        self.cases = {}
+        self.last_id = 800
+
+    def create_case(self, **kwargs):
+        self.last_id += 1
+        self.created_cases.append(kwargs)
+        self.cases[self.last_id] = SimpleNamespace(id=self.last_id, **kwargs)
+        return self.last_id
+
+    def get(self, case_id: int):
+        return self.cases.get(case_id)
+
+
+class _FakeApprovalRepository:
+    def __init__(self):
+        self.created = []
+
+    def create_if_missing(self, **kwargs):
+        self.created.append(kwargs)
+        return 99
+
+
+class _FakeSubstitutionRepository:
+    def __init__(self, drafts=None):
+        self.drafts = drafts or []
+
+    def list_approved_overlapping(self, date_from: str, date_to: str):
+        return [
+            draft
+            for draft in self.drafts
+            if draft.status == "approved" and draft.date_from <= date_to and draft.date_to >= date_from
+        ]
+
+    @staticmethod
+    def departments_for_draft(draft):
+        return list(getattr(draft, "departments", []))
+
+
+class RunningLateFlowTests(unittest.TestCase):
+    def _build_router(self) -> MaxWebhookRouter:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.approval_repository = _FakeApprovalRepository()
+        router.google_schedule_service = _FakeScheduleService()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.google_directory_service = _FakeDirectoryService(
+            rows=[
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Иванов Иван Иванович",
+                    employee_user_id="emp-1",
+                    department_name="Отдел продаж",
+                    manager_name="Петров Петр Сергеевич",
+                    manager_user_id="mgr-default",
+                    schedule_name="Пятидневка",
+                    schedule_id="GR003",
+                    role="employee",
+                    is_active=True,
+                ),
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Петров Петр Сергеевич",
+                    employee_user_id="mgr-default",
+                    department_name="Отдел продаж",
+                    manager_name="Орлов Олег Олегович",
+                    manager_user_id="top-1",
+                    role="manager",
+                    is_active=True,
+                ),
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Смирнов Сергей Олегович",
+                    employee_user_id="mgr-alt",
+                    department_name="Отдел продаж",
+                    role="manager",
+                    is_active=True,
+                ),
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Орлов Олег Олегович",
+                    employee_user_id="top-1",
+                    department_name="Топ-руководство",
+                    role="top_manager",
+                    is_active=True,
+                ),
+            ]
+        )
+        return router
+
+    def test_start_flow_shows_manager_choices(self) -> None:
+        router = self._build_router()
+
+        response = router._start_running_late_flow("employee", "emp-1")
+
+        self.assertIn("Выбери руководителя", response.outbound.text)
+        self.assertIn("Петров Петр Сергеевич", [button.title for button in response.outbound.buttons])
+        self.assertIn("Смирнов Сергей Олегович", [button.title for button in response.outbound.buttons])
+        self.assertEqual(response.active_flow, DialogFlow.RUNNING_LATE.value)
+
+    def test_start_flow_uses_active_substitution_for_current_manager(self) -> None:
+        router = self._build_router()
+        router.substitution_repository = _FakeSubstitutionRepository(
+            drafts=[
+                SimpleNamespace(
+                    target_user_id="mgr-default",
+                    target_manager="Петров Петр Сергеевич",
+                    replacement_user="Смирнов Сергей Олегович",
+                    replacement_user_id="mgr-alt",
+                    date_from="2026-01-01",
+                    date_to="2026-12-31",
+                    status="approved",
+                    departments=["Отдел продаж"],
+                )
+            ]
+        )
+
+        response = router._start_running_late_flow("employee", "emp-1")
+
+        titles = [button.title for button in response.outbound.buttons]
+        self.assertIn("Смирнов Сергей Олегович", titles)
+        self.assertNotIn("Петров Петр Сергеевич", titles)
+
+    def test_start_flow_uses_active_substitution_for_manager_even_outside_curated_departments(self) -> None:
+        router = self._build_router()
+        router.google_directory_service = _FakeDirectoryService(
+            rows=[
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Кутлуев Родион Романович",
+                    employee_user_id="23325864",
+                    department_name="0. Руководство",
+                    manager_name="Комаровский Андрей Петрович",
+                    manager_user_id="12771658",
+                    schedule_name="Пятидневка",
+                    schedule_id="GR004",
+                    role="employee",
+                    is_active=True,
+                ),
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Посунько Руслан Юрьевич",
+                    employee_user_id="12771658",
+                    department_name="1-ОКПКиПиБ",
+                    role="top_manager",
+                    is_active=True,
+                ),
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Комаровский Андрей Петрович",
+                    employee_user_id="6393482",
+                    department_name="1-ОКПКиПиБ",
+                    role="top_manager",
+                    is_active=True,
+                ),
+            ]
+        )
+        router.substitution_repository = _FakeSubstitutionRepository(
+            drafts=[
+                SimpleNamespace(
+                    target_user_id="6393482",
+                    target_manager="Комаровский Андрей Петрович",
+                    replacement_user="Кузьменко Елена Викторовна",
+                    replacement_user_id="154227986",
+                    date_from="2026-01-01",
+                    date_to="2026-12-31",
+                    status="approved",
+                    departments=["10. ОККСНР", "12. ОККНДФЛ", "13. ОККНД"],
+                )
+            ]
+        )
+
+        response = router._start_running_late_flow("employee", "23325864")
+
+        button_map = {button.title: button.action for button in response.outbound.buttons}
+        self.assertEqual(button_map["Кузьменко Елена Викторовна"], "late_notice.manager:154227986")
+        self.assertNotIn("Комаровский Андрей Петрович", button_map)
+
+    def test_start_flow_ignores_cancelled_substitution_for_manager(self) -> None:
+        router = self._build_router()
+        router.substitution_repository = _FakeSubstitutionRepository(
+            drafts=[
+                SimpleNamespace(
+                    target_user_id="mgr-default",
+                    target_manager="Петров Петр Сергеевич",
+                    replacement_user="Смирнов Сергей Олегович",
+                    replacement_user_id="mgr-alt",
+                    date_from="2026-01-01",
+                    date_to="2026-12-31",
+                    status="cancelled",
+                    departments=["Отдел продаж"],
+                )
+            ]
+        )
+
+        response = router._start_running_late_flow("employee", "emp-1")
+
+        titles = [button.title for button in response.outbound.buttons]
+        self.assertIn("Петров Петр Сергеевич", titles)
+        self.assertIn("Смирнов Сергей Олегович", titles)
+
+    def test_full_flow_creates_late_notice_case(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="choose_manager",
+            data={
+                "employee_name": "Иванов Иван Иванович",
+                "department_name": "Отдел продаж",
+                "schedule_name": "Пятидневка",
+                "schedule_id": "GR003",
+            },
+        )
+
+        manager_response = router._handle_running_late_flow(
+            "employee",
+            "emp-1",
+            "",
+            "late_notice.manager:mgr-alt",
+            state,
+        )
+        self.assertIn("Теперь выбери причину", manager_response.outbound.text)
+        self.assertEqual(state.step, "choose_reason")
+
+        reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:approved_late", state)
+        self.assertIn("со скольки опаздываешь", reason_response.outbound.text)
+        self.assertEqual(state.step, "enter_time")
+
+        result = router._handle_running_late_flow("employee", "emp-1", "08:55", "", state)
+        self.assertIn("Предупреждение об опоздании отправлено на согласование.", result.outbound.text)
+        self.assertEqual(result.active_flow, None)
+        self.assertEqual(len(router.case_repository.created_cases), 1)
+
+        created_case = router.case_repository.created_cases[0]
+        self.assertEqual(created_case["employee_user_id"], "emp-1")
+        self.assertEqual(created_case["manager_user_id"], "mgr-alt")
+        self.assertEqual(created_case["case_type"], AttendanceCaseType.LATE.value)
+        self.assertEqual(created_case["status"], AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value)
+        self.assertEqual(created_case["actual_start"], "08:55")
+        self.assertEqual(created_case["planned_start"], "08:30")
+        self.assertEqual(created_case["delay_minutes"], 0)
+        self.assertEqual(created_case["source"], "late_notice")
+        self.assertIn("Опаздываю с 08:55", created_case["employee_reason"])
+        self.assertIn("Согласовано", created_case["employee_reason"])
+
+        self.assertEqual(
+            router.approval_repository.created[0],
+            {
+                "case_id": 801,
+                "manager_user_id": "mgr-alt",
+                "manager_name": "Смирнов Сергей Олегович",
+                "status": ApprovalStatus.PENDING.value,
+            },
+        )
+        router.max_client.send_message.assert_called_once()
+        notification = router.max_client.send_message.call_args.kwargs["text"]
+        self.assertIn("Опаздывает с: 08:55", notification)
+        self.assertNotIn("Отклонение от графика", notification)
+
+    def test_invalid_time_keeps_flow_active(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="enter_time",
+            data={
+                "employee_name": "Иванов Иван Иванович",
+                "department_name": "Отдел продаж",
+                "schedule_name": "Пятидневка",
+                "schedule_id": "GR003",
+                "manager_user_id": "mgr-default",
+                "manager_name": "Петров Петр Сергеевич",
+            },
+        )
+
+        result = router._handle_running_late_flow("employee", "emp-1", "9-15", "", state)
+
+        self.assertIn("Нужен формат времени", result.outbound.text)
+        self.assertEqual(result.active_flow, DialogFlow.RUNNING_LATE.value)
+        self.assertEqual(router.case_repository.created_cases, [])
+        router.max_client.send_message.assert_not_called()
+
+    def test_back_from_reason_step_returns_to_time_step(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="enter_time",
+            data={
+                "employee_name": "Иванов Иван Иванович",
+                "department_name": "Отдел продаж",
+                "schedule_name": "Пятидневка",
+                "schedule_id": "GR003",
+                "manager_user_id": "mgr-default",
+                "manager_name": "Петров Петр Сергеевич",
+                "notice_reason_code": "approved_late",
+                "notice_reason_label": "Согласовано",
+            },
+        )
+
+        result = router._handle_running_late_flow("employee", "emp-1", "", "common.back", state)
+
+        self.assertIn("Теперь выбери причину", result.outbound.text)
+        self.assertEqual(state.step, "choose_reason")
+
+    def test_absence_notice_requests_period_reason_and_creates_absence_case(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="choose_reason",
+            data={
+                "employee_name": "Иванов Иван Иванович",
+                "department_name": "Отдел продаж",
+                "schedule_name": "Пятидневка",
+                "schedule_id": "GR003",
+                "manager_user_id": "mgr-default",
+                "manager_name": "Петров Петр Сергеевич",
+            },
+        )
+
+        reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:absence_notice", state)
+        self.assertIn("дату начала", reason_response.outbound.text)
+        self.assertEqual(state.step, "enter_date_from")
+
+        from_response = router._handle_running_late_flow("employee", "emp-1", "2026-05-21", "", state)
+        self.assertIn("дату окончания", from_response.outbound.text)
+        self.assertEqual(state.step, "enter_date_to")
+
+        to_response = router._handle_running_late_flow("employee", "emp-1", "2026-05-25", "", state)
+        self.assertIn("Напиши причину отсутствия", to_response.outbound.text)
+        self.assertEqual(state.step, "enter_absence_reason")
+
+        result = router._handle_running_late_flow("employee", "emp-1", "Семейные обстоятельства", "", state)
+        self.assertIn("Заявка отправлена на согласование.", result.outbound.text)
+        self.assertEqual(len(router.case_repository.created_cases), 1)
+        created_case = router.case_repository.created_cases[0]
+        self.assertEqual(created_case["case_type"], AttendanceCaseType.ABSENT.value)
+        self.assertEqual(created_case["event_date"], "2026-05-21")
+        self.assertEqual(created_case["actual_start"], "")
+        self.assertEqual(created_case["source"], "attendance_notice")
+        self.assertIn("Период: 2026-05-21 - 2026-05-25", created_case["employee_reason"])
+        self.assertIn("Семейные обстоятельства", created_case["employee_reason"])
+
+    def test_removed_specific_absence_reasons_are_not_shown(self) -> None:
+        from app.bot.buttons import LATE_NOTICE_REASON_LABELS
+
+        self.assertNotIn("vacation", LATE_NOTICE_REASON_LABELS)
+        self.assertNotIn("sick_leave", LATE_NOTICE_REASON_LABELS)
+        self.assertNotIn("business_trip", LATE_NOTICE_REASON_LABELS)
+        self.assertNotIn("remote_day", LATE_NOTICE_REASON_LABELS)
+        self.assertEqual(LATE_NOTICE_REASON_LABELS["absence_notice"], "Буду отсутствовать")
+
+    def test_other_reason_accepts_free_text_before_time(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="choose_reason",
+            data={
+                "employee_name": "Иванов Иван Иванович",
+                "department_name": "Отдел продаж",
+                "schedule_name": "Пятидневка",
+                "schedule_id": "GR003",
+                "manager_user_id": "mgr-default",
+                "manager_name": "Петров Петр Сергеевич",
+            },
+        )
+
+        reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:other", state)
+        self.assertIn("Напиши причину опоздания", reason_response.outbound.text)
+        self.assertEqual(state.step, "enter_other_reason")
+
+        text_response = router._handle_running_late_flow("employee", "emp-1", "Пробка на дороге", "", state)
+        self.assertIn("со скольки опаздываешь", text_response.outbound.text)
+        self.assertEqual(state.step, "enter_time")
+
+        result = router._handle_running_late_flow("employee", "emp-1", "09:10", "", state)
+        self.assertEqual(len(router.case_repository.created_cases), 1)
+        self.assertIn("Пробка на дороге", router.case_repository.created_cases[0]["employee_reason"])
+
+    def test_manager_running_late_routes_to_top_manager(self) -> None:
+        router = self._build_router()
+
+        response = router._start_running_late_flow("manager", "mgr-default")
+
+        titles = [button.title for button in response.outbound.buttons]
+        self.assertIn("Орлов Олег Олегович", titles)
+        self.assertNotIn("Смирнов Сергей Олегович", titles)
+
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="choose_manager",
+            data={
+                "employee_name": "Петров Петр Сергеевич",
+                "department_name": "Отдел продаж",
+                "manager_user_id": "top-1",
+                "manager_name": "Орлов Олег Олегович",
+            },
+        )
+        manager_response = router._handle_running_late_flow(
+            "manager",
+            "mgr-default",
+            "",
+            "late_notice.manager:top-1",
+            state,
+        )
+
+        self.assertIn("Теперь выбери причину", manager_response.outbound.text)
+        self.assertEqual(state.data["manager_user_id"], "top-1")
+
+
+if __name__ == "__main__":
+    unittest.main()

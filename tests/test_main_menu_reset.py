@@ -147,6 +147,38 @@ class MainMenuResetTests(unittest.TestCase):
         self.assertIsNone(dialog_state_store.get("203302812"))
         self.assertIsNotNone(dialog_state_store.get("203302813"))
 
+    def test_my_lates_resets_active_flow_before_dialog_handler(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router.case_repository.list_for_employee_user = MagicMock(return_value=[])
+
+        dialog_state_store.set(
+            "203302812",
+            UserDialogState(
+                flow=DialogFlow.RUNNING_LATE.value,
+                step="choose_reason",
+                data={"manager_user_id": "mgr-1"},
+            ),
+        )
+
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-lates",
+                payload="menu.my_lates",
+                user=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertIn("У тебя пока нет зарегистрированных случаев", response.outbound.text)
+        self.assertIsNone(dialog_state_store.get("203302812"))
+
 
 if __name__ == "__main__":
     unittest.main()

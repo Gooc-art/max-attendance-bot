@@ -15,6 +15,11 @@ class Role(str, Enum):
 class DialogFlow(str, Enum):
     SUBSTITUTION = "substitution"
     ATTENDANCE_REASON = "attendance_reason"
+    FORGOT_CHIP = "forgot_chip"
+    RUNNING_LATE = "running_late"
+    ABSENCE_PERIOD_EDIT = "absence_period_edit"
+    REPORT_PERIOD = "report_period"
+    OFFICE_SEAL_PHOTO = "office_seal_photo"
 
 
 class SubstitutionScope(str, Enum):
@@ -51,6 +56,8 @@ class ApprovalStatus(str, Enum):
 
 
 class AttendanceReasonCode(str, Enum):
+    ABSENCE_NOTICE = "absence_notice"
+    VACATION = "vacation"
     SICK_LEAVE = "sick_leave"
     BUSINESS_TRIP = "business_trip"
     REMOTE_DAY = "remote_day"

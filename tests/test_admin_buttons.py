@@ -14,7 +14,7 @@ class AdminButtonsTests(unittest.TestCase):
 
     def test_admin_menu_shows_whoami_button_second(self) -> None:
         buttons = main_menu_buttons("admin")
-        self.assertEqual(buttons[1].title, "Кто я")
+        self.assertEqual(buttons[1].title, "Обо мне")
         self.assertEqual(buttons[1].action, BotAction.WHOAMI)
 
     def test_admin_menu_shows_admin_panel_button_third(self) -> None:

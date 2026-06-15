@@ -49,6 +49,33 @@ class ApprovalRepository:
             rows = session.execute(query.order_by(ApprovalModel.created_at.desc()).limit(limit)).all()
             return list(rows)
 
+    def list_for_manager_user(
+        self,
+        manager_user_id: str,
+        limit: int = 500,
+    ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+        return self.list_for_manager(manager_user_id=manager_user_id, limit=limit)
+
+    def list_for_department_names(
+        self,
+        department_names: List[str],
+        statuses: Optional[List[str]] = None,
+        limit: int = 500,
+    ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+        departments = [name for name in {str(item).strip() for item in department_names} if name]
+        if not departments:
+            return []
+        with SessionLocal() as session:
+            query = (
+                select(ApprovalModel, AttendanceCaseModel)
+                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
+                .where(AttendanceCaseModel.department_name.in_(departments))
+            )
+            if statuses:
+                query = query.where(ApprovalModel.status.in_(statuses))
+            rows = session.execute(query.order_by(ApprovalModel.created_at.desc()).limit(limit)).all()
+            return list(rows)
+
     def list_overdue_for_manager(
         self,
         manager_user_id: str,

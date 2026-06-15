@@ -77,6 +77,54 @@ class GoogleSheetsDirectoryServiceTests(unittest.TestCase):
         self.assertEqual(len(cached), 1)
         self.assertEqual(cached[0].employee_user_id, "max_001")
 
+    def test_get_by_employee_name_matches_normalized_fio_and_truncated_patronymic(self) -> None:
+        service = _FakeGoogleSheetsDirectoryService(
+            [
+                [
+                    "ФИО",
+                    "ID_пользователя_MAX",
+                    "Подразделение",
+                    "График",
+                    "ID_графика",
+                    "Роль",
+                    "Работает",
+                ],
+                [
+                    "Огнёва Анна Алексеевна",
+                    "max_010",
+                    "15. ОНК№1",
+                    "Девушки 08:30-12:30 / 14:00-17:15",
+                    "ГР003",
+                    "Сотрудник",
+                    "Да",
+                ],
+                [
+                    "Синицкая Ольга Юрьевна.",
+                    "max_011",
+                    "15. ОНК№1",
+                    "Девушки 08:30-12:30 / 14:00-17:15",
+                    "ГР003",
+                    "Сотрудник",
+                    "Да",
+                ],
+                [
+                    "Афанасьев Николай Владимирович",
+                    "max_012",
+                    "9. ОКК",
+                    "Парни 08:30-12:30 / 14:00-18:15",
+                    "ГР004",
+                    "Сотрудник",
+                    "Да",
+                ],
+            ]
+        )
+
+        service.list_employees(refresh=True)
+
+        self.assertEqual(service.get_by_employee_name("Огнева Анна Алексеевна").employee_user_id, "max_010")
+        self.assertEqual(service.get_by_employee_name("Синицкая Ольга Юрьевна").employee_user_id, "max_011")
+        self.assertEqual(service.get_by_employee_name("Афанасьев Николай Владими").employee_user_id, "max_012")
+
 
 if __name__ == "__main__":
     unittest.main()

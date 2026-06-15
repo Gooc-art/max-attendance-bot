@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
+
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 from app.repositories.user_role_override_repository import UserRoleOverrideRepository
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
+
+
+logger = logging.getLogger(__name__)
 
 
 class RoleResolver:
@@ -27,29 +33,55 @@ class RoleResolver:
         self.employee_directory_repository = employee_directory_repository or EmployeeDirectoryRepository()
 
     def resolve_role(self, user_id: str, chat_id: str) -> str:
+        started_at = perf_counter()
+        source = "default"
         sheet_record = self.google_directory_service.get_by_user_id(user_id)
         if sheet_record is not None and sheet_record.is_active and sheet_record.role:
-            return self._normalize_role(sheet_record.role)
+            source = "google_sheets"
+            resolved_role = self._normalize_role(sheet_record.role)
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
+            return resolved_role
         override_role = self.role_override_repository.get_role(user_id)
         if override_role:
-            return self._normalize_role(override_role)
+            source = "override"
+            resolved_role = self._normalize_role(override_role)
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
+            return resolved_role
         record = self.employee_directory_repository.get_by_user_id(user_id)
         if record is not None and record.is_active:
             if record.role:
-                return self._normalize_role(record.role)
+                source = "employee_directory_role"
+                resolved_role = self._normalize_role(record.role)
+                logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
+                return resolved_role
+            source = "employee_directory_default"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "employee", source, (perf_counter() - started_at) * 1000)
             return "employee"
         if user_id.startswith(self.SECURITY_PREFIX):
+            source = "security_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "security", source, (perf_counter() - started_at) * 1000)
             return "security"
         if user_id.startswith(self.HR_PREFIX):
+            source = "hr_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "hr", source, (perf_counter() - started_at) * 1000)
             return "hr"
         if user_id.startswith(self.ADMIN_PREFIX):
+            source = "admin_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "admin", source, (perf_counter() - started_at) * 1000)
             return "admin"
         if user_id.startswith(self.TOP_MANAGER_PREFIX):
+            source = "top_manager_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "top_manager", source, (perf_counter() - started_at) * 1000)
             return "top_manager"
         if user_id.startswith(self.MANAGER_PREFIX):
+            source = "manager_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "manager", source, (perf_counter() - started_at) * 1000)
             return "manager"
         if chat_id.startswith("group_security"):
+            source = "group_security_prefix"
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "security", source, (perf_counter() - started_at) * 1000)
             return "security"
+        logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "employee", source, (perf_counter() - started_at) * 1000)
         return "employee"
 
     @staticmethod

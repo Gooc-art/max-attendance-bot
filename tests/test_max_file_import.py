@@ -82,6 +82,32 @@ class MaxFileImportTests(unittest.TestCase):
         self.assertIn("messages/mid-123", request.full_url)
         self.assertIn("v=1.2.5", request.full_url)
 
+    def test_document_attachment_is_resolved_from_message(self) -> None:
+        service = MaxFileImportService()
+        service.max_client = MagicMock()
+        service.max_client.get_message.return_value = {
+            "body": {
+                "attachments": [
+                    {
+                        "type": "document",
+                        "filename": "Отчет.xlsx",
+                        "payload": {"url": "https://example.com/report.xlsx", "token": "abc"},
+                    }
+                ]
+            }
+        }
+
+        attachment = MaxAttachment(
+            type="document",
+            filename="Отчет.xlsx",
+            payload=MaxAttachmentPayload(token="abc"),
+        )
+
+        resolved = service._resolve_attachment_from_message("mid-document", attachment)
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.payload.url, "https://example.com/report.xlsx")
+
 
 if __name__ == "__main__":
     unittest.main()

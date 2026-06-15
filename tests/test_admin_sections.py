@@ -13,7 +13,7 @@ class AdminSectionsTests(unittest.TestCase):
         response = self.router._admin_personal_menu("admin")
         titles = [button.title for button in response.outbound.buttons]
 
-        self.assertIn("Кто я", titles)
+        self.assertIn("Обо мне", titles)
         self.assertIn("Моя строка", titles)
         self.assertIn("Права доступа", titles)
         self.assertIn("Главное меню", titles)
@@ -31,17 +31,17 @@ class AdminSectionsTests(unittest.TestCase):
         response = self.router._admin_skud_menu("admin")
         titles = [button.title for button in response.outbound.buttons]
 
-        self.assertIn("Загрузить выгрузку СКУД", titles)
-        self.assertIn("История импортов", titles)
-        self.assertIn("Ошибки сопоставления", titles)
-        self.assertIn("Необработанные записи", titles)
+        self.assertIn("Импорт СКУД", titles)
+        self.assertIn("История", titles)
+        self.assertIn("Ошибки", titles)
+        self.assertIn("Необработанные", titles)
 
     def test_admin_workflow_section_contains_approval_shortcuts(self) -> None:
         response = self.router._admin_workflow_menu("admin")
         titles = [button.title for button in response.outbound.buttons]
 
         self.assertIn("Согласования", titles)
-        self.assertIn("Нарушения отдела", titles)
+        self.assertIn("Нарушения", titles)
         self.assertIn("Замещения", titles)
 
     def test_admin_reports_section_contains_report_shortcuts(self) -> None:
@@ -50,13 +50,25 @@ class AdminSectionsTests(unittest.TestCase):
 
         self.assertIn("Сводка", titles)
         self.assertIn("Отчеты", titles)
-        self.assertIn("Отчеты по подразделениям", titles)
+        self.assertIn("По отделам", titles)
 
     def test_admin_settings_section_contains_settings_shortcut(self) -> None:
         response = self.router._admin_settings_menu("admin")
         titles = [button.title for button in response.outbound.buttons]
 
-        self.assertIn("Системные настройки", titles)
+        self.assertIn("Настройки", titles)
+
+    def test_security_match_errors_screen_uses_only_back_navigation(self) -> None:
+        response = self.router._match_errors_menu("security")
+        titles = [button.title for button in response.outbound.buttons]
+
+        self.assertEqual(titles, ["Назад"])
+
+    def test_security_unprocessed_screen_uses_only_back_navigation(self) -> None:
+        response = self.router._unprocessed_menu("security")
+        titles = [button.title for button in response.outbound.buttons]
+
+        self.assertEqual(titles, ["Назад"])
 
 
 if __name__ == "__main__":

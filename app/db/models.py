@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,6 +20,17 @@ class DialogStateModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class BotMessageCursorModel(Base):
+    __tablename__ = "bot_message_cursors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    chat_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    message_id: Mapped[str] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SubstitutionDraftModel(Base):
     __tablename__ = "substitution_drafts"
 
@@ -26,12 +38,15 @@ class SubstitutionDraftModel(Base):
     created_by_user_id: Mapped[str] = mapped_column(String(255), index=True)
     role: Mapped[str] = mapped_column(String(100), index=True)
     target_manager: Mapped[str] = mapped_column(String(255))
+    target_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     replacement_user: Mapped[str] = mapped_column(String(255))
+    replacement_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     reason: Mapped[str] = mapped_column(String(100))
     date_from: Mapped[str] = mapped_column(String(20))
     date_to: Mapped[str] = mapped_column(String(20))
     scope: Mapped[str] = mapped_column(String(100))
-    status: Mapped[str] = mapped_column(String(50), default="draft", index=True)
+    departments_json: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(50), default="pending_replacement_approval", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -74,12 +89,19 @@ class AttendanceDayRecordModel(Base):
     event_date: Mapped[str] = mapped_column(String(20), index=True)
     planned_start: Mapped[str] = mapped_column(String(20), default="")
     planned_end: Mapped[str] = mapped_column(String(20), default="")
+    raw_events_json: Mapped[str] = mapped_column(Text, default="[]")
+    presence_intervals_json: Mapped[str] = mapped_column(Text, default="[]")
     first_entry_time: Mapped[str] = mapped_column(String(20), default="")
     arrival_status: Mapped[str] = mapped_column(String(20), default="")
     arrival_delta_minutes: Mapped[int] = mapped_column(Integer, default=0)
     last_exit_time: Mapped[str] = mapped_column(String(20), default="")
     departure_status: Mapped[str] = mapped_column(String(20), default="")
     departure_delta_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    worked_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    planned_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    lunch_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    balance_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    late_compensated: Mapped[bool] = mapped_column(Boolean, default=False)
     total_passes: Mapped[int] = mapped_column(Integer, default=0)
     source: Mapped[str] = mapped_column(String(50), default="skud_report", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -107,6 +129,22 @@ class UserRoleOverrideModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class UserBotActivityModel(Base):
+    __tablename__ = "user_bot_activity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    role: Mapped[str] = mapped_column(String(100), default="", index=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    first_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    last_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    start_count: Mapped[int] = mapped_column(Integer, default=0)
+    interaction_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class EmployeeDirectoryModel(Base):
     __tablename__ = "employee_directory"
 
@@ -116,6 +154,7 @@ class EmployeeDirectoryModel(Base):
     manager_name: Mapped[str] = mapped_column(String(255), default="")
     manager_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     department_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    office: Mapped[str] = mapped_column(String(100), default="")
     role: Mapped[str] = mapped_column(String(100), default="employee", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

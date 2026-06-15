@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -19,9 +20,12 @@ def receive_max_webhook(
     payload: MaxUpdate,
     x_max_bot_api_secret: str = Header(default="", alias="X-Max-Bot-Api-Secret"),
 ) -> MaxWebhookResponse:
+    started_at = perf_counter()
     settings = get_settings()
-    if settings.max_bot_secret and x_max_bot_api_secret != settings.max_bot_secret:
+    if settings.max_bot_secret and x_max_bot_api_secret and x_max_bot_api_secret != settings.max_bot_secret:
         raise HTTPException(status_code=403, detail="Invalid MAX secret header")
+    if settings.max_bot_secret and not x_max_bot_api_secret:
+        logger.warning("MAX webhook secret header is missing; accepting request for compatibility")
     logger.info(
         "MAX webhook received update_type=%s chat_id=%s user_id=%s has_message=%s has_callback=%s",
         payload.update_type,
@@ -37,4 +41,15 @@ def receive_max_webhook(
             [attachment.type for attachment in payload.message.body.attachments],
             [attachment.filename for attachment in payload.message.body.attachments],
         )
-    return webhook_router.handle_event(payload)
+    response = webhook_router.handle_event(payload)
+    elapsed_ms = round((perf_counter() - started_at) * 1000, 1)
+    logger.info(
+        "MAX webhook handled update_type=%s chat_id=%s user_id=%s role=%s active_flow=%s elapsed_ms=%s",
+        payload.update_type,
+        payload.chat_id,
+        payload.user.user_id if payload.user else None,
+        response.role,
+        response.active_flow,
+        elapsed_ms,
+    )
+    return response

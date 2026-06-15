@@ -134,7 +134,7 @@ class MaxFileImportService:
         for item in attachments:
             if not isinstance(item, dict):
                 continue
-            if item.get("type") != "file":
+            if item.get("type") not in {"file", "document"}:
                 continue
             if filename and item.get("filename") != filename:
                 continue
@@ -159,7 +159,7 @@ class MaxFileImportService:
         return None
 
     def _download_file(self, url: str) -> bytes:
-        headers = {"User-Agent": "attendance-bot/0.1.0"}
+        headers = {"User-Agent": "skud/0.1.0"}
         request = Request(url=url, headers=headers, method="GET")
         try:
             with urlopen(request, timeout=60) as response:
@@ -169,7 +169,7 @@ class MaxFileImportService:
                 request = Request(
                     url=url,
                     headers={
-                        "User-Agent": "attendance-bot/0.1.0",
+                        "User-Agent": "skud/0.1.0",
                         "Authorization": self.max_client.token,
                     },
                     method="GET",

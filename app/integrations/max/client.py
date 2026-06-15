@@ -20,6 +20,8 @@ from app.schemas.max import (
     MaxSendMessageBody,
 )
 
+INVISIBLE_MESSAGE_TEXT = "\u2060"
+
 
 @dataclass
 class MaxApiClient:
@@ -27,6 +29,7 @@ class MaxApiClient:
     secret: str
     base_url: str
     version: str
+    request_timeout_seconds: int = 10
 
     @classmethod
     def from_settings(cls) -> "MaxApiClient":
@@ -36,6 +39,7 @@ class MaxApiClient:
             secret=settings.max_bot_secret,
             base_url=settings.max_api_base_url,
             version=settings.max_api_version,
+            request_timeout_seconds=settings.max_api_timeout_seconds,
         )
 
     def is_configured(self) -> bool:
@@ -173,6 +177,30 @@ class MaxApiClient:
             body=None,
         )
 
+    def delete_message(self, message_id: str) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "message_id": message_id}
+        return self._request(
+            "DELETE",
+            "messages",
+            params={"message_id": message_id},
+            body=None,
+        )
+
+    def soft_clear_message(self, message_id: str) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "message_id": message_id}
+        return self._request(
+            "PUT",
+            "messages",
+            params={"message_id": message_id},
+            body={
+                "text": INVISIBLE_MESSAGE_TEXT,
+                "attachments": [],
+                "notify": False,
+            },
+        )
+
     def register_webhook(self, url: str, update_types: List[str], secret: str) -> Dict[str, object]:
         body = {
             "url": url,
@@ -231,12 +259,12 @@ class MaxApiClient:
             method=method,
             headers={
                 "Authorization": self.token,
-                "User-Agent": "attendance-bot/0.1.0",
+                "User-Agent": "skud/0.1.0",
             },
         )
         if body is not None:
             request.add_header("Content-Type", "application/json")
-        with urlopen(request, timeout=30) as response:
+        with urlopen(request, timeout=self.request_timeout_seconds) as response:
             raw = response.read().decode("utf-8")
             if not raw:
                 return {"status": response.status}
@@ -265,7 +293,7 @@ class MaxApiClient:
             method="POST",
             headers={
                 "Content-Type": content_type,
-                "User-Agent": "attendance-bot/0.1.0",
+                "User-Agent": "skud/0.1.0",
             },
         )
         with urlopen(request, timeout=60) as response:

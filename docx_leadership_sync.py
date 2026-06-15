@@ -12,6 +12,7 @@ SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
 TEMPLATE_SHEET_TITLE = "DOCX_Связи_ШАБЛОН"
 NORMALIZED_SHEET_TITLE = "DOCX_Связи_НОРМА"
 EMPLOYEE_SHEET_TITLE = "Сотрудники"
+DEPARTMENT_SHEET_TITLE = "Подразделения"
 STRUCTURE_SHEET_TITLE = "DOCX_Структура"
 TOP_MANAGER_NAME = "Посунько Руслан Юрьевич"
 DIRECT_DEPUTIES = {
@@ -65,6 +66,7 @@ DEPARTMENT_OVERRIDES = {
 }
 
 DEPARTMENT_MANAGER_OVERRIDES: Dict[str, str] = {}
+DEPARTMENT_CANONICAL_NAMES: Dict[str, str] = {}
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -109,8 +111,12 @@ class EmployeeSheetRow:
     row_number: int
     employee_name: str
     employee_user_id: str
+    employee_id: str = ""
     department_name: str = ""
+    department_id: str = ""
     manager_name: str = ""
+    manager_user_id: str = ""
+    role: str = ""
 
 
 @dataclass(frozen=True)
@@ -138,41 +144,43 @@ def normalize_department_key(value: object) -> str:
 
 
 def register_department_manager(manager_name: str, *department_aliases: str) -> None:
+    canonical_name = normalize_text(department_aliases[0]) if department_aliases else ""
     for alias in department_aliases:
         key = normalize_department_key(alias)
         if key:
             DEPARTMENT_MANAGER_OVERRIDES[key] = manager_name
+            DEPARTMENT_CANONICAL_NAMES[key] = canonical_name
 
 
 register_department_manager(
     "Сафонов Алексей Валентинович",
-    "1. ОКПКиПБ",
+    "1. ОКПКиПиБ",
     "1-ОКПКиПиБ",
     "1-ОКПКиПБ",
     "ОКПКиПБ",
     "ОКПКиПИБ",
 )
 register_department_manager("Колеватых Наталья Николаевна", "2. ОРП", "ОРП")
-register_department_manager("Клоченок Анастасия Ивановна", "3. ООО", "ООО")
-register_department_manager("Молчанова Яна Геннадьевна", "4. ОФХО", "4. ОФиХО", "ОФХО", "ОФиХО")
-register_department_manager("Носко Кирилл Геннадьевич", "5. ОИБиИТ", "5. ОИТиИБ", "ОИБиИТ", "ОИТиИБ")
+register_department_manager("Клоченок Анастасия Ивановна", "3. ООО", "3. ОО", "ООО")
+register_department_manager("Молчанова Яна Геннадьевна", "4. ОФиХО", "4. ОФХО", "ОФХО", "ОФиХО")
+register_department_manager("Носко Кирилл Геннадьевич", "5. ОИТиИБ", "5. ОИБиИТ", "ОИБиИТ", "ОИТиИБ")
 register_department_manager("Кислицын Максим Анатольевич", "6. ОВА", "ОВА")
 register_department_manager("Крикун Марина Анатольевна", "7. ООГУ", "ООГУ")
 register_department_manager("Антипина Луиза Николаевна", "8. ОРиУН", "ОРиУН")
 register_department_manager("Соколова Елена Юрьевна", "9. ОКК", "ОКК")
-register_department_manager("Филимоненко Виктория Викторовна", "10. ОКК СНР", "10. ОККСНР", "ОКК СНР", "ОККСНР")
-register_department_manager("Лебедев Александр Иванович", "11. ОКК НИ", "11. ОККНИ", "ОКК НИ", "ОККНИ", "20. ОУЗ", "ОУЗ")
-register_department_manager("Родина Наталья Николаевна", "12. ОКК НДФЛ", "12. ОКННДФЛ", "ОКК НДФЛ", "ОКННДФЛ")
-register_department_manager("Волкова Эвелина Викторовна", "13. ОКК НД", "13. ОККНД", "ОКК НД", "ОККНД")
-register_department_manager("Толкачева Татьяна Александровна", "14. ОКК НДС", "14. ОККНДС", "ОКК НДС", "ОККНДС")
-register_department_manager("Ковалкина Алена Александровна", "15. ОНК1", "15. ОНК№1", "ОНК1", "ОНК№1")
-register_department_manager("Баженов Станислав Сергеевич", "16. ОНК2", "16. ОНК№2", "ОНК2", "ОНК№2")
-register_department_manager("Кондакова Юлия Борисовна", "17. ОНК3", "17. ОНК№3", "ОНК3", "ОНК№3")
+register_department_manager("Филимоненко Виктория Викторовна", "10. ОККСНР", "10. ОКК СНР", "ОКК СНР", "ОККСНР")
+register_department_manager("Лебедев Александр Иванович", "11. ОККНИ", "11. ОКК НИ", "ОКК НИ", "ОККНИ", "20. ОУЗ", "ОУЗ")
+register_department_manager("Родина Наталья Николаевна", "12. ОКННДФЛ", "12. ОКК НДФЛ", "ОКК НДФЛ", "ОКННДФЛ")
+register_department_manager("Волкова Эвелина Викторовна", "13. ОККНД", "13. ОКК НД", "ОКК НД", "ОККНД")
+register_department_manager("Толкачева Татьяна Александровна", "14. ОККНДС", "14. ОКК НДС", "ОКК НДС", "ОККНДС")
+register_department_manager("Ковалкина Алена Александровна", "15. ОНК№1", "15. ОНК1", "ОНК1", "ОНК№1")
+register_department_manager("Баженов Станислав Сергеевич", "16. ОНК№2", "16. ОНК2", "ОНК2", "ОНК№2")
+register_department_manager("Кондакова Юлия Борисовна", "17. ОНК№3", "17. ОНК3", "ОНК3", "ОНК№3")
 register_department_manager("Назаров Дмитрий Алишерович", "18. ООК", "ООК")
 register_department_manager("Соколова Елена Юрьевна", "19. АО", "АО")
-register_department_manager("Кузьмина Надежда Юрьевна", "21. ООПБ", "21. ООПиБ", "ООПБ", "ООПиБ")
-register_department_manager("Марникова Наталья Евгеньевна", "22. ПО1", "22. ПО№1", "ПО1", "ПО№1")
-register_department_manager("Канева Валерия Игоревна", "23. ПО2", "23. ПО№2", "ПО2", "ПО№2")
+register_department_manager("Кузьмина Надежда Юрьевна", "21. ООПиБ", "21. ООПБ", "ООПБ", "ООПиБ")
+register_department_manager("Марникова Наталья Евгеньевна", "22. ПО№1", "22. ПО1", "ПО1", "ПО№1")
+register_department_manager("Канева Валерия Игоревна", "23. ПО№2", "23. ПО2", "ПО2", "ПО№2")
 
 
 def parse_template_rows(values: List[List[str]]) -> List[LeadershipTemplateRow]:
@@ -215,10 +223,14 @@ def build_employee_index(values: List[List[str]]) -> Dict[str, EmployeeSheetRow]
             continue
         result[employee_name] = EmployeeSheetRow(
             row_number=row_number,
+            employee_id=get_cell(raw_row, index, "ID_сотрудника"),
             employee_name=employee_name,
             employee_user_id=employee_user_id,
             department_name=get_cell(raw_row, index, "Подразделение"),
+            department_id=get_cell(raw_row, index, "ID_подразделения"),
             manager_name=get_cell(raw_row, index, "ФИО_руководителя"),
+            manager_user_id=get_cell(raw_row, index, "ID_руководителя"),
+            role=get_cell(raw_row, index, "Роль"),
         )
     return result
 
@@ -237,10 +249,16 @@ def build_employee_updates(
             continue
         department_name = resolve_department_name(row, structure_index, department_nodes)
         manager_name = resolve_manager_name(row, department_name, department_manager_map)
+        manager_user_id = resolve_manager_user_id(manager_name, employee_index)
         if department_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "G", department_name))
+            department_id = build_department_id(department_name)
+            if department_id:
+                updates.append(EmployeeCellUpdate(employee.row_number, "H", department_id))
         if manager_name:
             updates.append(EmployeeCellUpdate(employee.row_number, "E", manager_name))
+        if manager_name or employee.manager_user_id:
+            updates.append(EmployeeCellUpdate(employee.row_number, "F", manager_user_id))
     return updates
 
 
@@ -253,18 +271,46 @@ def build_employee_backfill_updates(
         if employee.employee_name == TOP_MANAGER_NAME:
             if normalize_text(employee.manager_name):
                 updates.append(EmployeeCellUpdate(employee.row_number, "E", ""))
+            if normalize_text(employee.manager_user_id):
+                updates.append(EmployeeCellUpdate(employee.row_number, "F", ""))
             continue
         explicit_manager = normalize_text(MANAGER_OVERRIDES.get(employee.employee_name, ""))
         if explicit_manager:
             if normalize_text(employee.manager_name) != explicit_manager:
                 updates.append(EmployeeCellUpdate(employee.row_number, "E", explicit_manager))
+            explicit_manager_user_id = resolve_manager_user_id(explicit_manager, employee_index)
+            if normalize_text(employee.manager_user_id) != explicit_manager_user_id:
+                updates.append(EmployeeCellUpdate(employee.row_number, "F", explicit_manager_user_id))
             continue
         department_name = normalize_text(employee.department_name)
         if not department_name:
             continue
+        canonical_department_name = canonicalize_department_name(department_name)
+        if canonical_department_name and normalize_text(employee.department_name) != canonical_department_name:
+            updates.append(EmployeeCellUpdate(employee.row_number, "G", canonical_department_name))
+        department_id = build_department_id(canonical_department_name or department_name)
+        if department_id and normalize_text(employee.department_id) != department_id:
+            updates.append(EmployeeCellUpdate(employee.row_number, "H", department_id))
         department_manager = resolve_department_manager(department_name, department_manager_map)
-        if department_manager and normalize_text(employee.manager_name) != department_manager:
-            updates.append(EmployeeCellUpdate(employee.row_number, "E", department_manager))
+        if department_manager:
+            if normalize_text(employee.manager_name) != department_manager:
+                updates.append(EmployeeCellUpdate(employee.row_number, "E", department_manager))
+            department_manager_user_id = resolve_manager_user_id(department_manager, employee_index)
+            if normalize_text(employee.manager_user_id) != department_manager_user_id:
+                updates.append(EmployeeCellUpdate(employee.row_number, "F", department_manager_user_id))
+    return updates
+
+
+def build_employee_role_updates(employee_index: Dict[str, EmployeeSheetRow]) -> List[EmployeeCellUpdate]:
+    updates: List[EmployeeCellUpdate] = []
+    department_managers = set(DEPARTMENT_MANAGER_OVERRIDES.values())
+    for employee in employee_index.values():
+        if employee.employee_name not in department_managers:
+            continue
+        if normalize_text(employee.role) == "Администратор":
+            continue
+        if normalize_text(employee.role) != "Руководитель":
+            updates.append(EmployeeCellUpdate(employee.row_number, "I", "Руководитель"))
     return updates
 
 
@@ -294,9 +340,9 @@ def build_normalized_rows(
                 str(index),
                 row.employee_name,
                 employee.employee_user_id if employee else "",
-                department_name,
+                canonicalize_department_name(department_name),
                 manager_name,
-                "",
+                resolve_manager_user_id(manager_name, employee_index),
                 row.replacement_name,
                 top_manager_name,
                 row.comment,
@@ -319,6 +365,15 @@ def resolve_manager_name(
     return ""
 
 
+def resolve_manager_user_id(manager_name: str, employee_index: Dict[str, EmployeeSheetRow]) -> str:
+    if not manager_name:
+        return ""
+    manager_row = employee_index.get(normalize_text(manager_name))
+    if manager_row is None:
+        return ""
+    return normalize_text(manager_row.employee_user_id)
+
+
 def resolve_department_manager(department_name: str, department_manager_map: Dict[str, str]) -> str:
     direct_key = normalize_department_key(department_name)
     if not direct_key:
@@ -332,6 +387,28 @@ def resolve_department_manager(department_name: str, department_manager_map: Dic
     if manager_name:
         return normalize_text(manager_name)
 
+    return ""
+
+
+def canonicalize_department_name(department_name: str) -> str:
+    key = normalize_department_key(department_name)
+    if not key:
+        return ""
+    return normalize_text(DEPARTMENT_CANONICAL_NAMES.get(key, department_name))
+
+
+def department_sort_key(department_name: str) -> tuple[int, str]:
+    match = re.match(r"^(\d+)", normalize_text(department_name))
+    if match:
+        return (int(match.group(1)), normalize_text(department_name))
+    return (9999, normalize_text(department_name))
+
+
+def build_department_id(department_name: str) -> str:
+    canonical_name = canonicalize_department_name(department_name)
+    match = re.match(r"^(\d+)", canonical_name)
+    if match:
+        return f"DEP{int(match.group(1)) + 1:03d}"
     return ""
 
 
@@ -488,6 +565,58 @@ def apply_employee_updates(sheets_service, updates: List[EmployeeCellUpdate]) ->
     return len(updates)
 
 
+def build_department_sheet_rows(employee_index: Dict[str, EmployeeSheetRow]) -> List[List[str]]:
+    department_names = {
+        canonicalize_department_name(employee.department_name)
+        for employee in employee_index.values()
+        if canonicalize_department_name(employee.department_name)
+    }
+    rows: List[List[str]] = []
+    for department_name in sorted(department_names, key=department_sort_key):
+        manager_name = resolve_department_manager(department_name, {})
+        rows.append(
+            [
+                build_department_id(department_name),
+                department_name,
+                "",
+                "",
+                manager_name,
+                resolve_manager_user_id(manager_name, employee_index),
+                "Да",
+                "",
+            ]
+        )
+    return rows
+
+
+def replace_department_sheet_rows(sheets_service, rows: List[List[str]]) -> int:
+    sheets_service.spreadsheets().values().clear(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{DEPARTMENT_SHEET_TITLE}!A:H",
+    ).execute()
+    sheets_service.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"{DEPARTMENT_SHEET_TITLE}!A1",
+        valueInputOption="USER_ENTERED",
+        body={
+            "values": [
+                [
+                    "ID_подразделения",
+                    "Наименование_подразделения",
+                    "Родительское_подразделение",
+                    "ID_родительского_подразделения",
+                    "ФИО_руководителя",
+                    "ID_руководителя",
+                    "Активно",
+                    "Комментарий",
+                ],
+                *rows,
+            ]
+        },
+    ).execute()
+    return len(rows)
+
+
 def sync_leadership_template() -> dict[str, int]:
     sheets_service = create_services()
 
@@ -517,6 +646,7 @@ def sync_leadership_template() -> dict[str, int]:
         department_manager_map,
     )
     backfill_updates = build_employee_backfill_updates(employee_index, department_manager_map)
+    role_updates = build_employee_role_updates(employee_index)
     normalized_rows = build_normalized_rows(
         template_rows,
         employee_index,
@@ -524,15 +654,21 @@ def sync_leadership_template() -> dict[str, int]:
         department_nodes,
         department_manager_map,
     )
+    department_rows = build_department_sheet_rows(employee_index)
 
     ensure_sheet(sheets_service, NORMALIZED_SHEET_TITLE)
     clear_and_write_rows(sheets_service, NORMALIZED_SHEET_TITLE, NORMALIZED_HEADERS, normalized_rows)
-    written_updates = apply_employee_updates(sheets_service, dedupe_employee_updates([*employee_updates, *backfill_updates]))
+    written_updates = apply_employee_updates(
+        sheets_service,
+        dedupe_employee_updates([*employee_updates, *backfill_updates, *role_updates]),
+    )
+    replaced_department_rows = replace_department_sheet_rows(sheets_service, department_rows)
 
     return {
         "template_rows": len(template_rows),
         "normalized_rows": len(normalized_rows),
         "employee_updates": written_updates,
+        "department_rows": replaced_department_rows,
     }
 
 
@@ -549,6 +685,7 @@ def main() -> None:
     print(f"Строк из шаблона: {result['template_rows']}")
     print(f"Строк в нормализованной вкладке: {result['normalized_rows']}")
     print(f"Обновлено строк сотрудников: {result['employee_updates']}")
+    print(f"Заполнено подразделений: {result['department_rows']}")
 
 
 if __name__ == "__main__":

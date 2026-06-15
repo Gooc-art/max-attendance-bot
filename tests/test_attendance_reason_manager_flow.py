@@ -7,8 +7,9 @@ from unittest.mock import MagicMock
 from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
-from app.domain.enums import AttendanceCaseStatus, DialogFlow
+from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow
 from app.integrations.google_sheets.directory import GoogleSheetsEmployeeRecord
+from app.services.dialog_state import dialog_state_store
 
 
 class _FakeDirectoryService:
@@ -26,10 +27,10 @@ class _FakeDirectoryService:
 
 
 class _FakeCaseRepository:
-    def __init__(self):
+    def __init__(self, case=None):
         self.updated_managers = []
         self.updated_reasons = []
-        self.case = SimpleNamespace(
+        self.case = case or SimpleNamespace(
             id=101,
             employee_user_id="emp-1",
             employee_name="Иванов Иван Иванович",
@@ -43,6 +44,7 @@ class _FakeCaseRepository:
             delay_minutes=14,
             employee_reason="",
             status=AttendanceCaseStatus.AWAITING_EMPLOYEE_REASON.value,
+            source="manual",
         )
 
     def get(self, case_id: int):
@@ -79,7 +81,7 @@ class AttendanceReasonManagerFlowTests(unittest.TestCase):
 
         response = router._employee_case_card("employee", "emp-1", 101)
 
-        self.assertIn("Выбрать руководителя", [button.title for button in response.outbound.buttons])
+        self.assertIn("Объяснить", [button.title for button in response.outbound.buttons])
         self.assertTrue(
             any(button.action.startswith(BotAction.EMPLOYEE_REASON_START_PREFIX) for button in response.outbound.buttons)
         )
@@ -141,6 +143,92 @@ class AttendanceReasonManagerFlowTests(unittest.TestCase):
         self.assertEqual(router.approval_repository.created[0]["manager_user_id"], "mgr-alt")
         router.max_client.send_message.assert_called_once()
         self.assertEqual(router.case_repository.updated_reasons[-1], (101, "Личная причина", AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value))
+
+    def test_absence_case_card_shows_return_early_button(self) -> None:
+        case = SimpleNamespace(
+            id=101,
+            employee_user_id="emp-1",
+            employee_name="Иванов Иван Иванович",
+            department_name="Отдел продаж",
+            manager_user_id="mgr-default",
+            manager_name="Петров Петр Сергеевич",
+            case_type="absent",
+            event_date="2026-05-21",
+            planned_start="08:30",
+            actual_start="",
+            delay_minutes=0,
+            employee_reason="Отпуск. Период: 2026-05-21 - 2026-05-25",
+            status=AttendanceCaseStatus.JUSTIFIED.value,
+            source="attendance_notice",
+        )
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository(case)
+
+        response = router._employee_case_card("employee", "emp-1", 101)
+
+        self.assertIn("Период: 2026-05-21 - 2026-05-25", response.outbound.text)
+        self.assertIn("Выйду раньше", [button.title for button in response.outbound.buttons])
+
+    def test_absence_period_edit_updates_case_and_reopens_approval(self) -> None:
+        dialog_state_store.reset("emp-1")
+        case = SimpleNamespace(
+            id=101,
+            employee_user_id="emp-1",
+            employee_name="Иванов Иван Иванович",
+            department_name="Отдел продаж",
+            manager_user_id="mgr-default",
+            manager_name="Петров Петр Сергеевич",
+            case_type="absent",
+            event_date="2026-05-21",
+            planned_start="08:30",
+            actual_start="",
+            delay_minutes=0,
+            employee_reason="Отпуск. Период: 2026-05-21 - 2026-05-25",
+            status=AttendanceCaseStatus.JUSTIFIED.value,
+            source="attendance_notice",
+        )
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository(case)
+        router.approval_repository = _FakeApprovalRepository()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+
+        start_response = router._start_absence_period_edit_flow("employee", "emp-1", 101)
+        self.assertIn("Напиши новую дату окончания", start_response.outbound.text)
+
+        state = UserDialogState(
+            flow=DialogFlow.ABSENCE_PERIOD_EDIT.value,
+            step="enter_date_to",
+            data={
+                "case_id": "101",
+                "date_from": "2026-05-21",
+                "date_to": "2026-05-25",
+                "reason_label": "Отпуск",
+            },
+        )
+
+        result = router._handle_absence_period_edit_flow("employee", "emp-1", "2026-05-23", "", state)
+
+        self.assertIn("Дата окончания обновлена.", result.outbound.text)
+        self.assertEqual(
+            router.case_repository.updated_reasons[-1],
+            (
+                101,
+                "Отпуск. Период: 2026-05-21 - 2026-05-23",
+                AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value,
+            ),
+        )
+        self.assertEqual(
+            router.approval_repository.created[-1],
+            {
+                "case_id": 101,
+                "manager_user_id": "mgr-default",
+                "manager_name": "Петров Петр Сергеевич",
+                "status": ApprovalStatus.PENDING.value,
+            },
+        )
+        router.max_client.send_message.assert_called_once()
+        dialog_state_store.reset("emp-1")
 
 
 if __name__ == "__main__":

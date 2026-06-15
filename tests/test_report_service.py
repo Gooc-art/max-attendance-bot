@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import zipfile
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,6 +32,11 @@ class _FakeVisitRepository:
                 last_exit_time="17:40",
                 departure_status="late",
                 departure_delta_minutes=25,
+                worked_minutes=446,
+                planned_minutes=375,
+                lunch_minutes=90,
+                balance_minutes=71,
+                late_compensated=True,
                 total_passes=12,
             ),
             SimpleNamespace(
@@ -48,6 +54,11 @@ class _FakeVisitRepository:
                 last_exit_time="17:15",
                 departure_status="on_time",
                 departure_delta_minutes=0,
+                worked_minutes=375,
+                planned_minutes=375,
+                lunch_minutes=90,
+                balance_minutes=0,
+                late_compensated=False,
                 total_passes=10,
             ),
         ]
@@ -83,6 +94,7 @@ class _FakeCaseRepository:
                 case_type="late",
                 employee_reason="Был у врача",
                 event_date="2026-05-01",
+                source="late_notice_matched",
             ),
             SimpleNamespace(
                 id=2,
@@ -94,6 +106,7 @@ class _FakeCaseRepository:
                 case_type="late",
                 employee_reason="Согласованное опоздание",
                 event_date="2026-05-02",
+                source="skud_report",
             ),
         ]
 
@@ -157,7 +170,27 @@ class _FakeReportRepository:
         return removed
 
 
+class _NoSuccessfulImportRepository:
+    def get_latest_successful_for_user(self, user_id: str):
+        return None
+
+
+class _SuccessfulImportRepository:
+    def get_latest_successful_for_user(self, user_id: str):
+        return SimpleNamespace(period_start="2026-05-01", period_end="2026-05-02")
+
+
 class ReportServiceTests(unittest.TestCase):
+    @staticmethod
+    def _sheet_xml_by_name(archive: zipfile.ZipFile, sheet_name: str) -> str:
+        workbook_xml = archive.read("xl/workbook.xml")
+        root = ET.fromstring(workbook_xml)
+        sheets = root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
+        for index, sheet in enumerate(sheets, start=1):
+            if sheet.attrib["name"] == sheet_name:
+                return archive.read(f"xl/worksheets/sheet{index}.xml").decode("utf-8")
+        raise AssertionError(f"sheet not found: {sheet_name}")
+
     def test_generate_manager_report_creates_xlsx_and_download_link(self) -> None:
         service = ReportService()
         service.visit_repository = _FakeVisitRepository()
@@ -184,25 +217,45 @@ class ReportServiceTests(unittest.TestCase):
                     for sheet in root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
                 ]
                 self.assertIn("Сводка", sheet_names)
+                self.assertIn("Проблемные дни", sheet_names)
                 self.assertIn("Опоздавшие", sheet_names)
                 self.assertIn("Вовремя", sheet_names)
                 self.assertIn("Раньше", sheet_names)
                 self.assertIn("Ушли позже", sheet_names)
                 self.assertIn("Ушли вовремя", sheet_names)
                 self.assertIn("Ушли раньше", sheet_names)
+                self.assertIn("Трудочасы", sheet_names)
+                self.assertIn("Трудочасы отделы", sheet_names)
                 self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Недельный отчет", summary_xml.decode("utf-8"))
+                self.assertIn("Проблемных дней", summary_xml.decode("utf-8"))
+                self.assertIn("<autoFilter", summary_xml.decode("utf-8"))
+                self.assertIn("state=\"frozen\"", summary_xml.decode("utf-8"))
                 self.assertIn("Пришли раньше", summary_xml.decode("utf-8"))
                 self.assertIn("Ушли позже", summary_xml.decode("utf-8"))
                 self.assertIn("Дней с причиной", summary_xml.decode("utf-8"))
+                self.assertIn("Предупреждали заранее", summary_xml.decode("utf-8"))
+                self.assertIn("Согласованные предупреждения", summary_xml.decode("utf-8"))
+                self.assertIn("Сопоставлено со СКУД", summary_xml.decode("utf-8"))
+                self.assertIn("Согласованные опоздания", sheet_names)
+                workhours_xml = self._sheet_xml_by_name(archive, "Трудочасы")
+                self.assertIn("Тип дня", workhours_xml)
+                self.assertIn("Итог недели, мин", workhours_xml)
+                dept_workhours_xml = self._sheet_xml_by_name(archive, "Трудочасы отделы")
+                self.assertIn("Проблемных дней", dept_workhours_xml)
+                self.assertIn("Подразделение", dept_workhours_xml)
+                self.assertIn("Итог, мин", dept_workhours_xml)
 
             pdf_lines = service._build_pdf_lines("Недельный отчет", [["Параметр", "Значение"], ["Дней с причиной", "2"]], service._build_visit_detail_rows(service._build_visit_entries(service.visit_repository.list_for_manager_user("mgr-1"), service.case_repository.list_for_manager_user("mgr-1"), service.approval_repository.list_for_manager_user("mgr-1"))), [])
             self.assertIn("Опоздавшие", "\n".join(pdf_lines))
+            self.assertIn("Согласованные опоздания", "\n".join(pdf_lines))
             self.assertIn("Вовремя", "\n".join(pdf_lines))
             self.assertIn("Раньше", "\n".join(pdf_lines))
             self.assertIn("Ушли позже", "\n".join(pdf_lines))
             self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
+            self.assertIn("Предупреждал: Да", "\n".join(pdf_lines))
+            self.assertIn("Сопоставлено со СКУД: Да", "\n".join(pdf_lines))
             self.assertIn("Кто согласовал: Петров Петр Сергеевич", "\n".join(pdf_lines))
 
     def test_generate_division_report_creates_department_breakdown(self) -> None:
@@ -232,22 +285,44 @@ class ReportServiceTests(unittest.TestCase):
                 ]
                 self.assertIn("Подразделения", sheet_names)
                 self.assertIn("Разрез", sheet_names)
+                self.assertIn("Проблемные дни", sheet_names)
                 self.assertIn("Опоздавшие", sheet_names)
+                self.assertIn("Согласованные опоздания", sheet_names)
                 self.assertIn("Вовремя", sheet_names)
                 self.assertIn("Раньше", sheet_names)
                 self.assertIn("Ушли позже", sheet_names)
                 self.assertIn("Ушли вовремя", sheet_names)
                 self.assertIn("Ушли раньше", sheet_names)
+                self.assertIn("Трудочасы", sheet_names)
+                self.assertIn("Трудочасы отделы", sheet_names)
                 self.assertIn("Случаи", sheet_names)
                 self.assertTrue(repo.list_all_called)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml")
                 self.assertIn("Отчет по подразделениям", summary_xml.decode("utf-8"))
-                breakdown_xml = archive.read("xl/worksheets/sheet2.xml")
-                self.assertIn("Отдел продаж", breakdown_xml.decode("utf-8"))
-                self.assertIn("Согласовано", breakdown_xml.decode("utf-8"))
-                cases_xml = archive.read("xl/worksheets/sheet9.xml")
-                self.assertIn("Причина", cases_xml.decode("utf-8"))
-                self.assertIn("Кто согласовал", cases_xml.decode("utf-8"))
+                breakdown_xml = self._sheet_xml_by_name(archive, "Разрез")
+                self.assertIn("Отдел продаж", breakdown_xml)
+                self.assertIn("Согласовано", breakdown_xml)
+                self.assertIn("Предупреждали", breakdown_xml)
+                self.assertIn("Согласованные предупреждения", breakdown_xml)
+                self.assertIn("Совпало со СКУД", breakdown_xml)
+                cases_xml = self._sheet_xml_by_name(archive, "Случаи")
+                self.assertIn("Причина", cases_xml)
+                self.assertIn("Предупреждал", cases_xml)
+                self.assertIn("Сопоставлено со СКУД", cases_xml)
+                self.assertIn("Кто согласовал", cases_xml)
+                workhours_xml = self._sheet_xml_by_name(archive, "Трудочасы")
+                self.assertIn("Трудочасы", workbook_xml.decode("utf-8"))
+                self.assertIn("Итог недели, мин", workhours_xml)
+                self.assertIn("Нейтрально", workhours_xml)
+                self.assertIn("Переработка", workhours_xml)
+                self.assertIn('s="1"', workhours_xml)
+                styles_xml = archive.read("xl/styles.xml").decode("utf-8")
+                self.assertIn("FFE2F0D9", styles_xml)
+                self.assertIn("FFFDE9D9", styles_xml)
+                department_hours_xml = self._sheet_xml_by_name(archive, "Трудочасы отделы")
+                self.assertIn("Сотрудников", department_hours_xml)
+                self.assertIn("Проблемных дней", department_hours_xml)
+                self.assertIn("Итог, мин", department_hours_xml)
             pdf_lines = service._build_pdf_lines(
                 "Отчет по подразделениям",
                 [["Параметр", "Значение"], ["Согласовано", "2"]],
@@ -258,12 +333,16 @@ class ReportServiceTests(unittest.TestCase):
                         service.approval_repository.list_all(),
                     )
                 ),
-                [["Подразделение", "Всего дней", "С опозданием", "С причиной", "Согласовано", "На согласовании", "Отклонено", "Ушли позже"], ["Отдел продаж", "2", "2", "2", "2", "0", "0", "1"]],
+                [["Подразделение", "Всего дней", "Проблемных дней", "Нет выхода", "Нет проходов", "Замещения", "С опозданием", "С причиной", "Предупреждали", "Согласованные предупреждения", "Совпало со СКУД", "Согласовано", "На согласовании", "Отклонено", "Ушли позже"], ["Отдел продаж", "2", "0", "0", "0", "0", "2", "2", "1", "1", "1", "2", "0", "0", "1"]],
             )
+            self.assertIn("Проблемные дни", "\n".join(pdf_lines))
             self.assertIn("Опоздавшие", "\n".join(pdf_lines))
+            self.assertIn("Согласованные опоздания", "\n".join(pdf_lines))
             self.assertIn("Вовремя", "\n".join(pdf_lines))
             self.assertIn("Раньше", "\n".join(pdf_lines))
             self.assertIn("Причина: Был у врача", "\n".join(pdf_lines))
+            self.assertIn("Предупреждал: Да", "\n".join(pdf_lines))
+            self.assertIn("Сопоставлено со СКУД: Да", "\n".join(pdf_lines))
             self.assertIn("Согласование: Согласовано", "\n".join(pdf_lines))
 
     def test_generate_manager_report_falls_back_to_cases_when_day_records_are_empty(self) -> None:
@@ -271,6 +350,7 @@ class ReportServiceTests(unittest.TestCase):
         service.visit_repository = _EmptyVisitRepository()
         service.case_repository = _FakeCaseRepository()
         service.approval_repository = _FakeApprovalRepository()
+        service.skud_import_repository = _NoSuccessfulImportRepository()
         service.report_repository = _FakeReportRepository()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -286,19 +366,191 @@ class ReportServiceTests(unittest.TestCase):
                     sheet.attrib["name"]
                     for sheet in root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet")
                 ]
+                self.assertIn("Проблемные дни", sheet_names)
                 self.assertIn("Опоздавшие", sheet_names)
                 self.assertIn("Вовремя", sheet_names)
                 self.assertIn("Раньше", sheet_names)
                 self.assertIn("Ушли позже", sheet_names)
                 self.assertIn("Ушли вовремя", sheet_names)
                 self.assertIn("Ушли раньше", sheet_names)
+                self.assertIn("Трудочасы", sheet_names)
+                self.assertIn("Трудочасы отделы", sheet_names)
                 self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-                cases_xml = archive.read("xl/worksheets/sheet8.xml").decode("utf-8")
+                cases_xml = self._sheet_xml_by_name(archive, "Случаи")
                 self.assertIn("Недельный отчет", summary_xml)
                 self.assertIn("Иванов Иван Иванович", cases_xml)
                 self.assertIn("Причина", cases_xml)
                 self.assertIn("Статус согласования", cases_xml)
+
+    def test_manager_without_team_uses_latest_successful_upload_period(self) -> None:
+        visit_repo = _FakeVisitRepository()
+        case_repo = _FakeCaseRepository()
+        approval_repo = _FakeApprovalRepository()
+        service = ReportService()
+        service.visit_repository = _EmptyVisitRepository()
+        service.case_repository = SimpleNamespace(
+            list_for_manager_user=lambda user_id, limit=500: [],
+            list_all=case_repo.list_all,
+        )
+        service.approval_repository = SimpleNamespace(
+            list_for_manager_user=lambda user_id, limit=500: [],
+            list_all=approval_repo.list_all,
+        )
+        service.skud_import_repository = _SuccessfulImportRepository()
+        service.report_repository = _FakeReportRepository()
+        service.visit_repository.list_all = visit_repo.list_all
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_manager_report(
+                user_id="manager-with-upload",
+                role="manager",
+                period="week",
+            )
+
+        self.assertEqual(artifact.period_start, "2026-05-01")
+        self.assertEqual(artifact.period_end, "2026-05-02")
+        self.assertTrue(visit_repo.list_all_called)
+        self.assertTrue(case_repo.list_all_called)
+        self.assertTrue(approval_repo.list_all_called)
+        self.assertIn("Всего дней учета | 2", artifact.summary_text)
+
+    def test_generate_manager_report_uses_global_scope_for_top_manager(self) -> None:
+        visit_repo = _FakeVisitRepository()
+        case_repo = _FakeCaseRepository()
+        approval_repo = _FakeApprovalRepository()
+        service = ReportService()
+        service.visit_repository = visit_repo
+        service.case_repository = case_repo
+        service.approval_repository = approval_repo
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_manager_report(user_id="23325864", role="top_manager", period="week")
+
+            self.assertTrue(Path(artifact.file_path).exists())
+            self.assertIn("Недельный отчет", artifact.summary_text)
+            self.assertTrue(visit_repo.list_all_called)
+            self.assertTrue(case_repo.list_all_called)
+            self.assertTrue(approval_repo.list_all_called)
+
+    def test_visit_entries_mark_approved_substitution_without_cases(self) -> None:
+        service = ReportService()
+        rows = [
+            SimpleNamespace(
+                id=99,
+                employee_user_id="mgr-1",
+                employee_name="Петров Петр Сергеевич",
+                department_name="Отдел продаж",
+                manager_name="Сидоров Сидор Сидорович",
+                event_date="2026-05-04",
+                planned_start="08:30",
+                planned_end="17:15",
+                first_entry_time="",
+                arrival_status="",
+                arrival_delta_minutes=0,
+                last_exit_time="",
+                departure_status="",
+                departure_delta_minutes=0,
+                total_passes=0,
+                worked_minutes=0,
+                planned_minutes=375,
+                lunch_minutes=0,
+                balance_minutes=-375,
+                late_compensated=False,
+                source="approved_substitution",
+            )
+        ]
+
+        entries = service._build_visit_entries(rows, [], [])
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].kinds_text, "Замещение")
+        self.assertEqual(entries[0].reason_text, "Согласованное замещение")
+
+    def test_workhours_rows_include_weekly_compensation_columns(self) -> None:
+        service = ReportService()
+        rows = _FakeVisitRepository().list_for_manager_user("mgr-1")
+
+        result = service._build_workhours_rows(rows)
+
+        self.assertEqual(result[0][4], "Тип дня")
+        self.assertEqual(result[0][10], "Итог недели, мин")
+        self.assertEqual(result[0][11], "Опоздание недели, мин")
+        self.assertEqual(result[0][12], "Компенсировано")
+        self.assertEqual(result[1][0]["value"], "Нейтрально")
+        self.assertEqual(result[3][0]["value"], "Переработка")
+        compensated_rows = [row for row in result[1:] if isinstance(row[12], dict) and row[12]["value"] == "Да"]
+        self.assertTrue(compensated_rows)
+        self.assertEqual(compensated_rows[0][12]["style"], 1)
+        self.assertEqual(compensated_rows[0][8]["value"], "+71")
+
+    def test_problem_days_are_separated_from_regular_status_tabs(self) -> None:
+        service = ReportService()
+        rows = [
+            SimpleNamespace(
+                id=1,
+                employee_user_id="emp_1",
+                employee_name="Иванов Иван Иванович",
+                department_name="Отдел продаж",
+                manager_name="Петров Петр Сергеевич",
+                event_date="2026-05-01",
+                planned_start="08:30",
+                planned_end="17:15",
+                first_entry_time="08:44",
+                arrival_status="late",
+                arrival_delta_minutes=14,
+                last_exit_time="17:40",
+                departure_status="late",
+                departure_delta_minutes=25,
+                worked_minutes=446,
+                planned_minutes=375,
+                lunch_minutes=90,
+                balance_minutes=71,
+                late_compensated=True,
+                total_passes=12,
+                source="skud_report",
+            ),
+            SimpleNamespace(
+                id=2,
+                employee_user_id="emp_2",
+                employee_name="Петров Петр Сергеевич",
+                department_name="Отдел продаж",
+                manager_name="Сидоров Сидор Сидорович",
+                event_date="2026-05-02",
+                planned_start="08:30",
+                planned_end="17:15",
+                first_entry_time="08:31",
+                arrival_status="late",
+                arrival_delta_minutes=1,
+                last_exit_time="",
+                departure_status="",
+                departure_delta_minutes=0,
+                worked_minutes=0,
+                planned_minutes=375,
+                lunch_minutes=0,
+                balance_minutes=-375,
+                late_compensated=False,
+                total_passes=3,
+                source="skud_employee_summary",
+            ),
+        ]
+
+        entries = service._build_visit_entries(rows, [], [])
+        summary = service._build_visit_summary_rows(entries, "Недельный отчет", date(2026, 5, 1), date(2026, 5, 7))
+        tabs = dict(service._build_visit_status_tabs(entries))
+
+        summary_map = {row[0]: row[1] for row in summary[1:]}
+        self.assertEqual(summary_map["Всего дней учета"], "2")
+        self.assertEqual(summary_map["Проблемных дней"], "1")
+        self.assertEqual(summary_map["Нет выхода"], "1")
+        self.assertEqual(summary_map["Пришли с опозданием"], "1")
+        self.assertEqual(len(tabs["Проблемные дни"]), 2)
+        self.assertEqual(len(tabs["Опоздавшие"]), 2)
+        self.assertEqual(tabs["Проблемные дни"][1][5], "Нет выхода")
+        self.assertEqual(tabs["Опоздавшие"][1][1], "Иванов Иван Иванович")
 
     def test_get_report_path_uses_token_lookup(self) -> None:
         service = ReportService()

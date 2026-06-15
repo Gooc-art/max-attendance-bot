@@ -48,6 +48,24 @@ class _FakeApprovalRepository:
         return 77
 
 
+class _FakeDirectoryService:
+    def __init__(self, record=None):
+        self.record = record
+
+    def get_by_employee_name(self, employee_name: str):
+        if self.record is not None and self.record.employee_name == employee_name:
+            return self.record
+        return None
+
+
+class _FakeCursorStore:
+    def __init__(self, chat_id: str = ""):
+        self.chat_id = chat_id
+
+    def get_chat_id_for_user(self, user_id: str):
+        return self.chat_id
+
+
 class ManagerNotificationTests(unittest.TestCase):
     def test_employee_reason_triggers_manager_push_notification(self) -> None:
         router = MaxWebhookRouter()
@@ -69,9 +87,80 @@ class ManagerNotificationTests(unittest.TestCase):
         self.assertIn("Новая причина по случаю #101", kwargs["text"])
         self.assertIn("Иванов Иван Иванович", kwargs["text"])
         self.assertIn("Личная причина", kwargs["text"])
-        self.assertIn("Согласовать", [button.title for button in kwargs["buttons"]])
-        self.assertIn("Отклонить", [button.title for button in kwargs["buttons"]])
+        self.assertIn("Открыть", [button.title for button in kwargs["buttons"]])
+        self.assertNotIn("Согласовать", [button.title for button in kwargs["buttons"]])
         self.assertEqual(response.outbound.text, "Причина по случаю #101 сохранена: Личная причина.\nСтатус: На согласовании у руководителя")
+
+    def test_approval_decision_triggers_employee_push_notification(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        approval = SimpleNamespace(case_id=101, manager_name="Петров Петр Сергеевич")
+
+        router._notify_employee_about_approval_decision(approval, approved=True)
+
+        router.max_client.send_message.assert_called_once()
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertEqual(kwargs["user_id"], "emp-1")
+        self.assertIn("Твоя заявка согласована", kwargs["text"])
+        self.assertIn("Кто согласовал: Петров Петр Сергеевич", kwargs["text"])
+        self.assertIn("Мои статусы", [button.title for button in kwargs["buttons"]])
+
+    def test_rejected_approval_triggers_employee_push_notification(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        approval = SimpleNamespace(case_id=101, manager_name="Петров Петр Сергеевич")
+
+        router._notify_employee_about_approval_decision(approval, approved=False)
+
+        router.max_client.send_message.assert_called_once()
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertEqual(kwargs["user_id"], "emp-1")
+        self.assertIn("Твоя заявка отклонена", kwargs["text"])
+        self.assertIn("Кто отклонил: Петров Петр Сергеевич", kwargs["text"])
+
+    def test_approval_decision_uses_directory_when_case_has_no_employee_user_id(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.case_repository.case.employee_user_id = ""
+        router.google_directory_service = _FakeDirectoryService(
+            SimpleNamespace(
+                employee_name="Иванов Иван Иванович",
+                employee_user_id="emp-from-directory",
+            )
+        )
+        router.employee_directory_repository = _FakeDirectoryService()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        approval = SimpleNamespace(case_id=101, manager_name="Петров Петр Сергеевич")
+
+        router._notify_employee_about_approval_decision(approval, approved=False)
+
+        router.max_client.send_message.assert_called_once()
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertEqual(kwargs["user_id"], "emp-from-directory")
+        self.assertIn("Твоя заявка отклонена", kwargs["text"])
+
+    def test_approval_decision_falls_back_to_saved_chat_id_when_user_send_fails(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.bot_message_cursor_store = _FakeCursorStore(chat_id="chat-1")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message.side_effect = [RuntimeError("forbidden"), {"status": "ok"}]
+        approval = SimpleNamespace(case_id=101, manager_name="Петров Петр Сергеевич")
+
+        router._notify_employee_about_approval_decision(approval, approved=False)
+
+        self.assertEqual(router.max_client.send_message.call_count, 2)
+        first_call = router.max_client.send_message.call_args_list[0].kwargs
+        second_call = router.max_client.send_message.call_args_list[1].kwargs
+        self.assertEqual(first_call["user_id"], "emp-1")
+        self.assertEqual(second_call["chat_id"], "chat-1")
+        self.assertIn("Твоя заявка отклонена", second_call["text"])
 
 
 if __name__ == "__main__":

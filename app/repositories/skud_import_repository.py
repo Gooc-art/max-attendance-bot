@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
 from app.db.base import SessionLocal
 from app.db.models import SkudImportModel
@@ -49,3 +49,17 @@ class SkudImportRepository:
                 .limit(limit)
             ).scalars().all()
             return list(rows)
+
+    def get_latest_successful_for_user(self, user_id: str) -> Optional[SkudImportModel]:
+        if not str(user_id or "").strip():
+            return None
+        with SessionLocal() as session:
+            return session.execute(
+                select(SkudImportModel)
+                .where(SkudImportModel.created_by_user_id == str(user_id).strip())
+                .where(SkudImportModel.status == "completed")
+                .where(SkudImportModel.period_start != "")
+                .where(SkudImportModel.period_end != "")
+                .order_by(desc(SkudImportModel.created_at))
+                .limit(1)
+            ).scalar_one_or_none()

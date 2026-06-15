@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from app.integrations.max.client import MaxApiClient
+from app.integrations.max.client import INVISIBLE_MESSAGE_TEXT, MaxApiClient
+from app.bot.buttons import attendance_reason_buttons, reports_menu_buttons, running_late_reason_buttons
 from app.schemas.max import MaxOutboundButton
 
 
@@ -72,6 +73,53 @@ class MaxApiClientTests(unittest.TestCase):
         request = mocked.call_args.args[0]
         self.assertIn("callback_id=cb-1", request.full_url)
 
+    def test_delete_message_uses_delete_endpoint(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"{}"
+        response.status = 200
+
+        with patch("app.integrations.max.client.urlopen", return_value=response) as mocked:
+            client.delete_message("mid-42")
+
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.method, "DELETE")
+        self.assertIn("https://platform-api.max.ru/messages?", request.full_url)
+        self.assertIn("message_id=mid-42", request.full_url)
+        self.assertIsNone(request.data)
+
+    def test_soft_clear_message_uses_edit_endpoint(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"{}"
+        response.status = 200
+
+        with patch("app.integrations.max.client.urlopen", return_value=response) as mocked:
+            client.soft_clear_message("mid-42")
+
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.method, "PUT")
+        self.assertIn("https://platform-api.max.ru/messages?", request.full_url)
+        self.assertIn("message_id=mid-42", request.full_url)
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["text"], INVISIBLE_MESSAGE_TEXT)
+        self.assertEqual(body["attachments"], [])
+        self.assertEqual(body["notify"], False)
+
     def test_inline_keyboard_uses_emoji_and_row_grouping(self) -> None:
         client = MaxApiClient(
             token="token",
@@ -83,7 +131,7 @@ class MaxApiClientTests(unittest.TestCase):
         attachments = client.build_inline_keyboard(
             [
                 MaxOutboundButton(title="Старт", action="/start", emoji="🏁", row=0),
-                MaxOutboundButton(title="Кто я", action="/whoami", emoji="👤", row=0),
+                MaxOutboundButton(title="Обо мне", action="/whoami", emoji="👤", row=0),
                 MaxOutboundButton(title="Отчеты", action="reports", emoji="📊", row=1),
             ]
         )
@@ -92,8 +140,41 @@ class MaxApiClientTests(unittest.TestCase):
         rows = attachments[0].payload.buttons
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0][0].text, "🏁 Старт")
-        self.assertEqual(rows[0][1].text, "👤 Кто я")
+        self.assertEqual(rows[0][1].text, "👤 Обо мне")
         self.assertEqual(rows[1][0].text, "📊 Отчеты")
+
+    def test_attendance_reason_buttons_stack_long_labels_vertically(self) -> None:
+        buttons = attendance_reason_buttons(101)
+        rows_by_title = {button.title: button.row for button in buttons}
+
+        self.assertNotEqual(rows_by_title["Больничный"], rows_by_title["Командировка"])
+        self.assertNotEqual(rows_by_title["Удаленка"], rows_by_title["Согласовано"])
+        self.assertGreater(rows_by_title["Главное меню"], rows_by_title["Другое"])
+
+    def test_running_late_reason_buttons_stack_vertically(self) -> None:
+        buttons = running_late_reason_buttons()
+        rows = [button.row for button in buttons if button.title != "Главное меню"]
+
+        self.assertEqual(len(rows), len(set(rows)))
+
+    def test_running_late_reason_buttons_use_only_late_reasons(self) -> None:
+        titles = [button.title for button in running_late_reason_buttons()]
+
+        self.assertIn("Буду отсутствовать", titles)
+        self.assertIn("Согласовано", titles)
+        self.assertIn("Личная причина", titles)
+        self.assertIn("Другое", titles)
+        self.assertNotIn("Отпуск", titles)
+        self.assertNotIn("Больничный", titles)
+        self.assertNotIn("Командировка", titles)
+        self.assertNotIn("Удаленка", titles)
+
+    def test_reports_menu_puts_long_titles_on_separate_rows(self) -> None:
+        buttons = reports_menu_buttons()
+        rows_by_title = {button.title: button.row for button in buttons}
+
+        self.assertNotEqual(rows_by_title["За период"], rows_by_title["Недельный"])
+        self.assertNotEqual(rows_by_title["Недельный"], rows_by_title["Квартал"])
 
     def test_send_file_message_requests_upload_and_sends_file_attachment(self) -> None:
         client = MaxApiClient(

@@ -7,11 +7,15 @@ from app.integrations.google_sheets.directory import GoogleSheetsEmployeeRecord
 
 
 class _FakeGoogleDirectoryService:
-    def __init__(self, record=None):
+    def __init__(self, record=None, configured: bool = True):
         self.record = record
+        self.configured = configured
 
     def get_by_user_id(self, user_id: str, refresh: bool = False):
         return self.record
+
+    def is_configured(self) -> bool:
+        return self.configured
 
 
 class WhoAmITests(unittest.TestCase):
@@ -35,6 +39,16 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Роль в боте: Администратор", response.outbound.text)
         self.assertIn("Найдено в Google Sheets", response.outbound.text)
         self.assertIn("Нужный ID для таблицы: 203302812", response.outbound.text)
+
+    def test_whoami_reports_unconfigured_google_sheets_runtime(self) -> None:
+        router = MaxWebhookRouter()
+        router.google_directory_service = _FakeGoogleDirectoryService(record=None, configured=False)
+
+        response = router._whoami("employee", "23325864", "296369649")
+
+        self.assertIn("Google Sheets в этой runtime-среде не настроен", response.outbound.text)
+        self.assertIn("это не означает, что записи нет", response.outbound.text)
+        self.assertNotIn("запись не найдена", response.outbound.text)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ class EmployeeDirectoryRepository:
                 row.manager_name = data.get("manager_name", "").strip()
                 row.manager_user_id = data.get("manager_user_id", "").strip()
                 row.department_name = data.get("department_name", "").strip()
+                row.office = data.get("office", "").strip()
                 row.role = data.get("role", "employee").strip() or "employee"
                 row.is_active = data.get("is_active", "1").strip().lower() in {"1", "true", "yes", "on", "да"}
                 count += 1
@@ -62,6 +63,19 @@ class EmployeeDirectoryRepository:
             rows = session.execute(
                 select(EmployeeDirectoryModel)
                 .where(EmployeeDirectoryModel.manager_user_id == manager_user_id)
+                .where(EmployeeDirectoryModel.is_active.is_(True))
+                .order_by(EmployeeDirectoryModel.employee_name.asc())
+            ).scalars().all()
+            return list(rows)
+
+    def list_by_department_names(self, department_names: List[str]) -> List[EmployeeDirectoryModel]:
+        departments = [name for name in {str(item).strip() for item in department_names} if name]
+        if not departments:
+            return []
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(EmployeeDirectoryModel)
+                .where(EmployeeDirectoryModel.department_name.in_(departments))
                 .where(EmployeeDirectoryModel.is_active.is_(True))
                 .order_by(EmployeeDirectoryModel.employee_name.asc())
             ).scalars().all()

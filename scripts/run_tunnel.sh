@@ -33,7 +33,6 @@ register_webhook() {
 }
 
 while true; do
-  rm -f "$PUBLIC_URL_FILE"
   log_line "starting localhost.run tunnel on port $APP_PORT"
 
   ssh -o StrictHostKeyChecking=no \

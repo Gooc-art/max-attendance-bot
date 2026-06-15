@@ -31,11 +31,17 @@ class Settings:
     max_bot_token: str
     max_bot_secret: str
     max_bot_webhook_url: str
+    max_api_timeout_seconds: int
     google_service_account_file: str
     google_sheets_spreadsheet_id: str
     google_sheets_employee_range: str
     google_sheets_schedule_range: str
     google_sheets_cache_ttl_seconds: int
+    office_seal_company_timezone: str
+    office_seal_window_start: str
+    office_seal_window_end: str
+    office_seal_photo_dir: str
+    public_base_url: str
 
 
 @lru_cache(maxsize=1)
@@ -51,6 +57,7 @@ def get_settings() -> Settings:
         max_bot_token=os.getenv("MAX_BOT_TOKEN", ""),
         max_bot_secret=os.getenv("MAX_BOT_SECRET", ""),
         max_bot_webhook_url=os.getenv("MAX_BOT_WEBHOOK_URL", ""),
+        max_api_timeout_seconds=int(os.getenv("MAX_API_TIMEOUT_SECONDS", "10")),
         google_service_account_file=os.getenv(
             "GOOGLE_SERVICE_ACCOUNT_FILE",
             "/Users/goocbk.ru/secure/attendance-max-bot-service-account.json",
@@ -59,7 +66,12 @@ def get_settings() -> Settings:
             "GOOGLE_SHEETS_SPREADSHEET_ID",
             "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54",
         ),
-        google_sheets_employee_range=os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "Сотрудники!A:Q"),
-        google_sheets_schedule_range=os.getenv("GOOGLE_SHEETS_SCHEDULE_RANGE", "Графики!A:L"),
-        google_sheets_cache_ttl_seconds=int(os.getenv("GOOGLE_SHEETS_CACHE_TTL_SECONDS", "60")),
+        google_sheets_employee_range=os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "Сотрудники!A:R"),
+        google_sheets_schedule_range=os.getenv("GOOGLE_SHEETS_SCHEDULE_RANGE", "Графики!A:X"),
+        google_sheets_cache_ttl_seconds=int(os.getenv("GOOGLE_SHEETS_CACHE_TTL_SECONDS", "300")),
+        office_seal_company_timezone=os.getenv("OFFICE_SEAL_COMPANY_TIMEZONE", "Europe/Amsterdam"),
+        office_seal_window_start=os.getenv("OFFICE_SEAL_WINDOW_START", "18:00"),
+        office_seal_window_end=os.getenv("OFFICE_SEAL_WINDOW_END", "22:00"),
+        office_seal_photo_dir=os.getenv("OFFICE_SEAL_PHOTO_DIR", str(BASE_DIR / "data" / "office_seal_photos")),
+        public_base_url=os.getenv("PUBLIC_BASE_URL", os.getenv("MAX_BOT_WEBHOOK_URL", "")).rstrip("/"),
     )

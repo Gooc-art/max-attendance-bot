@@ -51,4 +51,9 @@ if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
   journalctl --user --no-pager -u skud-tunnel.service -n 80 || true
   exit 1
 fi
+if [ -f "$DEPLOY_DIR/run/localhostrun.url" ]; then
+  PUBLIC_URL="$(cat "$DEPLOY_DIR/run/localhostrun.url")"
+  echo "SKUD_PUBLIC_URL=$PUBLIC_URL"
+  echo "::notice title=SKUD public URL::$PUBLIC_URL"
+fi
 systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service

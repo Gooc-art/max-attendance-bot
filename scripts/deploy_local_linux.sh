@@ -24,11 +24,14 @@ rsync -a --delete \
 mkdir -p "$DEPLOY_DIR/data" "$DEPLOY_DIR/logs" "$DEPLOY_DIR/run"
 
 cd "$DEPLOY_DIR"
+ORIGINAL_HOME="$HOME"
 if [ -f .env ]; then
   set -a
   . .env
   set +a
 fi
+export HOME="$ORIGINAL_HOME"
+export SKUD_DEPLOY_DIR="$DEPLOY_DIR"
 "$PYTHON_BIN" -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip

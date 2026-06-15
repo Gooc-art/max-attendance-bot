@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="${SKUD_DEPLOY_DIR:-$HOME/skud}"
-SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+USER_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+USER_HOME="${USER_HOME:-$HOME}"
+ROOT_DIR="${SKUD_DEPLOY_DIR:-$USER_HOME/skud}"
+SYSTEMD_USER_DIR="$USER_HOME/.config/systemd/user"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 mkdir -p "$SYSTEMD_USER_DIR" "$ROOT_DIR/logs" "$ROOT_DIR/run" "$ROOT_DIR/data"

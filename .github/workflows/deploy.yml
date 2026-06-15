@@ -21,11 +21,17 @@ jobs:
       - name: Write runtime env
         env:
           SKUD_ENV: ${{ secrets.SKUD_ENV }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -n "$SKUD_ENV" ]; then
             mkdir -p "$HOME/skud"
             printf '%s\n' "$SKUD_ENV" > "$HOME/skud/.env"
             chmod 600 "$HOME/skud/.env"
+          fi
+          if [ -n "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            mkdir -p "$HOME/skud/secure"
+            printf '%s\n' "$GOOGLE_SERVICE_ACCOUNT_JSON" > "$HOME/skud/secure/google-service-account.json"
+            chmod 600 "$HOME/skud/secure/google-service-account.json"
           fi
 
       - name: Deploy to local host

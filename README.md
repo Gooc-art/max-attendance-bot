@@ -141,6 +141,12 @@ RUNNER_TOKEN=... bash scripts/bootstrap_github_runner_linux.sh
 - `~/skud/data/` при переносе текущей SQLite-базы и загруженных файлов
 - Google service account JSON по пути из `.env`
 
+В GitHub Actions деплое `.env` берется из secret `SKUD_ENV`. Для Google Sheets на Linux добавь secret `GOOGLE_SERVICE_ACCOUNT_JSON` с полным содержимым service account JSON и укажи в `SKUD_ENV`:
+
+```env
+GOOGLE_SERVICE_ACCOUNT_FILE=/home/localadmin/skud/secure/google-service-account.json
+```
+
 Проверка на сервере:
 
 ```bash

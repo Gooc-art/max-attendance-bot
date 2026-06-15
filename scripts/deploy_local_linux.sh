@@ -42,7 +42,9 @@ chmod +x scripts/*.sh
 bash scripts/install_systemd_user_linux.sh
 
 systemctl --user restart skud-backend.service
-systemctl --user restart skud-tunnel.service
+if ! systemctl --user is-active --quiet skud-tunnel.service; then
+  systemctl --user restart skud-tunnel.service
+fi
 
 sleep 8
 if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
@@ -53,6 +55,20 @@ if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
 fi
 if [ -f "$DEPLOY_DIR/run/localhostrun.url" ]; then
   PUBLIC_URL="$(cat "$DEPLOY_DIR/run/localhostrun.url")"
+  PUBLIC_URL_HEALTHY=false
+  for _ in $(seq 1 18); do
+    if curl -ksf "$PUBLIC_URL/api/health" >/dev/null; then
+      PUBLIC_URL_HEALTHY=true
+      break
+    fi
+    sleep 5
+    PUBLIC_URL="$(cat "$DEPLOY_DIR/run/localhostrun.url")"
+  done
+  if [ "$PUBLIC_URL_HEALTHY" != true ]; then
+    echo "Public tunnel URL did not become healthy: $PUBLIC_URL" >&2
+    journalctl --user --no-pager -u skud-tunnel.service -n 120 || true
+    exit 1
+  fi
   echo "SKUD_PUBLIC_URL=$PUBLIC_URL"
   echo "::notice title=SKUD public URL::$PUBLIC_URL"
 fi

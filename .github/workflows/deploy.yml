@@ -1,0 +1,22 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - skud-prod
+    concurrency:
+      group: skud-prod
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to local host
+        run: bash scripts/deploy_local_linux.sh

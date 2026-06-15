@@ -76,6 +76,14 @@ fi
 if [ -n "${GOOGLE_SERVICE_ACCOUNT_FILE:-}" ]; then
   if [ -f "$GOOGLE_SERVICE_ACCOUNT_FILE" ]; then
     echo "::notice title=Google service account::configured"
+    SHEETS_DIRECTORY_COUNT="$("$DEPLOY_DIR/.venv/bin/python3" - <<'PY'
+from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
+
+service = GoogleSheetsDirectoryService.from_settings()
+print(len(service.list_employees()))
+PY
+)"
+    echo "::notice title=Google directory rows::$SHEETS_DIRECTORY_COUNT"
   else
     echo "::warning title=Google service account missing::$GOOGLE_SERVICE_ACCOUNT_FILE"
   fi

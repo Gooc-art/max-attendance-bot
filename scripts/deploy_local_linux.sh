@@ -18,6 +18,7 @@ rsync -a --delete \
   --exclude 'data/' \
   --exclude 'logs/' \
   --exclude 'run/' \
+  --exclude 'secure/' \
   "$SOURCE_DIR/" \
   "$DEPLOY_DIR/"
 

@@ -24,6 +24,11 @@ rsync -a --delete \
 mkdir -p "$DEPLOY_DIR/data" "$DEPLOY_DIR/logs" "$DEPLOY_DIR/run"
 
 cd "$DEPLOY_DIR"
+if [ -f .env ]; then
+  set -a
+  . .env
+  set +a
+fi
 "$PYTHON_BIN" -m venv .venv
 . .venv/bin/activate
 pip install --upgrade pip

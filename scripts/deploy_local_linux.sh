@@ -72,4 +72,11 @@ if [ -f "$DEPLOY_DIR/run/localhostrun.url" ]; then
   echo "SKUD_PUBLIC_URL=$PUBLIC_URL"
   echo "::notice title=SKUD public URL::$PUBLIC_URL"
 fi
+if [ -n "${GOOGLE_SERVICE_ACCOUNT_FILE:-}" ]; then
+  if [ -f "$GOOGLE_SERVICE_ACCOUNT_FILE" ]; then
+    echo "::notice title=Google service account::configured"
+  else
+    echo "::warning title=Google service account missing::$GOOGLE_SERVICE_ACCOUNT_FILE"
+  fi
+fi
 systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service

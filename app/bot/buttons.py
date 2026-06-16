@@ -78,7 +78,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Опоздания", BotAction.EMPLOYEE_REASONS, "⏰", 1),
             btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 1),
             btn("Мой кабинет", BotAction.MENU_MY_OFFICE, "🚪", 2),
-            btn("Кабинет опломбирован", BotAction.MENU_OFFICE_SEAL, "🔒", 3),
         ])
     if role == Role.MANAGER.value:
         return readable_rows([
@@ -86,7 +85,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
-            btn("Кабинеты", BotAction.MENU_OFFICE_SEAL_SUMMARY, "🔒", 2),
             btn("Отчеты", BotAction.MANAGER_REPORTS, "📊", 2),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
         ])
@@ -261,7 +259,6 @@ def employee_reason_section_buttons() -> List[MaxOutboundButton]:
         btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
         btn("Забыл чип", BotAction.MENU_FORGOT_CHIP, "🪪", 0),
         btn("Мои опоздания", BotAction.MENU_MY_LATES, "⏰", 0),
-        btn("Кабинет опломбирован", BotAction.MENU_OFFICE_SEAL, "🔒", 1),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
         btn("Главное меню", BotAction.MAIN_MENU, "🏠", 2),
     ])
@@ -283,7 +280,6 @@ def manager_management_buttons() -> List[MaxOutboundButton]:
         btn("Опоздания", BotAction.MENU_DEPARTMENT_LATES, "⏱️", 0),
         btn("Неявки отдела", BotAction.MENU_DEPARTMENT_ABSENCES, "🚫", 1),
         btn("Сводка", BotAction.MENU_SUMMARY, "📈", 1),
-        btn("Кабинеты", BotAction.MENU_OFFICE_SEAL_SUMMARY, "🔒", 2),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 3),
     ])
 
@@ -438,6 +434,15 @@ def running_late_reason_buttons() -> List[MaxOutboundButton]:
     buttons.append(btn("Назад", BotAction.BACK, "↩️", 3))
     buttons.append(btn("Главное меню", BotAction.MAIN_MENU, "🏠", 3))
     return readable_rows(buttons, max_per_row=1, long_title_threshold=1, row_width_limit=99)
+
+
+def running_late_date_buttons() -> List[MaxOutboundButton]:
+    return readable_rows([
+        btn("Сегодня", f"{BotAction.LATE_NOTICE_DATE_PREFIX}today", "📅", 0),
+        btn("Завтра", f"{BotAction.LATE_NOTICE_DATE_PREFIX}tomorrow", "➡️", 0),
+        btn("Назад", BotAction.BACK, "↩️", 1),
+        btn("Главное меню", BotAction.MAIN_MENU, "🏠", 1),
+    ], max_per_row=1, long_title_threshold=1, row_width_limit=99)
 
 
 def admin_structure_buttons() -> List[MaxOutboundButton]:

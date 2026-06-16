@@ -2,7 +2,7 @@ from __future__ import annotations
 
 ROLE_DISPLAY_NAMES = {
     "employee": "Сотрудник",
-    "manager": "Руководитель",
+    "manager": "Начальник отдела",
     "security": "Служба безопасности",
     "hr": "HR",
     "admin": "Администратор",

@@ -343,7 +343,7 @@ class DocxLeadershipSyncTests(unittest.TestCase):
 
         updates = build_employee_role_updates(employee_index)
 
-        self.assertEqual([(item.row_number, item.column, item.value) for item in updates], [(2, "I", "Руководитель")])
+        self.assertEqual([(item.row_number, item.column, item.value) for item in updates], [(2, "I", "Начальник отдела")])
 
 
 if __name__ == "__main__":

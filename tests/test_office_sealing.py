@@ -13,10 +13,11 @@ class _Directory:
     def __init__(self) -> None:
         self.employee = GoogleSheetsEmployeeRecord(
             employee_id="EMP001",
-            employee_name="Иванов Иван Иванович",
+            employee_name="Иванова Анна Ивановна",
             employee_user_id="1001",
             manager_user_id="2001",
             office="314",
+            schedule_name="Пятидневка - Девушки 08:30-12:30 / 14:00-17:15",
             is_active=True,
         )
         self.subordinate = self.employee
@@ -26,6 +27,7 @@ class _Directory:
             employee_user_id="1002",
             manager_user_id="2001",
             office="314",
+            schedule_name="Пятидневка - Парни 08:30-12:30 / 14:00-18:15",
             is_active=True,
         )
         self.other_office = GoogleSheetsEmployeeRecord(
@@ -34,6 +36,7 @@ class _Directory:
             employee_user_id="1003",
             manager_user_id="2001",
             office="315",
+            schedule_name="Пятидневка - Парни 08:30-12:30 / 14:00-18:15",
             is_active=True,
         )
 
@@ -184,7 +187,7 @@ class OfficeSealingServiceTests(unittest.TestCase):
         summary = service.build_manager_summary("2001", now=datetime(2026, 6, 11, 22, 0, tzinfo=ZoneInfo("Europe/Moscow")))
 
         self.assertIn("Опломбировано кабинетов: 1/2", summary)
-        self.assertIn("каб. 314, 18:05, опломбировал: Иванов Иван Иванович", summary)
+        self.assertIn("каб. 314, 18:05, опломбировал: Иванова Анна Ивановна", summary)
         self.assertIn("фото: https://bot.example/photo.jpg", summary)
         self.assertIn("каб. 315: Сидоров Сидор Сидорович", summary)
 
@@ -202,7 +205,7 @@ class OfficeSealingServiceTests(unittest.TestCase):
 
         summary = service.build_manager_summary("2001", now=datetime(2026, 6, 11, 22, 0, tzinfo=ZoneInfo("Europe/Moscow")))
 
-        self.assertIn("каб. 314, 18:05, опломбировал: Иванов Иван Иванович", summary)
+        self.assertIn("каб. 314, 18:05, опломбировал: Иванова Анна Ивановна", summary)
         self.assertNotIn("фото:", summary)
 
     def test_employee_office_status_shows_mates_and_today_status(self) -> None:
@@ -220,7 +223,7 @@ class OfficeSealingServiceTests(unittest.TestCase):
         status = service.build_employee_office_status("1002", now=datetime(2026, 6, 11, 19, 0, tzinfo=ZoneInfo("Europe/Moscow")))
 
         self.assertIn("Кабинет: №314", status)
-        self.assertIn("Иванов Иван Иванович, Петров Петр Петрович", status)
+        self.assertIn("Иванова Анна Ивановна, Петров Петр Петрович", status)
         self.assertIn("Статус сегодня: опломбирован", status)
         self.assertIn("Фото: https://bot.example/photo.jpg", status)
 
@@ -242,7 +245,7 @@ class OfficeSealingServiceTests(unittest.TestCase):
         self.assertIn("Время: 18:05", status)
         self.assertNotIn("Фото:", status)
 
-    def test_office_exception_blocks_sealing_and_reminders(self) -> None:
+    def test_gender_reminders_send_simple_ack_button_without_journal_filter(self) -> None:
         service, journal = self._service()
         journal.exceptions.append(
             OfficeSealException(
@@ -254,16 +257,16 @@ class OfficeSealingServiceTests(unittest.TestCase):
             )
         )
 
-        start = service.start("1001", now=datetime(2026, 6, 11, 18, 1, tzinfo=ZoneInfo("Europe/Moscow")))
-        sent = service.send_initial_reminders(now=datetime(2026, 6, 11, 18, 0, tzinfo=ZoneInfo("Europe/Moscow")))
-        summary = service.build_manager_summary("2001", now=datetime(2026, 6, 11, 22, 0, tzinfo=ZoneInfo("Europe/Moscow")))
+        female_sent = service.send_reminders_for_gender("female", now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")))
+        male_sent = service.send_reminders_for_gender("male", now=datetime(2026, 6, 11, 17, 55, tzinfo=ZoneInfo("Europe/Moscow")))
 
-        self.assertFalse(start.ok)
-        self.assertIn("Ремонт", start.text)
-        self.assertEqual(sent, 1)
-        self.assertEqual(self.sent_messages[0]["user_id"], 1003)
-        self.assertIn("Исключены", summary)
-        self.assertIn("каб. 314: Ремонт", summary)
+        self.assertEqual(female_sent, 1)
+        self.assertEqual(male_sent, 2)
+        self.assertEqual(self.sent_messages[0]["user_id"], 1001)
+        self.assertEqual(self.sent_messages[0]["text"], "Напоминание: пожалуйста, не забудь про кабинет.")
+        self.assertEqual(self.sent_messages[0]["buttons"][0].title, "Спасибо за напоминание")
+        self.assertEqual(self.sent_messages[0]["buttons"][0].action, "office_seal.reminder_ack")
+        self.assertEqual(len(journal.rows), 0)
 
 
 if __name__ == "__main__":

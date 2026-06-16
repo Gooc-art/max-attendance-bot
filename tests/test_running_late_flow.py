@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -246,7 +247,12 @@ class RunningLateFlowTests(unittest.TestCase):
             "late_notice.manager:mgr-alt",
             state,
         )
-        self.assertIn("Теперь выбери причину", manager_response.outbound.text)
+        self.assertIn("Выбери дату опоздания", manager_response.outbound.text)
+        self.assertEqual(state.step, "choose_date")
+
+        date_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.date:tomorrow", state)
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+        self.assertIn(tomorrow, date_response.outbound.text)
         self.assertEqual(state.step, "choose_reason")
 
         reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:approved_late", state)
@@ -263,6 +269,7 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertEqual(created_case["manager_user_id"], "mgr-alt")
         self.assertEqual(created_case["case_type"], AttendanceCaseType.LATE.value)
         self.assertEqual(created_case["status"], AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value)
+        self.assertEqual(created_case["event_date"], tomorrow)
         self.assertEqual(created_case["actual_start"], "08:55")
         self.assertEqual(created_case["planned_start"], "08:30")
         self.assertEqual(created_case["delay_minutes"], 0)
@@ -429,7 +436,8 @@ class RunningLateFlowTests(unittest.TestCase):
             state,
         )
 
-        self.assertIn("Теперь выбери причину", manager_response.outbound.text)
+        self.assertIn("Выбери дату опоздания", manager_response.outbound.text)
+        self.assertEqual(state.step, "choose_date")
         self.assertEqual(state.data["manager_user_id"], "top-1")
 
 

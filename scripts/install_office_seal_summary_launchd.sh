@@ -7,6 +7,15 @@ LOG_DIR="$ROOT_DIR/logs"
 
 mkdir -p "$AGENTS_DIR" "$LOG_DIR"
 
+for old_label in \
+  "com.gooc.attendancebot.office-seal-reminder-initial" \
+  "com.gooc.attendancebot.office-seal-reminder-final" \
+  "com.gooc.attendancebot.office-seal-summary"; do
+  old_plist="$AGENTS_DIR/$old_label.plist"
+  launchctl unload "$old_plist" >/dev/null 2>&1 || true
+  rm -f "$old_plist"
+done
+
 install_job() {
   local label="$1"
   local hour="$2"
@@ -50,19 +59,13 @@ EOF
 }
 
 install_job \
-  "com.gooc.attendancebot.office-seal-reminder-initial" \
-  18 \
-  0 \
-  "\"$ROOT_DIR/.venv/bin/python3\" \"$ROOT_DIR/scripts/send_office_seal_reminders.py\" initial"
+  "com.gooc.attendancebot.office-seal-reminder-female" \
+  17 \
+  10 \
+  "\"$ROOT_DIR/.venv/bin/python3\" \"$ROOT_DIR/scripts/send_office_seal_reminders.py\" female"
 
 install_job \
-  "com.gooc.attendancebot.office-seal-reminder-final" \
-  21 \
-  30 \
-  "\"$ROOT_DIR/.venv/bin/python3\" \"$ROOT_DIR/scripts/send_office_seal_reminders.py\" final"
-
-install_job \
-  "com.gooc.attendancebot.office-seal-summary" \
-  22 \
-  0 \
-  "\"$ROOT_DIR/.venv/bin/python3\" \"$ROOT_DIR/scripts/send_office_seal_summaries.py\""
+  "com.gooc.attendancebot.office-seal-reminder-male" \
+  17 \
+  55 \
+  "\"$ROOT_DIR/.venv/bin/python3\" \"$ROOT_DIR/scripts/send_office_seal_reminders.py\" male"

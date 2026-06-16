@@ -34,6 +34,7 @@ from app.bot.buttons import (
     manager_workflow_buttons,
     main_menu_buttons,
     reports_menu_buttons,
+    running_late_date_buttons,
     running_late_reason_buttons,
     security_audit_buttons,
     security_skud_buttons,
@@ -431,7 +432,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action.startswith(BotAction.LATE_NOTICE_MANAGER_PREFIX) or action.startswith(BotAction.LATE_NOTICE_REASON_PREFIX):
+        if (
+            action.startswith(BotAction.LATE_NOTICE_MANAGER_PREFIX)
+            or action.startswith(BotAction.LATE_NOTICE_DATE_PREFIX)
+            or action.startswith(BotAction.LATE_NOTICE_REASON_PREFIX)
+        ):
             response = self._start_running_late_flow(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
@@ -454,6 +459,11 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_OFFICE_SEAL or user_text in {"Кабинет опломбирован", "🔒 Кабинет опломбирован"}:
             response = self._start_office_seal_flow(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.OFFICE_SEAL_REMINDER_ACK or user_text == "Спасибо за напоминание":
+            response = self._acknowledge_office_seal_reminder(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -994,7 +1004,19 @@ class MaxWebhookRouter:
         )
 
     def _start_office_seal_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
-        return self._mark_office_sealed(role, user_id)
+        return self._acknowledge_office_seal_reminder(role)
+
+    def _acknowledge_office_seal_reminder(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=self.office_sealing_service.acknowledge_reminder(),
+                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+            ),
+            active_flow=None,
+        )
 
     def _mark_office_sealed(self, role: str, user_id: str) -> MaxWebhookResponse:
         result = self.office_sealing_service.mark_sealed(user_id=user_id)
@@ -1065,7 +1087,6 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=self.office_sealing_service.build_employee_office_status(user_id),
                 buttons=[
-                    MaxOutboundButton(title="Опломбировать", action=BotAction.MENU_OFFICE_SEAL),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),
@@ -2317,16 +2338,18 @@ class MaxWebhookRouter:
             sheet_status = (
                 "Найдено в Google Sheets.\n"
                 "ФИО: {name}\n"
+                "Подразделение: {department}\n"
+                "Кабинет: {office}\n"
                 "Роль в таблице: {sheet_role}\n"
                 "Активен: {active}\n"
-                "Руководитель: {manager}\n"
-                "Подразделение: {department}"
+                "Руководитель: {manager}"
             ).format(
                 name=sheet_record.employee_name or "-",
+                department=sheet_record.department_name or "-",
+                office=sheet_record.office or "-",
                 sheet_role=display_role_name(sheet_record.role or "-"),
                 active="Да" if sheet_record.is_active else "Нет",
                 manager=sheet_record.manager_name or "-",
-                department=sheet_record.department_name or "-",
             )
             needed_id = sheet_record.employee_user_id or user_id
         elif not self._google_directory_is_configured():
@@ -2387,6 +2410,7 @@ class MaxWebhookRouter:
                 "ID в MAX: {user_id}\n"
                 "Роль: {role}\n"
                 "Подразделение: {department}\n"
+                "Кабинет: {office}\n"
                 "Руководитель: {manager}\n"
                 "Активен: {active}"
             ).format(
@@ -2394,6 +2418,7 @@ class MaxWebhookRouter:
                 user_id=sheet_record.employee_user_id or "-",
                 role=display_role_name(sheet_record.role or "-"),
                 department=sheet_record.department_name or "-",
+                office=sheet_record.office or "-",
                 manager=sheet_record.manager_name or "-",
                 active="Да" if sheet_record.is_active else "Нет",
             )
@@ -3432,8 +3457,21 @@ class MaxWebhookRouter:
             if state.step == "choose_manager":
                 dialog_state_store.reset(user_id)
                 return self._employee_reason_menu(role)
-            if state.step == "choose_reason":
+            if state.step == "choose_date":
                 return self._start_running_late_flow(role, user_id)
+            if state.step == "choose_reason":
+                state.step = "choose_date"
+                dialog_state_store.set(user_id, state)
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Выбери дату опоздания.",
+                        buttons=running_late_date_buttons(),
+                    ),
+                    active_flow=DialogFlow.RUNNING_LATE.value,
+                )
             if state.step == "enter_date_to":
                 state.step = "enter_date_from"
                 dialog_state_store.set(user_id, state)
@@ -3474,16 +3512,15 @@ class MaxWebhookRouter:
                     active_flow=DialogFlow.RUNNING_LATE.value,
                 )
             if state.step == "enter_date_from":
-                state.step = "choose_reason"
+                state.step = "choose_date"
                 dialog_state_store.set(user_id, state)
-                manager_name = state.data.get("manager_name", "руководитель")
                 return MaxWebhookResponse(
                     ok=True,
                     role=role,
                     menu=get_menu_for_role(role),
                     outbound=MaxOutboundMessage(
-                        text="Руководитель выбран: {manager}\n\nТеперь выбери причину.".format(manager=manager_name),
-                        buttons=running_late_reason_buttons(),
+                        text="Выбери дату опоздания.",
+                        buttons=running_late_date_buttons(),
                     ),
                     active_flow=DialogFlow.RUNNING_LATE.value,
                 )
@@ -3520,7 +3557,7 @@ class MaxWebhookRouter:
             manager_user_id = action.split(BotAction.LATE_NOTICE_MANAGER_PREFIX, 1)[1]
             manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
             manager_name = manager_record.employee_name if manager_record is not None else "Руководитель"
-            state.step = "choose_reason"
+            state.step = "choose_date"
             state.data["manager_user_id"] = manager_user_id
             state.data["manager_name"] = manager_name
             dialog_state_store.set(user_id, state)
@@ -3529,7 +3566,44 @@ class MaxWebhookRouter:
                 role=role,
                 menu=get_menu_for_role(role),
                 outbound=MaxOutboundMessage(
-                    text="Руководитель выбран: {manager}\n\nТеперь выбери причину.".format(manager=manager_name),
+                    text="Руководитель выбран: {manager}\n\nВыбери дату опоздания.".format(manager=manager_name),
+                    buttons=running_late_date_buttons(),
+                ),
+                active_flow=DialogFlow.RUNNING_LATE.value,
+            )
+
+        if state.step == "choose_date" and action.startswith(BotAction.LATE_NOTICE_DATE_PREFIX):
+            date_code = action.split(BotAction.LATE_NOTICE_DATE_PREFIX, 1)[1]
+            today = datetime.now().date()
+            if date_code == "today":
+                event_day = today
+                date_label = "Сегодня"
+            elif date_code == "tomorrow":
+                event_day = today + timedelta(days=1)
+                date_label = "Завтра"
+            else:
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Выбери дату кнопкой: Сегодня или Завтра.",
+                        buttons=running_late_date_buttons(),
+                    ),
+                    active_flow=DialogFlow.RUNNING_LATE.value,
+                )
+            state.step = "choose_reason"
+            state.data["notice_event_date"] = event_day.isoformat()
+            dialog_state_store.set(user_id, state)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="{date_label}: {date}\n\nТеперь выбери причину.".format(
+                        date_label=date_label,
+                        date=event_day.isoformat(),
+                    ),
                     buttons=running_late_reason_buttons(),
                 ),
                 active_flow=DialogFlow.RUNNING_LATE.value,
@@ -3656,7 +3730,8 @@ class MaxWebhookRouter:
                     active_flow=DialogFlow.RUNNING_LATE.value,
                 )
             reason_label = state.data.get("notice_reason_label", "")
-            event_day = datetime.now().date()
+            event_day_raw = state.data.get("notice_event_date") or datetime.now().date().isoformat()
+            event_day = datetime.strptime(event_day_raw, "%Y-%m-%d").date()
             planned_start = self.google_schedule_service.resolve_planned_start(
                 schedule_id=state.data.get("schedule_id", ""),
                 schedule_name=state.data.get("schedule_name", ""),

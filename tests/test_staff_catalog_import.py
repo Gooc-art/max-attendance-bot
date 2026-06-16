@@ -43,7 +43,7 @@ class StaffCatalogImportTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0][1], "Иванов Иван Иванович")
         self.assertEqual(rows[0][3], "123")
-        self.assertEqual(rows[0][8], "Руководитель")
+        self.assertEqual(rows[0][8], "Начальник отдела")
         self.assertEqual(rows[0][9], "Пятидневка - Парни 08:30-12:30 / 14:00-18:15")
         self.assertEqual(rows[0][10], "ГР004")
         self.assertEqual(rows[1][1], "Петров Петр Петрович")

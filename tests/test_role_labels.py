@@ -8,7 +8,7 @@ from app.domain.role_labels import display_role_name
 class RoleLabelsTests(unittest.TestCase):
     def test_display_role_name_returns_russian_label(self) -> None:
         self.assertEqual(display_role_name("admin"), "Администратор")
-        self.assertEqual(display_role_name("manager"), "Руководитель")
+        self.assertEqual(display_role_name("manager"), "Начальник отдела")
         self.assertEqual(display_role_name("security"), "Служба безопасности")
 
     def test_display_role_name_preserves_unknown_values(self) -> None:

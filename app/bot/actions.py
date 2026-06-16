@@ -17,6 +17,7 @@ class BotAction:
     MENU_OFFICE_SEAL = "menu.office_seal"
     MENU_OFFICE_SEAL_SUMMARY = "menu.office_seal_summary"
     MENU_MY_OFFICE = "menu.my_office"
+    OFFICE_SEAL_REMINDER_ACK = "office_seal.reminder_ack"
 
     MENU_EMPLOYEES = "menu.employees"
     MENU_APPROVALS = "menu.approvals"
@@ -96,6 +97,7 @@ class BotAction:
     EMPLOYEE_REASON_PREFIX = "employee.reason:"
     FORGOT_CHIP_MANAGER_PREFIX = "forgot_chip.manager:"
     LATE_NOTICE_MANAGER_PREFIX = "late_notice.manager:"
+    LATE_NOTICE_DATE_PREFIX = "late_notice.date:"
     LATE_NOTICE_REASON_PREFIX = "late_notice.reason:"
 
     CANCEL = "common.cancel"

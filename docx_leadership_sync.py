@@ -309,8 +309,8 @@ def build_employee_role_updates(employee_index: Dict[str, EmployeeSheetRow]) -> 
             continue
         if normalize_text(employee.role) == "Администратор":
             continue
-        if normalize_text(employee.role) != "Руководитель":
-            updates.append(EmployeeCellUpdate(employee.row_number, "I", "Руководитель"))
+        if normalize_text(employee.role) != "Начальник отдела":
+            updates.append(EmployeeCellUpdate(employee.row_number, "I", "Начальник отдела"))
     return updates
 
 

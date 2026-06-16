@@ -37,6 +37,8 @@ class GoogleSheetsDirectoryService:
         "сотрудник": "employee",
         "manager": "manager",
         "руководитель": "manager",
+        "начальник отдела": "manager",
+        "начальник_отдела": "manager",
         "security": "security",
         "безопасность": "security",
         "hr": "hr",

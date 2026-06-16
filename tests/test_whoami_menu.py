@@ -27,7 +27,8 @@ class WhoAmITests(unittest.TestCase):
                 employee_user_id="203302812",
                 manager_name="",
                 manager_user_id="",
-                department_name="",
+                department_name="0.1. Зам_руководителя",
+                office="314",
                 role="admin",
                 is_active=True,
             )
@@ -38,6 +39,7 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Твой ID в MAX: 203302812", response.outbound.text)
         self.assertIn("Роль в боте: Администратор", response.outbound.text)
         self.assertIn("Найдено в Google Sheets", response.outbound.text)
+        self.assertIn("ФИО: Кутлуев Родион Романович\nПодразделение: 0.1. Зам_руководителя\nКабинет: 314", response.outbound.text)
         self.assertIn("Нужный ID для таблицы: 203302812", response.outbound.text)
 
     def test_whoami_reports_unconfigured_google_sheets_runtime(self) -> None:

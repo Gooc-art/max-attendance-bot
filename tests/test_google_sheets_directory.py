@@ -55,6 +55,9 @@ class GoogleSheetsDirectoryServiceTests(unittest.TestCase):
         self.assertEqual(record.role, "admin")
         self.assertTrue(record.is_active)
 
+    def test_normalize_role_value_accepts_department_head_label(self) -> None:
+        self.assertEqual(GoogleSheetsDirectoryService.normalize_role_value("Начальник отдела"), "manager")
+
     def test_list_employees_uses_cached_records_when_fetch_fails(self) -> None:
         service = _FakeGoogleSheetsDirectoryService(
             [

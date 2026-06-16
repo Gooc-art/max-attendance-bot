@@ -11,14 +11,14 @@ from app.services.office_sealing import OfficeSealingService
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("kind", choices=["initial", "final"])
+    parser.add_argument("kind", choices=["female", "male", "initial", "final"])
     args = parser.parse_args()
 
     service = OfficeSealingService()
-    if args.kind == "initial":
-        sent = service.send_initial_reminders()
+    if args.kind in {"female", "initial"}:
+        sent = service.send_reminders_for_gender("female")
     else:
-        sent = service.send_final_reminders()
+        sent = service.send_reminders_for_gender("male")
     print(f"office seal {args.kind} reminders sent: {sent}")
 
 

@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService, GoogleSheetsEmployeeRecord
 from app.integrations.max.client import MaxApiClient
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
-from app.schemas.max import MaxAttachment
+from app.schemas.max import MaxAttachment, MaxOutboundButton
 
 
 OFFICE_SEAL_JOURNAL_HEADERS = ["Дата", "Время", "ID_сотрудника", "Кабинет", "Ссылка_на_фото"]
@@ -35,6 +35,7 @@ class OfficeSealEmployee:
     manager_user_id: str
     office: str
     is_active: bool
+    gender: str = ""
 
 
 @dataclass(frozen=True)
@@ -467,26 +468,25 @@ class OfficeSealingService:
         ).format(office=employee.office, names=names, status=status)
 
     def send_initial_reminders(self, now: datetime | None = None) -> int:
-        current = self._now(now)
-        today = current.date().isoformat()
-        if not self._is_workday(current):
-            return 0
-        sent = 0
-        for office, employees in self._required_unsealed_offices(today).items():
-            text = "Нужно опломбировать кабинет №{office} до 22:00.".format(office=office)
-            sent += self._send_to_employees(employees, text)
-        return sent
+        return self.send_reminders_for_gender("female", now=now)
 
     def send_final_reminders(self, now: datetime | None = None) -> int:
+        return self.send_reminders_for_gender("male", now=now)
+
+    def send_reminders_for_gender(self, gender: str, now: datetime | None = None) -> int:
         current = self._now(now)
-        today = current.date().isoformat()
         if not self._is_workday(current):
             return 0
-        sent = 0
-        for office, employees in self._required_unsealed_offices(today).items():
-            text = "Кабинет №{office} еще не опломбирован. Пожалуйста, отметьте до 22:00.".format(office=office)
-            sent += self._send_to_employees(employees, text)
-        return sent
+        employees = [
+            employee
+            for employee in self._all_active_employees()
+            if employee.office and employee.gender == gender
+        ]
+        return self._send_to_employees(employees, "Напоминание: пожалуйста, не забудь про кабинет.")
+
+    @staticmethod
+    def acknowledge_reminder() -> str:
+        return "Принято, спасибо."
 
     def send_auto_summaries(self, now: datetime | None = None) -> int:
         manager_ids = self._manager_user_ids()
@@ -529,12 +529,13 @@ class OfficeSealingService:
         for employee in employees:
             if not employee.user_id:
                 continue
+            buttons = [MaxOutboundButton(title="Спасибо за напоминание", action="office_seal.reminder_ack")]
             try:
-                self.max_client.send_message(user_id=int(employee.user_id), text=text, buttons=[])
+                self.max_client.send_message(user_id=int(employee.user_id), text=text, buttons=buttons)
                 sent += 1
             except ValueError:
                 try:
-                    self.max_client.send_message(user_id=employee.user_id, text=text, buttons=[])
+                    self.max_client.send_message(user_id=employee.user_id, text=text, buttons=buttons)
                     sent += 1
                 except Exception:
                     continue
@@ -572,6 +573,7 @@ class OfficeSealingService:
                 manager_user_id=str(getattr(record, "manager_user_id", "") or "").strip(),
                 office=str(getattr(record, "office", "") or "").strip(),
                 is_active=bool(getattr(record, "is_active", False)),
+                gender=self._gender_from_name(str(getattr(record, "employee_name", "") or "")),
             )
             for record in local_records
             if bool(getattr(record, "is_active", False))
@@ -592,6 +594,7 @@ class OfficeSealingService:
                 manager_user_id=str(getattr(record, "manager_user_id", "") or "").strip(),
                 office=str(getattr(record, "office", "") or "").strip(),
                 is_active=bool(getattr(record, "is_active", False)),
+                gender=self._gender_from_name(str(getattr(record, "employee_name", "") or "")),
             )
             for record in local_records
             if bool(getattr(record, "is_active", False))
@@ -695,6 +698,7 @@ class OfficeSealingService:
             manager_user_id=str(getattr(local, "manager_user_id", "") or "").strip(),
             office=str(getattr(local, "office", "") or "").strip(),
             is_active=bool(getattr(local, "is_active", False)),
+            gender=self._gender_from_name(str(getattr(local, "employee_name", "") or "")),
         )
 
     def _first_photo_attachment(self, attachments: Iterable[MaxAttachment], *, message_id: str = "") -> MaxAttachment | None:
@@ -775,7 +779,24 @@ class OfficeSealingService:
             manager_user_id=str(record.manager_user_id or "").strip(),
             office=str(record.office or "").strip(),
             is_active=bool(record.is_active),
+            gender=self._gender_from_record(record),
         )
+
+    @staticmethod
+    def _gender_from_record(record: GoogleSheetsEmployeeRecord) -> str:
+        schedule = f"{record.schedule_name} {record.schedule_id}".lower()
+        if "девуш" in schedule or "жен" in schedule:
+            return "female"
+        if "парн" in schedule or "муж" in schedule:
+            return "male"
+        return OfficeSealingService._gender_from_name(str(record.employee_name or ""))
+
+    @staticmethod
+    def _gender_from_name(name: str) -> str:
+        parts = str(name or "").strip().split()
+        if len(parts) >= 3 and parts[2].lower().endswith("вна"):
+            return "female"
+        return "male"
 
     def _now(self, now: datetime | None) -> datetime:
         if now is None:

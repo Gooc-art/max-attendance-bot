@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Dict, List
 
 from sqlalchemy import select
@@ -20,8 +21,8 @@ class SubstitutionRepository:
                 replacement_user=data.get("replacement_user", ""),
                 replacement_user_id=data.get("replacement_user_id", ""),
                 reason=data.get("reason", ""),
-                date_from=data.get("date_from", ""),
-                date_to=data.get("date_to", ""),
+                date_from=self.normalize_date(data.get("date_from", "")),
+                date_to=self.normalize_date(data.get("date_to", "")),
                 scope=data.get("scope", ""),
                 departments_json=data.get("departments_json", "[]"),
                 status="pending_replacement_approval",
@@ -67,15 +68,19 @@ class SubstitutionRepository:
             return list(rows)
 
     def list_approved_overlapping(self, date_from: str, date_to: str) -> List[SubstitutionDraftModel]:
+        period_start = self.normalize_date(date_from)
+        period_end = self.normalize_date(date_to)
         with SessionLocal() as session:
             rows = session.execute(
                 select(SubstitutionDraftModel)
                 .where(SubstitutionDraftModel.status == "approved")
-                .where(SubstitutionDraftModel.date_from <= date_to)
-                .where(SubstitutionDraftModel.date_to >= date_from)
                 .order_by(SubstitutionDraftModel.created_at.desc())
             ).scalars().all()
-            return list(rows)
+            return [
+                row
+                for row in rows
+                if self._overlaps(row.date_from, row.date_to, period_start, period_end)
+            ]
 
     def list_active_department_curations(
         self,
@@ -84,16 +89,20 @@ class SubstitutionRepository:
     ) -> List[SubstitutionDraftModel]:
         if not replacement_user_id or not event_date:
             return []
+        normalized_event_date = self.normalize_date(event_date)
         with SessionLocal() as session:
             rows = session.execute(
                 select(SubstitutionDraftModel)
                 .where(SubstitutionDraftModel.replacement_user_id == replacement_user_id)
                 .where(SubstitutionDraftModel.status == "approved")
-                .where(SubstitutionDraftModel.date_from <= event_date)
-                .where(SubstitutionDraftModel.date_to >= event_date)
                 .order_by(SubstitutionDraftModel.created_at.desc())
             ).scalars().all()
-            return [row for row in rows if self.departments_for_draft(row)]
+            return [
+                row
+                for row in rows
+                if self._overlaps(row.date_from, row.date_to, normalized_event_date, normalized_event_date)
+                and self.departments_for_draft(row)
+            ]
 
     @staticmethod
     def departments_for_draft(draft: SubstitutionDraftModel) -> List[str]:
@@ -133,7 +142,7 @@ class SubstitutionRepository:
             ).scalar_one_or_none()
             if draft is None:
                 return None
-            draft.date_to = new_date_to
+            draft.date_to = self.normalize_date(new_date_to)
             draft.status = "pending_replacement_approval"
             session.commit()
             session.refresh(draft)
@@ -168,3 +177,19 @@ class SubstitutionRepository:
             session.commit()
             session.refresh(draft)
             return draft
+
+    @staticmethod
+    def normalize_date(value: str) -> str:
+        raw = str(value or "").strip()
+        for fmt in ("%Y-%m-%d", "%Y.%m.%d"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return raw
+
+    @classmethod
+    def _overlaps(cls, row_date_from: str, row_date_to: str, period_start: str, period_end: str) -> bool:
+        row_start = cls.normalize_date(row_date_from)
+        row_end = cls.normalize_date(row_date_to)
+        return bool(row_start and row_end and period_start and period_end and row_start <= period_end and row_end >= period_start)

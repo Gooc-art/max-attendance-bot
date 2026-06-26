@@ -50,5 +50,42 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
+install_office_seal_reminder() {
+  local gender="$1"
+  local hour="$2"
+  local minute="$3"
+  local name="skud-office-seal-reminder-$gender"
+
+  cat > "$SYSTEMD_USER_DIR/$name.service" <<EOF
+[Unit]
+Description=SKUD office seal reminder ($gender)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=$ROOT_DIR
+ExecStart=$ROOT_DIR/.venv/bin/python3 $ROOT_DIR/scripts/send_office_seal_reminders.py $gender
+Environment=PYTHONUNBUFFERED=1
+EOF
+
+  cat > "$SYSTEMD_USER_DIR/$name.timer" <<EOF
+[Unit]
+Description=SKUD office seal reminder timer ($gender)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* $hour:$minute:00
+AccuracySec=1min
+Unit=$name.service
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+install_office_seal_reminder female 17 10
+install_office_seal_reminder male 17 55
+
 systemctl --user daemon-reload
 systemctl --user enable skud-backend.service skud-tunnel.service
+systemctl --user enable --now skud-office-seal-reminder-female.timer skud-office-seal-reminder-male.timer

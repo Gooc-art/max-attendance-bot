@@ -4664,18 +4664,18 @@ class MaxWebhookRouter:
             return
 
         started_at = perf_counter()
-        callback_ack_ms: float | None = None
         callback_render_ms: float | None = None
         try:
             if inbound.update_type == "message_callback" and inbound.callback:
                 callback_action = inbound.callback.payload or ""
-                if self._should_answer_callback_with_message(inbound):
-                    callback_started_at = perf_counter()
+                callback_started_at = perf_counter()
+                try:
                     self.max_client.answer_callback(
                         callback_id=inbound.callback.callback_id,
                         new_text=outbound.text,
                         buttons=outbound.buttons,
                     )
+                    self._remember_current_callback_message(inbound)
                     callback_render_ms = (perf_counter() - callback_started_at) * 1000
                     self.logger.info(
                         "MAX outbound sent update_type=%s action=%s callback_render_ms=%.1f recipient=%s total_ms=%.1f",
@@ -4686,26 +4686,21 @@ class MaxWebhookRouter:
                         (perf_counter() - started_at) * 1000,
                     )
                     return
-                try:
-                    callback_started_at = perf_counter()
-                    self.max_client.answer_callback(
-                        callback_id=inbound.callback.callback_id,
-                        notification="Главное меню открыто" if self._is_main_menu_action(callback_action, "") else None,
-                    )
-                    callback_ack_ms = (perf_counter() - callback_started_at) * 1000
                 except Exception:
+                    if not inbound.chat_id:
+                        raise
                     self.logger.warning(
-                        "MAX callback acknowledgement failed chat_id=%s user_id=%s action=%s",
+                        "MAX callback embedded render failed, falling back to visible message chat_id=%s user_id=%s action=%s",
                         inbound.chat_id,
                         inbound.user.user_id if inbound.user else None,
                         callback_action,
+                        exc_info=True,
                     )
                 visible_stats = self._send_visible_outbound(inbound, outbound)
                 self.logger.info(
-                    "MAX outbound sent update_type=%s action=%s callback_ack_ms=%s delete_ms=%.1f deleted_messages=%s send_ms=%.1f recipient=%s total_ms=%.1f",
+                    "MAX outbound sent update_type=%s action=%s callback_fallback=true delete_ms=%.1f deleted_messages=%s send_ms=%.1f recipient=%s total_ms=%.1f",
                     inbound.update_type,
                     callback_action,
-                    None if callback_ack_ms is None else round(callback_ack_ms, 1),
                     visible_stats["delete_ms"],
                     visible_stats["deleted_messages"],
                     visible_stats["send_ms"],
@@ -4824,6 +4819,26 @@ class MaxWebhookRouter:
                 self.bot_message_cursor_store.reset(conversation_key)
             return
 
+        for conversation_key in conversation_keys:
+            self.bot_message_cursor_store.set(
+                conversation_key=conversation_key,
+                chat_id=chat_id,
+                user_id=user_id,
+                message_id=message_id,
+            )
+
+    def _remember_current_callback_message(self, inbound: MaxUpdate) -> None:
+        message_id = ""
+        if inbound.message and inbound.message.body:
+            message_id = str(inbound.message.body.mid or "").strip()
+        if not message_id:
+            return
+
+        conversation_keys = self._conversation_keys(inbound)
+        if not conversation_keys:
+            return
+
+        chat_id, user_id = self._conversation_participants(inbound)
         for conversation_key in conversation_keys:
             self.bot_message_cursor_store.set(
                 conversation_key=conversation_key,
@@ -5156,13 +5171,6 @@ class MaxWebhookRouter:
             seen.add(recipient)
             unique.append(recipient)
         return unique
-
-    def _should_answer_callback_with_message(self, inbound: MaxUpdate) -> bool:
-        if inbound.update_type != "message_callback" or not inbound.callback:
-            return False
-        if inbound.chat_id:
-            return False
-        return True
 
     def _conversation_participants(self, inbound: MaxUpdate) -> tuple[str, str]:
         chat_id = ""

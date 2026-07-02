@@ -24,6 +24,12 @@ class _FakeDirectoryService:
                 return row
         return None
 
+    def get_by_employee_name(self, employee_name: str, refresh: bool = False):
+        for row in self.rows:
+            if row.employee_name == employee_name:
+                return row
+        return None
+
 
 class _RefreshOnMissDirectoryService(_FakeDirectoryService):
     def __init__(self, rows=None):
@@ -175,8 +181,7 @@ class RunningLateFlowTests(unittest.TestCase):
         response = router._start_running_late_flow("employee", "emp-1")
 
         self.assertIn("Выбери руководителя", response.outbound.text)
-        self.assertIn("Петров Петр Сергеевич", [button.title for button in response.outbound.buttons])
-        self.assertIn("Смирнов Сергей Олегович", [button.title for button in response.outbound.buttons])
+        self.assertEqual([button.title for button in response.outbound.buttons[:1]], ["Петров Петр Сергеевич"])
         self.assertEqual(response.active_flow, DialogFlow.RUNNING_LATE.value)
 
     def test_start_flow_refreshes_directory_once_when_user_row_misses_cache(self) -> None:
@@ -218,7 +223,7 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertIn("Выбери руководителя", response.outbound.text)
         self.assertIn("Комаровский Андрей Петрович", [button.title for button in response.outbound.buttons])
 
-    def test_start_flow_reuses_recent_directory_cache(self) -> None:
+    def test_start_flow_uses_configured_manager_without_department_scan(self) -> None:
         router = self._build_router()
         router.google_directory_service = _FakeDirectoryService(rows=[])
         local_repository = _LocalDirectoryRepository(
@@ -246,7 +251,7 @@ class RunningLateFlowTests(unittest.TestCase):
         router._start_running_late_flow("employee", "emp-1")
         router._start_running_late_flow("employee", "emp-1")
 
-        self.assertEqual(local_repository.list_recent_calls, 1)
+        self.assertEqual(local_repository.list_recent_calls, 0)
 
     def test_start_flow_uses_active_substitution_for_current_manager(self) -> None:
         router = self._build_router()
@@ -343,8 +348,7 @@ class RunningLateFlowTests(unittest.TestCase):
         response = router._start_running_late_flow("employee", "emp-1")
 
         titles = [button.title for button in response.outbound.buttons]
-        self.assertIn("Петров Петр Сергеевич", titles)
-        self.assertIn("Смирнов Сергей Олегович", titles)
+        self.assertEqual(titles[:1], ["Петров Петр Сергеевич"])
 
     def test_full_flow_creates_late_notice_case(self) -> None:
         router = self._build_router()
@@ -528,14 +532,13 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertEqual(len(router.case_repository.created_cases), 1)
         self.assertIn("Пробка на дороге", router.case_repository.created_cases[0]["employee_reason"])
 
-    def test_manager_running_late_routes_to_top_manager(self) -> None:
+    def test_manager_running_late_routes_to_direct_manager(self) -> None:
         router = self._build_router()
 
         response = router._start_running_late_flow("manager", "mgr-default")
 
         titles = [button.title for button in response.outbound.buttons]
         self.assertIn("Орлов Олег Олегович", titles)
-        self.assertNotIn("Смирнов Сергей Олегович", titles)
 
         state = UserDialogState(
             flow=DialogFlow.RUNNING_LATE.value,
@@ -559,7 +562,7 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertEqual(state.step, "choose_date")
         self.assertEqual(state.data["manager_user_id"], "top-1")
 
-    def test_manager_running_late_routes_through_manager_chain_to_top_manager(self) -> None:
+    def test_manager_running_late_routes_to_configured_direct_manager(self) -> None:
         router = self._build_router()
         router.google_directory_service = _FakeDirectoryService(rows=[])
         router.employee_directory_repository = _LocalDirectoryRepository(
@@ -595,8 +598,8 @@ class RunningLateFlowTests(unittest.TestCase):
         response = router._start_running_late_flow("manager", "23325864")
 
         titles = [button.title for button in response.outbound.buttons]
-        self.assertIn("Посунько Руслан Юрьевич", titles)
-        self.assertNotIn("Не удалось подобрать топ-руководителя", response.outbound.text)
+        self.assertEqual(titles[:1], ["Комаровский Андрей Петрович"])
+        self.assertNotIn("Не удалось подобрать руководителя", response.outbound.text)
 
 
 if __name__ == "__main__":

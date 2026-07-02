@@ -3220,17 +3220,23 @@ class MaxWebhookRouter:
         return replacements
 
     def _build_late_notice_manager_options(self, employee_record, role: str) -> List[Tuple[str, str]]:
-        if role != Role.MANAGER.value:
-            return self._build_manager_options(
-                department_name=getattr(employee_record, "department_name", ""),
-                current_manager_user_id=getattr(employee_record, "manager_user_id", ""),
-                current_manager_name=getattr(employee_record, "manager_name", ""),
-            )
-
-        return self._build_top_manager_options(
-            current_manager_user_id=getattr(employee_record, "manager_user_id", ""),
-            current_manager_name=getattr(employee_record, "manager_name", ""),
+        manager_user_id = str(getattr(employee_record, "manager_user_id", "") or "").strip()
+        manager_name = str(getattr(employee_record, "manager_name", "") or "").strip()
+        if manager_name:
+            manager_record = self._resolve_directory_record_by_employee_name(manager_name)
+            if manager_record is not None:
+                manager_user_id = str(getattr(manager_record, "employee_user_id", "") or manager_user_id).strip()
+                manager_name = str(getattr(manager_record, "employee_name", "") or manager_name).strip()
+        if not manager_user_id:
+            return []
+        replacements = self._active_manager_replacements(
+            department_name=getattr(employee_record, "department_name", ""),
+            manager_user_id=manager_user_id,
+            manager_name=manager_name,
         )
+        if replacements:
+            return [(replacement_user_id, replacement_name) for _, replacement_user_id, replacement_name in replacements]
+        return [(manager_user_id, manager_name or "Руководитель")]
 
     def _build_top_manager_options(
         self,

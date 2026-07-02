@@ -4734,7 +4734,7 @@ class MaxWebhookRouter:
 
     def _send_visible_outbound(self, inbound: MaxUpdate, outbound: MaxOutboundMessage) -> dict[str, float | int | str]:
         delete_started_at = perf_counter()
-        deleted_messages = self._delete_previous_bot_message(inbound) if self.delete_previous_message else 0
+        previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
         delete_ms = (perf_counter() - delete_started_at) * 1000
 
         recipients = self._outbound_recipients(inbound)
@@ -4767,44 +4767,55 @@ class MaxWebhookRouter:
                 raise last_error
             return {
                 "delete_ms": round(delete_ms, 1),
-                "deleted_messages": deleted_messages,
+                "deleted_messages": len(previous_message_ids),
                 "send_ms": round((perf_counter() - send_started_at) * 1000, 1),
                 "recipient": recipient_used,
             }
 
         self._remember_last_bot_message(inbound, response)
+        if previous_message_ids:
+            self._queue_delete_message_ids(previous_message_ids)
         return {
             "delete_ms": round(delete_ms, 1),
-            "deleted_messages": deleted_messages,
+            "deleted_messages": len(previous_message_ids),
             "send_ms": round((perf_counter() - send_started_at) * 1000, 1),
             "recipient": recipient_used,
         }
 
-    def _delete_previous_bot_message(self, inbound: MaxUpdate) -> int:
+    def _previous_bot_message_ids(self, inbound: MaxUpdate) -> list[str]:
         conversation_keys = self._conversation_keys(inbound)
         previous_by_key = self._cursor_get_many(conversation_keys)
         seen_message_ids: set[str] = set()
-        deleted_messages = 0
+        message_ids: list[str] = []
         for conversation_key in conversation_keys:
             previous_message_id = previous_by_key.get(conversation_key)
             if not previous_message_id or previous_message_id in seen_message_ids:
                 continue
             seen_message_ids.add(previous_message_id)
+            message_ids.append(previous_message_id)
+        return message_ids
+
+    def _queue_delete_message_ids(self, message_ids: list[str]) -> None:
+        thread = threading.Thread(target=self._delete_message_ids, args=(message_ids,), daemon=True)
+        thread.start()
+
+    def _delete_message_ids(self, message_ids: list[str]) -> int:
+        deleted_messages = 0
+        for message_id in message_ids:
             try:
-                self.max_client.delete_message(previous_message_id)
+                self.max_client.delete_message(message_id)
                 deleted_messages += 1
             except Exception:
                 try:
                     soft_clear = getattr(self.max_client, "soft_clear_message", None)
                     if soft_clear is None:
                         raise
-                    soft_clear(previous_message_id)
+                    soft_clear(message_id)
                     deleted_messages += 1
                 except Exception:
                     self.logger.warning(
-                        "Failed to delete previous MAX bot message conversation_key=%s mid=%s",
-                        conversation_key,
-                        previous_message_id,
+                        "Failed to delete previous MAX bot message mid=%s",
+                        message_id,
                     )
         return deleted_messages
 

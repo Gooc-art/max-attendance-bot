@@ -331,10 +331,11 @@ class SendOutboundTests(unittest.TestCase):
         router.max_client.send_message.assert_not_called()
         router.bot_message_cursor_store.set.assert_not_called()
 
-    def test_previous_bot_message_is_deleted_before_sending_new_one(self) -> None:
+    def test_previous_bot_message_is_queued_for_delete_after_sending_new_one(self) -> None:
         router = self._build_router()
         router.bot_message_cursor_store.get.return_value = "bot-prev"
         router.max_client.send_message.return_value = {"mid": "bot-next"}
+        router._queue_delete_message_ids = MagicMock()
 
         inbound = MaxUpdate(
             update_type="message_created",
@@ -355,8 +356,8 @@ class SendOutboundTests(unittest.TestCase):
             ),
         )
 
-        router.max_client.delete_message.assert_called_once_with("bot-prev")
         router.max_client.send_message.assert_called_once()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-prev"])
         self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="chat:987",
@@ -373,32 +374,12 @@ class SendOutboundTests(unittest.TestCase):
 
     def test_previous_bot_message_falls_back_to_soft_clear_when_delete_fails(self) -> None:
         router = self._build_router()
-        router.bot_message_cursor_store.get.return_value = "bot-prev"
         router.max_client.delete_message.side_effect = RuntimeError("delete forbidden")
-        router.max_client.send_message.return_value = {"mid": "bot-next"}
 
-        inbound = MaxUpdate(
-            update_type="message_created",
-            timestamp=1,
-            message=MaxMessage(
-                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
-                timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
-                sender=MaxUser(user_id=123, first_name="Test"),
-            ),
-        )
-
-        router._send_outbound(
-            inbound,
-            MaxOutboundMessage(
-                text="Hello",
-                buttons=[MaxOutboundButton(title="Старт", action="/start")],
-            ),
-        )
+        router._delete_message_ids(["bot-prev"])
 
         router.max_client.delete_message.assert_called_once_with("bot-prev")
         router.max_client.soft_clear_message.assert_called_once_with("bot-prev")
-        router.max_client.send_message.assert_called_once()
 
     def test_callback_updates_without_message_still_route_actions(self) -> None:
         router = MaxWebhookRouter()

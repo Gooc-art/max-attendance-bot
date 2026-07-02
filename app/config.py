@@ -58,7 +58,7 @@ def get_settings() -> Settings:
         max_bot_token=os.getenv("MAX_BOT_TOKEN", ""),
         max_bot_secret=os.getenv("MAX_BOT_SECRET", ""),
         max_bot_webhook_url=os.getenv("MAX_BOT_WEBHOOK_URL", ""),
-        max_api_timeout_seconds=int(os.getenv("MAX_API_TIMEOUT_SECONDS", "10")),
+        max_api_timeout_seconds=int(os.getenv("MAX_API_TIMEOUT_SECONDS", "3")),
         max_delete_previous_message=_to_bool(os.getenv("MAX_DELETE_PREVIOUS_MESSAGE"), default=True),
         google_service_account_file=os.getenv(
             "GOOGLE_SERVICE_ACCOUNT_FILE",

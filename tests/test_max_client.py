@@ -4,6 +4,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from io import BytesIO
+from urllib.error import HTTPError
 from unittest.mock import MagicMock, patch
 
 from app.integrations.max.client import INVISIBLE_MESSAGE_TEXT, MaxApiClient
@@ -72,6 +74,25 @@ class MaxApiClientTests(unittest.TestCase):
 
         request = mocked.call_args.args[0]
         self.assertIn("callback_id=cb-1", request.full_url)
+
+    def test_request_includes_max_http_error_body(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+        error = HTTPError(
+            url="https://platform-api.max.ru/answers",
+            code=403,
+            msg="Forbidden",
+            hdrs={},
+            fp=BytesIO(b'{"message":"callback expired"}'),
+        )
+
+        with patch("app.integrations.max.client.urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                client.answer_callback(callback_id="cb-1", notification="ok")
 
     def test_delete_message_uses_delete_endpoint(self) -> None:
         client = MaxApiClient(

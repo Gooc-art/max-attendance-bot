@@ -6,6 +6,7 @@ from itertools import groupby
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import mimetypes
 from uuid import uuid4
@@ -264,11 +265,15 @@ class MaxApiClient:
         )
         if body is not None:
             request.add_header("Content-Type", "application/json")
-        with urlopen(request, timeout=self.request_timeout_seconds) as response:
-            raw = response.read().decode("utf-8")
-            if not raw:
-                return {"status": response.status}
-            return json.loads(raw)
+        try:
+            with urlopen(request, timeout=self.request_timeout_seconds) as response:
+                raw = response.read().decode("utf-8")
+                if not raw:
+                    return {"status": response.status}
+                return json.loads(raw)
+        except HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"MAX API {method} {path} failed: HTTP {exc.code} {raw[:500]}") from exc
 
     def _get_upload_endpoint(self, upload_type: str) -> Dict[str, object]:
         return self._request(

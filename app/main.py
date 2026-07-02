@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Dict
 
 from fastapi import FastAPI
@@ -10,6 +11,12 @@ from app.db.base import init_db
 
 
 settings = get_settings()
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.app_debug else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logging.getLogger("app").setLevel(logging.DEBUG if settings.app_debug else logging.INFO)
 
 app = FastAPI(
     title=settings.app_name,

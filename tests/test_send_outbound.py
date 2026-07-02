@@ -135,6 +135,41 @@ class SendOutboundTests(unittest.TestCase):
         router.max_client.soft_clear_message.assert_not_called()
         router.max_client.send_message.assert_called_once()
 
+    def test_real_cursor_store_bulk_methods_are_used(self) -> None:
+        class BulkCursorStore:
+            def __init__(self) -> None:
+                self.saved = None
+
+            def get_many(self, keys):
+                return {"chat:987": "bot-prev", "user:123": "bot-prev"}
+
+            def set_many(self, keys, chat_id, user_id, message_id):
+                self.saved = (keys, chat_id, user_id, message_id)
+
+            def reset_many(self, keys):
+                self.saved = (keys, "", "", "")
+
+        router = self._build_router()
+        cursor = BulkCursorStore()
+        router.bot_message_cursor_store = cursor
+        router.max_client.send_message.return_value = {"mid": "bot-next"}
+
+        inbound = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
+
+        router.max_client.delete_message.assert_called_once_with("bot-prev")
+        self.assertEqual(cursor.saved, (["chat:987", "user:123"], "987", "123", "bot-next"))
+
     def test_callback_updates_current_message_without_visible_send(self) -> None:
         router = self._build_router()
 

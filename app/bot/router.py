@@ -4782,10 +4782,11 @@ class MaxWebhookRouter:
 
     def _delete_previous_bot_message(self, inbound: MaxUpdate) -> int:
         conversation_keys = self._conversation_keys(inbound)
+        previous_by_key = self._cursor_get_many(conversation_keys)
         seen_message_ids: set[str] = set()
         deleted_messages = 0
         for conversation_key in conversation_keys:
-            previous_message_id = self.bot_message_cursor_store.get(conversation_key)
+            previous_message_id = previous_by_key.get(conversation_key)
             if not previous_message_id or previous_message_id in seen_message_ids:
                 continue
             seen_message_ids.add(previous_message_id)
@@ -4815,17 +4816,10 @@ class MaxWebhookRouter:
 
         chat_id, user_id = self._conversation_participants(inbound)
         if not message_id:
-            for conversation_key in conversation_keys:
-                self.bot_message_cursor_store.reset(conversation_key)
+            self._cursor_reset_many(conversation_keys)
             return
 
-        for conversation_key in conversation_keys:
-            self.bot_message_cursor_store.set(
-                conversation_key=conversation_key,
-                chat_id=chat_id,
-                user_id=user_id,
-                message_id=message_id,
-            )
+        self._cursor_set_many(conversation_keys, chat_id, user_id, message_id)
 
     def _remember_current_callback_message(self, inbound: MaxUpdate) -> None:
         message_id = ""
@@ -4839,6 +4833,25 @@ class MaxWebhookRouter:
             return
 
         chat_id, user_id = self._conversation_participants(inbound)
+        self._cursor_set_many(conversation_keys, chat_id, user_id, message_id)
+
+    def _cursor_get_many(self, conversation_keys: list[str]) -> dict[str, str]:
+        getter = getattr(type(self.bot_message_cursor_store), "get_many", None)
+        if callable(getter):
+            values = getter(self.bot_message_cursor_store, conversation_keys)
+            if isinstance(values, dict):
+                return {str(key): str(value) for key, value in values.items() if value}
+        return {
+            key: str(value)
+            for key in conversation_keys
+            if (value := self.bot_message_cursor_store.get(key))
+        }
+
+    def _cursor_set_many(self, conversation_keys: list[str], chat_id: str, user_id: str, message_id: str) -> None:
+        setter = getattr(type(self.bot_message_cursor_store), "set_many", None)
+        if callable(setter):
+            setter(self.bot_message_cursor_store, conversation_keys, chat_id, user_id, message_id)
+            return
         for conversation_key in conversation_keys:
             self.bot_message_cursor_store.set(
                 conversation_key=conversation_key,
@@ -4846,6 +4859,14 @@ class MaxWebhookRouter:
                 user_id=user_id,
                 message_id=message_id,
             )
+
+    def _cursor_reset_many(self, conversation_keys: list[str]) -> None:
+        resetter = getattr(type(self.bot_message_cursor_store), "reset_many", None)
+        if callable(resetter):
+            resetter(self.bot_message_cursor_store, conversation_keys)
+            return
+        for conversation_key in conversation_keys:
+            self.bot_message_cursor_store.reset(conversation_key)
 
     @staticmethod
     def _extract_message_id(response: dict[str, object]) -> str:

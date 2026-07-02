@@ -559,6 +559,45 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertEqual(state.step, "choose_date")
         self.assertEqual(state.data["manager_user_id"], "top-1")
 
+    def test_manager_running_late_routes_through_manager_chain_to_top_manager(self) -> None:
+        router = self._build_router()
+        router.google_directory_service = _FakeDirectoryService(rows=[])
+        router.employee_directory_repository = _LocalDirectoryRepository(
+            [
+                SimpleNamespace(
+                    employee_name="Кутлуев Родион Романович",
+                    employee_user_id="23325864",
+                    department_name="0. Руководство",
+                    manager_name="Комаровский Андрей Петрович",
+                    manager_user_id="6393482",
+                    role="manager",
+                    is_active=True,
+                ),
+                SimpleNamespace(
+                    employee_name="Комаровский Андрей Петрович",
+                    employee_user_id="6393482",
+                    department_name="1-ОКПКиПиБ",
+                    manager_name="Посунько Руслан Юрьевич",
+                    manager_user_id="12771658",
+                    role="manager",
+                    is_active=True,
+                ),
+                SimpleNamespace(
+                    employee_name="Посунько Руслан Юрьевич",
+                    employee_user_id="12771658",
+                    department_name="0. Руководство",
+                    role="top_manager",
+                    is_active=True,
+                ),
+            ]
+        )
+
+        response = router._start_running_late_flow("manager", "23325864")
+
+        titles = [button.title for button in response.outbound.buttons]
+        self.assertIn("Посунько Руслан Юрьевич", titles)
+        self.assertNotIn("Не удалось подобрать топ-руководителя", response.outbound.text)
+
 
 if __name__ == "__main__":
     unittest.main()

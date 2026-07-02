@@ -3253,18 +3253,16 @@ class MaxWebhookRouter:
         resolved_manager_user_id = str(current_manager_user_id or "").strip()
         resolved_manager_name = str(current_manager_name or "").strip()
         if resolved_manager_user_id:
-            manager_record = next(
-                (
-                    row
-                    for row in directory_rows
-                    if getattr(row, "is_active", True)
-                    and str(getattr(row, "employee_user_id", "") or "").strip() == resolved_manager_user_id
-                    and getattr(row, "role", "") == Role.TOP_MANAGER.value
-                ),
-                None,
-            )
-            if manager_record is not None:
-                add_option(manager_record.employee_user_id, manager_record.employee_name or resolved_manager_name)
+            manager_record = self._resolve_directory_record_by_user_id(resolved_manager_user_id)
+            if manager_record is not None and getattr(manager_record, "is_active", True):
+                if getattr(manager_record, "role", "") == Role.TOP_MANAGER.value:
+                    add_option(manager_record.employee_user_id, manager_record.employee_name or resolved_manager_name)
+                else:
+                    top_user_id = str(getattr(manager_record, "manager_user_id", "") or "").strip()
+                    top_name = str(getattr(manager_record, "manager_name", "") or "").strip()
+                    top_record = self._resolve_directory_record_by_user_id(top_user_id) if top_user_id else None
+                    if top_record is not None and getattr(top_record, "is_active", True) and getattr(top_record, "role", "") == Role.TOP_MANAGER.value:
+                        add_option(top_record.employee_user_id, top_record.employee_name or top_name)
 
         if not options and resolved_manager_name:
             manager_record = next(

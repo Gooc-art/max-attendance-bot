@@ -11,14 +11,9 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-if ! command -v nginx >/dev/null 2>&1; then
-  echo "nginx is required" >&2
-  exit 1
-fi
-
-if ! command -v certbot >/dev/null 2>&1; then
+if ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1; then
   apt-get update
-  apt-get install -y certbot python3-certbot-nginx
+  apt-get install -y nginx certbot python3-certbot-nginx
 fi
 
 cat > "$NGINX_CONF" <<EOF

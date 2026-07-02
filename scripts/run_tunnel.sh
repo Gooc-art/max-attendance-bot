@@ -55,8 +55,8 @@ while true; do
       if [ "$current_url" != "$public_url" ]; then
         printf '%s\n' "$public_url" > "$PUBLIC_URL_FILE"
         log_line "detected public url $public_url"
-        register_webhook "$public_url" || log_line "failed to register webhook for $public_url"
       fi
+      register_webhook "$public_url" || log_line "failed to register webhook for $public_url"
     fi
   done
 

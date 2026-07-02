@@ -43,9 +43,7 @@ chmod +x scripts/*.sh
 bash scripts/install_systemd_user_linux.sh
 
 systemctl --user restart skud-backend.service
-if ! systemctl --user is-active --quiet skud-tunnel.service; then
-  systemctl --user restart skud-tunnel.service
-fi
+systemctl --user restart skud-tunnel.service
 
 sleep 8
 if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then

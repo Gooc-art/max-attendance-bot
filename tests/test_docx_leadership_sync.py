@@ -345,6 +345,29 @@ class DocxLeadershipSyncTests(unittest.TestCase):
 
         self.assertEqual([(item.row_number, item.column, item.value) for item in updates], [(2, "I", "Начальник отдела")])
 
+    def test_build_employee_role_updates_marks_direct_deputies_separately(self) -> None:
+        employee_index = {
+            "Кудрявцева Марина Алексеевна": EmployeeSheetRow(
+                row_number=2,
+                employee_name="Кудрявцева Марина Алексеевна",
+                employee_user_id="max_deputy",
+                role="Сотрудник",
+            ),
+            "Сафонов Алексей Валентинович": EmployeeSheetRow(
+                row_number=3,
+                employee_name="Сафонов Алексей Валентинович",
+                employee_user_id="max_mgr",
+                role="Сотрудник",
+            ),
+        }
+
+        updates = build_employee_role_updates(employee_index)
+
+        self.assertEqual(
+            [(item.row_number, item.column, item.value) for item in updates],
+            [(2, "I", "Зам_руководителя"), (3, "I", "Начальник отдела")],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 import re
 
+from app.config import get_settings
+
 
 PROJECT_TITLE = "Контроль_опозданий_MAX"
-SERVICE_ACCOUNT_FILE = Path("/Users/goocbk.ru/secure/attendance-max-bot-service-account.json")
-SPREADSHEET_ID = "1tg5umqy7-72LMLEaXu6n29OvGDSpkOE_adw_7PxsP54"
+_SETTINGS = get_settings()
+SERVICE_ACCOUNT_FILE = Path(_SETTINGS.google_service_account_file)
+SPREADSHEET_ID = _SETTINGS.google_sheets_spreadsheet_id
 TEMPLATE_SHEET_TITLE = "DOCX_Связи_ШАБЛОН"
 NORMALIZED_SHEET_TITLE = "DOCX_Связи_НОРМА"
 EMPLOYEE_SHEET_TITLE = "Сотрудники"
@@ -303,14 +306,15 @@ def build_employee_backfill_updates(
 
 def build_employee_role_updates(employee_index: Dict[str, EmployeeSheetRow]) -> List[EmployeeCellUpdate]:
     updates: List[EmployeeCellUpdate] = []
-    department_managers = set(DEPARTMENT_MANAGER_OVERRIDES.values())
+    managed_role_names = set(DEPARTMENT_MANAGER_OVERRIDES.values()) | DIRECT_DEPUTIES
     for employee in employee_index.values():
-        if employee.employee_name not in department_managers:
+        if employee.employee_name not in managed_role_names:
             continue
         if normalize_text(employee.role) == "Администратор":
             continue
-        if normalize_text(employee.role) != "Начальник отдела":
-            updates.append(EmployeeCellUpdate(employee.row_number, "I", "Начальник отдела"))
+        expected_role = "Зам_руководителя" if employee.employee_name in DIRECT_DEPUTIES else "Начальник отдела"
+        if normalize_text(employee.role) != expected_role:
+            updates.append(EmployeeCellUpdate(employee.row_number, "I", expected_role))
     return updates
 
 

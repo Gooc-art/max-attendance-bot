@@ -63,6 +63,9 @@ class EmployeeDirectoryImportService:
             "manager_name": self._pick(row, "ФИО_руководителя", "manager_name", "Руководитель"),
             "manager_user_id": self._pick(row, "ID_руководителя_MAX", "manager_user_id", "manager_user_id_max"),
             "department_name": self._pick(row, "Подразделение", "department_name", "Отдел"),
+            "office": self._pick(row, "Кабинет", "office"),
+            "schedule_name": self._pick(row, "График", "schedule_name"),
+            "schedule_id": self._pick(row, "ID_графика", "schedule_id"),
             "role": self._pick(row, "Роль", "role") or "employee",
             "is_active": self._pick(row, "Работает", "is_active") or "Да",
         }

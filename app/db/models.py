@@ -155,6 +155,8 @@ class EmployeeDirectoryModel(Base):
     manager_user_id: Mapped[str] = mapped_column(String(255), default="", index=True)
     department_name: Mapped[str] = mapped_column(String(255), default="", index=True)
     office: Mapped[str] = mapped_column(String(100), default="")
+    schedule_name: Mapped[str] = mapped_column(String(255), default="")
+    schedule_id: Mapped[str] = mapped_column(String(100), default="", index=True)
     role: Mapped[str] = mapped_column(String(100), default="employee", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -4,7 +4,16 @@ import unittest
 
 from app.bot.buttons import (
     approvals_menu_buttons,
+    employee_manager_section_buttons,
+    employee_personal_buttons,
+    employee_reason_section_buttons,
+    hr_reference_buttons,
     main_menu_buttons,
+    admin_reports_buttons,
+    admin_settings_buttons,
+    admin_skud_buttons,
+    admin_structure_buttons,
+    admin_workflow_buttons,
     manager_reports_buttons,
     security_audit_buttons,
     security_skud_buttons,
@@ -21,6 +30,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Опоздания", titles)
         self.assertIn("Руководство", titles)
         self.assertNotIn("Старт", titles)
+        self.assertNotIn("Мой кабинет", titles)
 
     def test_manager_menu_is_sectioned(self) -> None:
         titles = [button.title for button in main_menu_buttons("manager")]
@@ -74,13 +84,14 @@ class CompactRoleMenuTests(unittest.TestCase):
         buttons = main_menu_buttons("hr")
         titles = [button.title for button in buttons]
         rows_by_title = {button.title: button.row for button in buttons}
-        self.assertEqual(titles[:2], ["Старт", "Обо мне"])
+        self.assertEqual(titles[:2], ["Обо мне", "Справочники"])
+        self.assertNotIn("Старт", titles)
         self.assertIn("Справочники", titles)
         self.assertIn("Процессы", titles)
-        self.assertIn("Отчетный блок", titles)
+        self.assertIn("Отчеты", titles)
         self.assertIn("Параметры", titles)
         self.assertNotEqual(rows_by_title["Справочники"], rows_by_title["Процессы"])
-        self.assertNotEqual(rows_by_title["Отчетный блок"], rows_by_title["Параметры"])
+        self.assertNotEqual(rows_by_title["Отчеты"], rows_by_title["Параметры"])
 
     def test_top_menu_is_sectioned(self) -> None:
         buttons = main_menu_buttons("top_manager")
@@ -122,8 +133,42 @@ class CompactRoleMenuTests(unittest.TestCase):
         buttons = main_menu_buttons("admin")
         rows_by_title = {button.title: button.row for button in buttons}
 
-        self.assertNotEqual(rows_by_title["Админ-панель"], rows_by_title["Права доступа"])
-        self.assertNotEqual(rows_by_title["Отчетный блок"], rows_by_title["Параметры"])
+        self.assertNotEqual(rows_by_title["Структура"], rows_by_title["Процессы"])
+        self.assertNotEqual(rows_by_title["Отчеты"], rows_by_title["Параметры"])
+
+    def test_admin_menu_has_no_duplicate_direct_diagnostic_entries(self) -> None:
+        titles = [button.title for button in main_menu_buttons("admin")]
+
+        self.assertEqual(titles[:2], ["Обо мне", "Личное"])
+        self.assertNotIn("Старт", titles)
+        self.assertNotIn("Админ-панель", titles)
+        self.assertNotIn("Права доступа", titles)
+        self.assertIn("Отчеты", titles)
+
+    def test_employee_subsections_use_single_back_button(self) -> None:
+        for buttons in [employee_personal_buttons(), employee_reason_section_buttons(), employee_manager_section_buttons()]:
+            titles = [button.title for button in buttons]
+            self.assertIn("Назад", titles)
+            self.assertNotIn("Главное меню", titles)
+
+    def test_hr_subsections_use_single_back_button(self) -> None:
+        titles = [button.title for button in hr_reference_buttons()]
+
+        self.assertIn("Назад", titles)
+        self.assertNotIn("Главное меню", titles)
+
+    def test_admin_subsections_use_single_back_button(self) -> None:
+        for buttons in [
+            admin_structure_buttons(),
+            admin_skud_buttons(),
+            admin_workflow_buttons(),
+            admin_reports_buttons(),
+            admin_settings_buttons(),
+        ]:
+            titles = [button.title for button in buttons]
+            self.assertIn("Назад", titles)
+            self.assertNotIn("Админ-панель", titles)
+            self.assertNotIn("Главное меню", titles)
 
 
 if __name__ == "__main__":

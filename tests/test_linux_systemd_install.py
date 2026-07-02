@@ -9,3 +9,12 @@ def test_linux_installer_enables_office_seal_reminder_timers() -> None:
     assert "OnCalendar=Mon..Fri *-*-* $hour:$minute:00" in script
     assert "scripts/send_office_seal_reminders.py $gender" in script
     assert "enable --now skud-office-seal-reminder-female.timer skud-office-seal-reminder-male.timer" in script
+
+
+def test_linux_installer_enables_directory_sync_timer() -> None:
+    script = Path("scripts/install_systemd_user_linux.sh").read_text()
+
+    assert "skud-directory-sync.timer" in script
+    assert "OnUnitActiveSec=6h" in script
+    assert "scripts/sync_employee_directory.py" in script
+    assert "enable --now skud-directory-sync.timer" in script

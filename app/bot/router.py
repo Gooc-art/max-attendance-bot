@@ -4,7 +4,7 @@ import logging
 import threading
 import re
 from datetime import datetime, timedelta
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import List, Optional, Tuple
 
 from app.bot.actions import BotAction
@@ -72,18 +72,22 @@ from app.services.substitution_flow import SubstitutionFlowService
 
 class MaxWebhookRouter:
     def __init__(self) -> None:
-        self.role_resolver = RoleResolver()
+        self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
+        self.employee_directory_repository = EmployeeDirectoryRepository()
+        self.user_role_override_repository = UserRoleOverrideRepository()
+        self.role_resolver = RoleResolver(
+            google_directory_service=self.google_directory_service,
+            role_override_repository=self.user_role_override_repository,
+            employee_directory_repository=self.employee_directory_repository,
+        )
         self.substitution_flow = SubstitutionFlowService()
         self.substitution_repository = SubstitutionRepository()
         self.case_repository = AttendanceCaseRepository()
         self.approval_repository = ApprovalRepository()
-        self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.google_schedule_service = GoogleSheetsScheduleService.from_settings()
-        self.employee_directory_repository = EmployeeDirectoryRepository()
         self.user_bot_activity_repository = UserBotActivityRepository()
         self.report_service = ReportService()
         self.skud_import_repository = SkudImportRepository()
-        self.user_role_override_repository = UserRoleOverrideRepository()
         self.max_client = MaxApiClient.from_settings()
         self.delete_previous_message = get_settings().max_delete_previous_message
         self.max_file_import_service = MaxFileImportService()
@@ -92,6 +96,9 @@ class MaxWebhookRouter:
             employee_repository=self.employee_directory_repository,
             max_client=self.max_client,
         )
+        self._directory_cache_ttl_seconds = 300
+        self._directory_user_cache: dict[str, tuple[float, object]] = {}
+        self._directory_recent_cache: dict[int, tuple[float, list[object]]] = {}
         self.bot_message_cursor_store = bot_message_cursor_store
         self.logger = logging.getLogger(__name__)
 
@@ -185,14 +192,20 @@ class MaxWebhookRouter:
     def handle_event(self, payload: MaxUpdate) -> MaxWebhookResponse:
         started_at = perf_counter()
         event = self._normalize_event(payload)
+        action = event["action"]
+        user_text = event["text"]
+        if self._is_office_seal_reminder_ack(action, user_text):
+            response = self._acknowledge_office_seal_reminder(Role.EMPLOYEE.value)
+            self._send_outbound(payload, response.outbound)
+            self._touch_user_activity(payload, event, role="", started=False)
+            return response
+
         role_started_at = perf_counter()
         role = self.role_resolver.resolve_role(
             user_id=event["user_id"],
             chat_id=event["chat_id"],
         )
         role_elapsed_ms = (perf_counter() - role_started_at) * 1000
-        action = event["action"]
-        user_text = event["text"]
         state_started_at = perf_counter()
         active_state = dialog_state_store.get(event["user_id"])
         state_elapsed_ms = (perf_counter() - state_started_at) * 1000
@@ -209,12 +222,7 @@ class MaxWebhookRouter:
             state_elapsed_ms,
             (perf_counter() - started_at) * 1000,
         )
-        self.user_bot_activity_repository.touch(
-            user_id=event["user_id"],
-            display_name=self._event_display_name(payload),
-            role=role,
-            started=self._is_start_event(payload, action, user_text),
-        )
+        self._touch_user_activity(payload, event, role=role, started=self._is_start_event(payload, action, user_text))
 
         if self._is_main_menu_action(action, user_text):
             dialog_state_store.reset(event["user_id"])
@@ -328,6 +336,8 @@ class MaxWebhookRouter:
                 "/top": Role.TOP_MANAGER.value,
             }[action]
             self.user_role_override_repository.set_role(event["user_id"], target_role)
+            self.role_resolver.clear_user_cache(event["user_id"])
+            self._directory_user_cache.pop(event["user_id"], None)
             response = self._menu_response(target_role, "Роль переключена на: {0}".format(display_role_name(target_role)))
             self._send_outbound(payload, response.outbound)
             return response
@@ -1016,6 +1026,18 @@ class MaxWebhookRouter:
                 buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
             ),
             active_flow=None,
+        )
+
+    @staticmethod
+    def _is_office_seal_reminder_ack(action: str, user_text: str) -> bool:
+        return action == BotAction.OFFICE_SEAL_REMINDER_ACK or user_text == "Спасибо за напоминание"
+
+    def _touch_user_activity(self, payload: MaxUpdate, event: dict, role: str, started: bool) -> None:
+        self.user_bot_activity_repository.touch(
+            user_id=event["user_id"],
+            display_name=self._event_display_name(payload),
+            role=role,
+            started=started,
         )
 
     def _mark_office_sealed(self, role: str, user_id: str) -> MaxWebhookResponse:
@@ -2005,36 +2027,47 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _resolve_directory_record_by_user_id(self, user_id: str):
-        google_record = self.google_directory_service.get_by_user_id(user_id)
+    def _resolve_directory_record_by_user_id(self, user_id: str, *, refresh_on_miss: bool = False):
+        normalized_user_id = str(user_id or "").strip()
+        cached_record = self._cached_directory_user(normalized_user_id)
+        if cached_record is not None:
+            return cached_record
+        local_record = self.employee_directory_repository.get_by_user_id(normalized_user_id)
+        if local_record is not None:
+            self._remember_directory_user(normalized_user_id, local_record)
+            return local_record
+        google_record = self.google_directory_service.get_by_user_id(normalized_user_id)
+        if google_record is None and refresh_on_miss:
+            google_record = self.google_directory_service.get_by_user_id(normalized_user_id, refresh=True)
         if google_record is not None:
+            self._remember_directory_user(normalized_user_id, google_record)
             return google_record
-        return self.employee_directory_repository.get_by_user_id(user_id)
+        return None
 
     def _resolve_directory_record_by_employee_name(self, employee_name: str):
-        google_record = self.google_directory_service.get_by_employee_name(employee_name)
-        if google_record is not None:
-            return google_record
-        return self.employee_directory_repository.get_by_employee_name(employee_name)
+        local_record = self.employee_directory_repository.get_by_employee_name(employee_name)
+        if local_record is not None:
+            return local_record
+        return self.google_directory_service.get_by_employee_name(employee_name)
 
     def _resolve_directory_rows_by_manager_user_id(self, manager_user_id: str):
-        google_rows = self.google_directory_service.get_by_manager_user_id(manager_user_id)
-        if google_rows:
-            return google_rows
-        return self.employee_directory_repository.get_by_manager_user_id(manager_user_id)
+        local_rows = self.employee_directory_repository.get_by_manager_user_id(manager_user_id)
+        if local_rows:
+            return local_rows
+        return self.google_directory_service.get_by_manager_user_id(manager_user_id)
 
     def _resolve_directory_rows_by_curated_departments(self, user_id: str):
         departments = self._active_curated_departments(user_id)
         if not departments:
             return []
-        google_rows = [
+        local_rows = self.employee_directory_repository.list_by_department_names(departments)
+        if local_rows:
+            return local_rows
+        return [
             row
             for row in self.google_directory_service.list_employees()
             if getattr(row, "is_active", True) and getattr(row, "department_name", "") in departments
         ]
-        if google_rows:
-            return google_rows
-        return self.employee_directory_repository.list_by_department_names(departments)
 
     def _active_curated_departments(self, user_id: str, *, date_from: str = "", date_to: str = "") -> List[str]:
         period_start = date_from or datetime.now().date().isoformat()
@@ -2115,10 +2148,43 @@ class MaxWebhookRouter:
         return merged[:limit]
 
     def _resolve_directory_rows_recent(self, limit: int = 50):
-        google_rows = self.google_directory_service.list_employees()
-        if google_rows:
-            return google_rows[:limit]
-        return self.employee_directory_repository.list_recent(limit=limit)
+        cached_rows = self._cached_directory_rows_recent(limit)
+        if cached_rows:
+            return cached_rows
+        local_rows = self.employee_directory_repository.list_recent(limit=limit)
+        if local_rows:
+            self._remember_directory_rows_recent(limit, local_rows)
+            return local_rows
+        google_rows = self.google_directory_service.list_employees()[:limit]
+        self._remember_directory_rows_recent(limit, google_rows)
+        return google_rows
+
+    def _cached_directory_user(self, user_id: str):
+        cached = self._directory_user_cache.get(user_id)
+        if not cached:
+            return None
+        expires_at, record = cached
+        if expires_at <= monotonic():
+            self._directory_user_cache.pop(user_id, None)
+            return None
+        return record
+
+    def _remember_directory_user(self, user_id: str, record) -> None:
+        if user_id and record is not None:
+            self._directory_user_cache[user_id] = (monotonic() + self._directory_cache_ttl_seconds, record)
+
+    def _cached_directory_rows_recent(self, limit: int):
+        cached = self._directory_recent_cache.get(limit)
+        if not cached:
+            return []
+        expires_at, rows = cached
+        if expires_at <= monotonic():
+            self._directory_recent_cache.pop(limit, None)
+            return []
+        return list(rows)
+
+    def _remember_directory_rows_recent(self, limit: int, rows) -> None:
+        self._directory_recent_cache[limit] = (monotonic() + self._directory_cache_ttl_seconds, list(rows or []))
 
     def _schedules_menu(self, role: str) -> MaxWebhookResponse:
         text = (
@@ -2896,7 +2962,7 @@ class MaxWebhookRouter:
         )
 
     def _start_forgot_chip_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
-        employee_record = self._resolve_directory_record_by_user_id(user_id)
+        employee_record = self._resolve_directory_record_by_user_id(user_id, refresh_on_miss=True)
         if employee_record is None:
             return self._stub_section(role, "Не нашел твою строку в справочнике сотрудников. Сначала проверь привязку ID.")
 
@@ -2928,8 +2994,8 @@ class MaxWebhookRouter:
                 data={
                     "employee_name": employee_record.employee_name,
                     "department_name": employee_record.department_name,
-                    "schedule_name": employee_record.schedule_name,
-                    "schedule_id": employee_record.schedule_id,
+                    "schedule_name": getattr(employee_record, "schedule_name", ""),
+                    "schedule_id": getattr(employee_record, "schedule_id", ""),
                 },
             ),
         )
@@ -2945,7 +3011,7 @@ class MaxWebhookRouter:
         )
 
     def _start_running_late_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
-        employee_record = self._resolve_directory_record_by_user_id(user_id)
+        employee_record = self._resolve_directory_record_by_user_id(user_id, refresh_on_miss=True)
         if employee_record is None:
             return self._stub_section(role, "Не нашел твою строку в справочнике сотрудников. Сначала проверь привязку ID.")
 
@@ -2975,8 +3041,8 @@ class MaxWebhookRouter:
                 data={
                     "employee_name": employee_record.employee_name,
                     "department_name": employee_record.department_name,
-                    "schedule_name": employee_record.schedule_name,
-                    "schedule_id": employee_record.schedule_id,
+                    "schedule_name": getattr(employee_record, "schedule_name", ""),
+                    "schedule_id": getattr(employee_record, "schedule_id", ""),
                 },
             ),
         )
@@ -4670,12 +4736,18 @@ class MaxWebhookRouter:
                 callback_action = inbound.callback.payload or ""
                 callback_started_at = perf_counter()
                 try:
-                    self.max_client.answer_callback(
-                        callback_id=inbound.callback.callback_id,
-                        new_text=outbound.text,
-                        buttons=outbound.buttons,
-                    )
-                    self._remember_current_callback_message(inbound)
+                    if self._is_office_seal_reminder_ack(callback_action, ""):
+                        self.max_client.answer_callback(
+                            callback_id=inbound.callback.callback_id,
+                            notification=outbound.text,
+                        )
+                    else:
+                        self.max_client.answer_callback(
+                            callback_id=inbound.callback.callback_id,
+                            new_text=outbound.text,
+                            buttons=outbound.buttons,
+                        )
+                        self._remember_current_callback_message(inbound)
                     callback_render_ms = (perf_counter() - callback_started_at) * 1000
                     self.logger.info(
                         "MAX outbound sent update_type=%s action=%s callback_render_ms=%.1f recipient=%s total_ms=%.1f",

@@ -8,7 +8,7 @@
 - Python backend на `FastAPI`; точка приложения: `app/main.py`.
 - Версия приложения в `FastAPI`: `0.1.0`.
 - Основные зависимости из `requirements.txt`: `fastapi`, `uvicorn`, `python-dotenv`, `sqlalchemy`, `openpyxl`, `google-api-python-client`, `google-auth`.
-- MAX API по умолчанию: `MAX_API_VERSION=1.2.5`, base URL `https://platform-api.max.ru/`.
+- MAX API по умолчанию: `MAX_API_VERSION=1.2.5`, base URL `https://platform-api.max.ru/`, интерактивный timeout `MAX_API_TIMEOUT_SECONDS=3`.
 - База по умолчанию: SQLite `sqlite:///./data/attendance_bot.db`.
 - Google Sheets диапазоны по умолчанию: `Сотрудники!A:R`, `Графики!A:X`.
 
@@ -19,6 +19,7 @@
 - `create_google_sheet.py` создает и обновляет структуру Google Sheets, включая загрузку справочников.
 - `docx_leadership_sync.py` синхронизирует структуру руководства из Google Sheets.
 - `scripts/register_max_webhook.py` регистрирует webhook MAX и умеет брать public URL из `run/localhostrun.url`.
+- `scripts/install_direct_webhook_nginx.sh` настраивает прямой HTTPS webhook через nginx/certbot для домена `SKUD_WEBHOOK_DOMAIN` и после успешной проверки ставит `SKUD_DISABLE_TUNNEL=true`.
 - `scripts/deploy_prod.sh` используется для выкладки на прод и не должен перезаписывать `.env`, `data/`, `logs/`, `run/`.
 - Linux-прод через GitHub Actions: `.github/workflows/deploy.yml` запускается на self-hosted runner с label `skud-prod`; `scripts/deploy_local_linux.sh` деплоит код в `~/skud`, сохраняет `.env`, `data/`, `logs/`, `run/`, обновляет `.venv` и перезапускает user-systemd сервисы `skud-backend.service` и `skud-tunnel.service`.
 - `scripts/bootstrap_github_runner_linux.sh` регистрирует self-hosted runner для репозитория `Gooc-art/max-attendance-bot`; для первичной настройки нужен одноразовый `RUNNER_TOKEN`.
@@ -44,12 +45,17 @@
 - Для загрузки справочников в Google Sheets использовать `create_google_sheet.py` и держать его в синхроне с `staff_catalog.json` и `staff_bindings.json`.
 - При runtime без Google Sheets-настроек диагностические экраны должны явно сообщать, что Google Sheets не настроен, а не показывать `запись не найдена`.
 - После согласования или отказа бот уведомляет заявителя; если в кейсе нет `employee_user_id`, получатель ищется в справочнике по ФИО, а если MAX отклоняет отправку по `user_id`, используется сохраненный `chat_id` диалога.
+- `MaxWebhookRouter` и `RoleResolver` используют один экземпляр `GoogleSheetsDirectoryService`, чтобы роль и сценарии бота делили один in-memory кэш справочника в процессе.
+- Runtime-источник для ролей, руководителей, подразделений, кабинетов и графиков — локальная SQLite-таблица `employee_directory`; Google Sheets синхронизируется в нее скриптом `scripts/sync_employee_directory.py` и user-systemd timer `skud-directory-sync.timer` раз в 6 часов. Если Google недоступен, бот работает на последнем локальном кэше.
+- При старте сценариев `Опаздываю` и `Забыл чип`, если строка сотрудника не найдена в быстром кэше справочника, делать один `refresh=True` перед ошибкой о привязке ID; для найденных строк оставлять быстрый cached path.
 - Для правила чистого чата бот хранит последний `message_id` по `chat_id` и `user_id` и перед новым видимым ответом сначала пробует удалить прошлое сообщение через MAX `DELETE /messages`; если MAX отказывает, fallback — soft-clear через edit в невидимый текст. Если callback приходит без реального `chat_id`, не отправлять новый `send_message` по старому сохраненному чату: MAX может вернуть 403; использовать embedded `answer_callback`.
+- Cursor чистого чата читать/писать пачкой для ключей `chat:*` и `user:*`, чтобы не плодить SQLite-сессии на каждый видимый ответ.
 - Для `message_callback` без верхнего `chat_id` не считать вложенный `message.recipient.chat_id` пригодным для нового `send_message`: на практике MAX возвращает `403`. Такой callback надо рендерить через embedded `answer_callback`.
 - Inline-клики рендерить через embedded `answer_callback(new_text=...)` одним запросом к MAX; если MAX отклонит embedded-render и есть настоящий `chat_id`, fallback — обычный visible send. После embedded-render сохранять `message.body.mid` как актуальный cursor, иначе следующий обычный ответ будет чистить устаревшее сообщение.
 - Навигационные кнопки кабинета, включая `Мои опоздания`, должны перебивать активные сценарии диалога: сначала сбрасывать `dialog_state`, затем открывать нужный раздел, иначе пользователь может застрять в flow и кнопка будет казаться нерабочей.
+- Видимое главное меню держать чистым: не показывать `Старт` у основных ролей; у сотрудника `Мой кабинет` находится в разделе `Руководство`; у администратора диагностика `Админ-панель` и `Права доступа` находится внутри `Личное`; во вложенных разделах не дублировать одинаковый возврат кнопками `Назад` и `Главное меню`.
 - Личные экраны сотрудника (`Мои опоздания`, `Объяснить`, `Мои статусы`, `Статистика`) ищут кейсы по `employee_user_id`, а если прямых записей нет, добирают их по ФИО из Google Sheets/локального справочника, чтобы старые импортные кейсы без MAX ID были видны сотруднику.
-- Опломбирование кабинетов сейчас упрощено до напоминаний: сотрудникам с заполненным `Кабинет` отправлять reminder девушкам в 17:10, мужчинам в 17:55; кнопка `Спасибо за напоминание` только отвечает подтверждением и не пишет строку в `Журнал`.
+- Опломбирование кабинетов сейчас упрощено до напоминаний: сотрудникам с заполненным `Кабинет` отправлять reminder девушкам в 17:10, мужчинам в 17:55; кнопка `Спасибо за напоминание` отвечает быстрым callback-подтверждением и не пишет строку в `Журнал`.
 - На Linux напоминания опломбирования ставятся user-systemd таймерами `skud-office-seal-reminder-female.timer` и `skud-office-seal-reminder-male.timer` через `scripts/install_systemd_user_linux.sh`.
 - Excel-выгрузка `scripts/build_department_skud_report.py` по отделам первым листом показывает `К проверке`: приоритет, короткое действие для руководителя, группа проблемы, сотрудник, отдел, дата, приход/уход, проблема, объяснение и согласование; вкладки отделов показывают только конкретные случаи опоздания и раннего ухода.
 

@@ -25,6 +25,13 @@ log_line() {
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$TUNNEL_LOG"
 }
 
+case "${SKUD_DISABLE_TUNNEL:-false}" in
+  1|true|TRUE|yes|YES)
+    log_line "localhost.run tunnel disabled by SKUD_DISABLE_TUNNEL"
+    exit 0
+    ;;
+esac
+
 register_webhook() {
   local public_url="$1"
   local webhook_url="${public_url%/}/api/webhooks/max"

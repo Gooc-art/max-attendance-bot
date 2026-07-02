@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.integrations.google_sheets.directory import GoogleSheetsEmployeeRecord
+from app.bot.router import MaxWebhookRouter
 from app.services.role_resolver import RoleResolver
 
 
@@ -27,15 +28,25 @@ class _FakeRoleOverrideRepository:
 class _FakeEmployeeDirectoryRepository:
     def __init__(self, role: str | None = None):
         self.role = role
+        self.calls = 0
 
     def get_by_user_id(self, user_id: str):
+        self.calls += 1
         if self.role is None:
             return None
         return type("Row", (), {"role": self.role, "is_active": True})()
 
 
 class RoleResolverTests(unittest.TestCase):
-    def test_google_sheet_role_takes_priority_and_normalizes(self) -> None:
+    def test_router_reuses_directory_dependencies_for_role_resolver(self) -> None:
+        router = MaxWebhookRouter()
+
+        self.assertIs(router.role_resolver.google_directory_service, router.google_directory_service)
+        self.assertIs(router.role_resolver.employee_directory_repository, router.employee_directory_repository)
+        self.assertIs(router.role_resolver.role_override_repository, router.user_role_override_repository)
+
+    def test_local_cache_role_takes_priority(self) -> None:
+        employee_repository = _FakeEmployeeDirectoryRepository("manager")
         resolver = RoleResolver(
             google_directory_service=_FakeGoogleDirectoryService(
                 GoogleSheetsEmployeeRecord(
@@ -46,11 +57,13 @@ class RoleResolverTests(unittest.TestCase):
                 )
             ),
             role_override_repository=_FakeRoleOverrideRepository("employee"),
-            employee_directory_repository=_FakeEmployeeDirectoryRepository("manager"),
+            employee_directory_repository=employee_repository,
         )
 
-        self.assertEqual(resolver.resolve_role("max_001", "private"), "admin")
-        self.assertEqual(resolver.google_directory_service.refresh_calls, [False])
+        self.assertEqual(resolver.resolve_role("max_001", "private"), "manager")
+        self.assertEqual(resolver.resolve_role("max_001", "private"), "manager")
+        self.assertEqual(employee_repository.calls, 1)
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [])
 
     def test_override_is_used_when_sheet_is_empty(self) -> None:
         resolver = RoleResolver(
@@ -59,7 +72,23 @@ class RoleResolverTests(unittest.TestCase):
             employee_directory_repository=_FakeEmployeeDirectoryRepository("employee"),
         )
 
-        self.assertEqual(resolver.resolve_role("max_002", "private"), "manager")
+        self.assertEqual(resolver.resolve_role("max_002", "private"), "employee")
+        self.assertEqual(resolver.google_directory_service.refresh_calls, [])
+
+    def test_google_sheet_is_used_when_local_cache_is_empty(self) -> None:
+        resolver = RoleResolver(
+            google_directory_service=_FakeGoogleDirectoryService(
+                GoogleSheetsEmployeeRecord(
+                    employee_user_id="max_003",
+                    role="Администратор",
+                    is_active=True,
+                )
+            ),
+            role_override_repository=_FakeRoleOverrideRepository("employee"),
+            employee_directory_repository=_FakeEmployeeDirectoryRepository(None),
+        )
+
+        self.assertEqual(resolver.resolve_role("max_003", "private"), "admin")
         self.assertEqual(resolver.google_directory_service.refresh_calls, [False])
 
 

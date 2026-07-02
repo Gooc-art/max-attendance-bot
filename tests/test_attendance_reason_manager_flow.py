@@ -26,6 +26,23 @@ class _FakeDirectoryService:
         return None
 
 
+class _EmptyLocalDirectoryRepository:
+    def get_by_user_id(self, user_id: str):
+        return None
+
+    def get_by_employee_name(self, employee_name: str):
+        return None
+
+    def get_by_manager_user_id(self, manager_user_id: str):
+        return []
+
+    def list_by_department_names(self, department_names):
+        return []
+
+    def list_recent(self, limit: int = 50):
+        return []
+
+
 class _FakeCaseRepository:
     def __init__(self, case=None):
         self.updated_managers = []
@@ -92,6 +109,7 @@ class AttendanceReasonManagerFlowTests(unittest.TestCase):
         router.approval_repository = _FakeApprovalRepository()
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = True
+        router.employee_directory_repository = _EmptyLocalDirectoryRepository()
         router.google_directory_service = _FakeDirectoryService(
             rows=[
                 GoogleSheetsEmployeeRecord(

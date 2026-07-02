@@ -15,6 +15,11 @@ class _FakeGoogleDirectoryService:
         return list(self.records)
 
 
+class _EmptyRepository:
+    def list_recent(self, limit: int = 20):
+        return []
+
+
 class EmployeeDirectoryRouteTests(unittest.TestCase):
     def test_google_sheet_is_returned_when_available(self) -> None:
         records = [
@@ -31,7 +36,7 @@ class EmployeeDirectoryRouteTests(unittest.TestCase):
         with patch(
             "app.api.routes.employee_directory.GoogleSheetsDirectoryService.from_settings",
             return_value=_FakeGoogleDirectoryService(records),
-        ):
+        ), patch("app.api.routes.employee_directory.EmployeeDirectoryRepository", return_value=_EmptyRepository()):
             result = list_employee_directory(limit=1)
 
         self.assertEqual(result["source"], "google_sheets")

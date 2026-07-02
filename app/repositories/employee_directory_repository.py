@@ -27,6 +27,8 @@ class EmployeeDirectoryRepository:
                 row.manager_user_id = data.get("manager_user_id", "").strip()
                 row.department_name = data.get("department_name", "").strip()
                 row.office = data.get("office", "").strip()
+                row.schedule_name = data.get("schedule_name", "").strip()
+                row.schedule_id = data.get("schedule_id", "").strip()
                 row.role = data.get("role", "employee").strip() or "employee"
                 row.is_active = data.get("is_active", "1").strip().lower() in {"1", "true", "yes", "on", "да"}
                 count += 1

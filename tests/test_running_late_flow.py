@@ -25,6 +25,18 @@ class _FakeDirectoryService:
         return None
 
 
+class _RefreshOnMissDirectoryService(_FakeDirectoryService):
+    def __init__(self, rows=None):
+        super().__init__(rows=rows)
+        self.refresh_calls = []
+
+    def get_by_user_id(self, user_id: str, refresh: bool = False):
+        self.refresh_calls.append(refresh)
+        if not refresh:
+            return None
+        return super().get_by_user_id(user_id, refresh=refresh)
+
+
 class _FakeScheduleService:
     def resolve_planned_start(self, **kwargs):
         return "08:30"
@@ -71,6 +83,43 @@ class _FakeSubstitutionRepository:
         return list(getattr(draft, "departments", []))
 
 
+class _LocalDirectoryRepository:
+    def __init__(self, rows):
+        self.rows = rows
+        self.list_recent_calls = 0
+
+    def get_by_user_id(self, user_id: str):
+        for row in self.rows:
+            if getattr(row, "employee_user_id", "") == user_id:
+                return row
+        return None
+
+    def get_by_employee_name(self, employee_name: str):
+        for row in self.rows:
+            if getattr(row, "employee_name", "") == employee_name:
+                return row
+        return None
+
+    def get_by_manager_user_id(self, manager_user_id: str):
+        return [
+            row
+            for row in self.rows
+            if getattr(row, "manager_user_id", "") == manager_user_id and getattr(row, "is_active", True)
+        ]
+
+    def list_by_department_names(self, department_names):
+        departments = set(department_names)
+        return [
+            row
+            for row in self.rows
+            if getattr(row, "department_name", "") in departments and getattr(row, "is_active", True)
+        ]
+
+    def list_recent(self, limit: int = 50):
+        self.list_recent_calls += 1
+        return list(self.rows)[:limit]
+
+
 class RunningLateFlowTests(unittest.TestCase):
     def _build_router(self) -> MaxWebhookRouter:
         router = MaxWebhookRouter()
@@ -79,6 +128,7 @@ class RunningLateFlowTests(unittest.TestCase):
         router.google_schedule_service = _FakeScheduleService()
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = True
+        router.employee_directory_repository = _LocalDirectoryRepository([])
         router.google_directory_service = _FakeDirectoryService(
             rows=[
                 GoogleSheetsEmployeeRecord(
@@ -128,6 +178,75 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertIn("Петров Петр Сергеевич", [button.title for button in response.outbound.buttons])
         self.assertIn("Смирнов Сергей Олегович", [button.title for button in response.outbound.buttons])
         self.assertEqual(response.active_flow, DialogFlow.RUNNING_LATE.value)
+
+    def test_start_flow_refreshes_directory_once_when_user_row_misses_cache(self) -> None:
+        router = self._build_router()
+        directory = _RefreshOnMissDirectoryService(rows=router.google_directory_service.rows)
+        router.google_directory_service = directory
+
+        response = router._start_running_late_flow("employee", "emp-1")
+
+        self.assertIn("Выбери руководителя", response.outbound.text)
+        self.assertEqual(directory.refresh_calls[:2], [False, True])
+
+    def test_start_flow_uses_local_directory_record_without_schedule_fields(self) -> None:
+        router = self._build_router()
+        router.google_directory_service = _FakeDirectoryService(rows=[])
+        router.employee_directory_repository = _LocalDirectoryRepository(
+            [
+                SimpleNamespace(
+                    employee_name="Кутлуев Родион Романович",
+                    employee_user_id="23325864",
+                    department_name="0. Руководство",
+                    manager_name="Комаровский Андрей Петрович",
+                    manager_user_id="6393482",
+                    role="employee",
+                    is_active=True,
+                ),
+                SimpleNamespace(
+                    employee_name="Комаровский Андрей Петрович",
+                    employee_user_id="6393482",
+                    department_name="1-ОКПКиПиБ",
+                    role="top_manager",
+                    is_active=True,
+                ),
+            ]
+        )
+
+        response = router._start_running_late_flow("employee", "23325864")
+
+        self.assertIn("Выбери руководителя", response.outbound.text)
+        self.assertIn("Комаровский Андрей Петрович", [button.title for button in response.outbound.buttons])
+
+    def test_start_flow_reuses_recent_directory_cache(self) -> None:
+        router = self._build_router()
+        router.google_directory_service = _FakeDirectoryService(rows=[])
+        local_repository = _LocalDirectoryRepository(
+            [
+                SimpleNamespace(
+                    employee_name="Иванов Иван Иванович",
+                    employee_user_id="emp-1",
+                    department_name="Отдел продаж",
+                    manager_name="Петров Петр Сергеевич",
+                    manager_user_id="mgr-default",
+                    role="employee",
+                    is_active=True,
+                ),
+                SimpleNamespace(
+                    employee_name="Петров Петр Сергеевич",
+                    employee_user_id="mgr-default",
+                    department_name="Отдел продаж",
+                    role="manager",
+                    is_active=True,
+                ),
+            ]
+        )
+        router.employee_directory_repository = local_repository
+
+        router._start_running_late_flow("employee", "emp-1")
+        router._start_running_late_flow("employee", "emp-1")
+
+        self.assertEqual(local_repository.list_recent_calls, 1)
 
     def test_start_flow_uses_active_substitution_for_current_manager(self) -> None:
         router = self._build_router()

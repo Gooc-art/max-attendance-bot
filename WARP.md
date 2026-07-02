@@ -14,12 +14,12 @@
 4. Display role names in Russian in user-facing interfaces while keeping technical role codes internal; `manager` is shown as `Начальник отдела`.
 5. Import SKUD files, create attendance cases, and persist daily visit records with first entry, last exit, and arrival/departure status. If a MAX file attachment arrives without a direct download URL, rehydrate the source message by `message_id` before rejecting the upload.
 6. Save runtime cases and approvals in SQLite.
-7. Keep `/start` as the underlying command, but do not force a redundant visible `Старт` button in compact employee and manager menus.
+7. Keep `/start` as the underlying command, but do not force a redundant visible `Старт` button in compact role menus.
 8. Expose compact sectioned menus for every role, not only `admin`, so the keyboard fits comfortably on mobile.
 9. Lay out inline buttons adaptively: long labels should move to dedicated rows instead of sharing cramped two-column rows.
 10. Compute button width from the real rendered label, including emoji prefixes, so mobile row layout stays conservative and buttons do not overflow the MAX viewport.
 11. Expose read-only admin diagnostics for current MAX identity and Google Sheets binding.
-12. Keep the employee cabinet compact: main menu sections should be `Статистика`, `Опоздания`, and `Руководство`, without a redundant `Старт` button.
+12. Keep the employee cabinet compact: main menu sections should be `Статистика`, `Опоздания`, and `Руководство`, without a redundant `Старт` button or direct `Мой кабинет` duplicate.
 13. Let the employee use a `Забыл чип` flow: choose a manager, enter arrival time manually, and send the case to approval.
 14. Let the employee use an `Опаздываю` flow: choose a manager, choose `Сегодня` or `Завтра`, then choose a reason. For true late reasons ask for `Опаздываю с`; for `Другое`, collect a free-text reason first; for planned absence use `Буду отсутствовать`, ask period start/end and a free-text reason, then send the notice to approval. Managers use the same `Опаздываю` flow from the main menu, but approvals are routed to top managers.
 15. Let the employee shorten an already submitted absence period through the case card with `Выйду раньше`: ask for a new end date, update the reason text, and reopen manager approval for the change.
@@ -32,6 +32,7 @@
 21. Manager push notifications for reasons and attendance notices should expose a compact `Открыть` button, not a direct `Согласовать` action in the push itself. After approval or rejection, notify the requester with the decision and approver name; if the case has no requester MAX ID, resolve it from the employee directory by name, and if MAX rejects delivery by `user_id`, retry through the saved dialog `chat_id`.
 22. Keep the security cabinet compact: main menu sections should be `СКУД` and `Разбор`; `История` belongs only to `СКУД`, while review queues belong only to `Разбор`.
 23. Placeholder review screens inside security `Разбор` should return only to `Разбор` with `Назад`, without duplicate shortcuts into `СКУД`.
+23.1. Keep HR and admin main menus clean: no visible `Старт`; admin diagnostics like `Админ-панель` and `Права доступа` live inside `Личное`; nested section screens use one `Назад` button when it returns to the main menu.
 24. During SKUD import, try to match same-day `late_notice` cases by employee and date; if a match exists, update that case with factual arrival time instead of creating a duplicate late case.
 25. Send a push notification to the selected manager when an employee submits a reason, with approval actions attached.
 26. Restrict SKUD file uploads to the `Руководитель`, `Служба безопасности`, `Администратор`, and `Главный руководитель` roles.
@@ -51,6 +52,7 @@
 39. Keep `DOCX_Связи_ШАБЛОН` as a staging sheet for leadership data; `docx_leadership_sync.py` updates `Сотрудники` from filled manager fields, applies the explicit department-to-manager map provided from the DOCX hierarchy review, backfills department managers across `Сотрудники`, resolves `ID_руководителя` from the manager row in the same sheet, normalizes department names, rebuilds `Подразделения` with department heads, marks department managers with the `Начальник отдела` role, resolves the hierarchy as `Посунько Руслан Юрьевич -> direct deputies -> departments -> employees` using `DOCX_Структура` only as a structural reference, and writes a normalized review sheet `DOCX_Связи_НОРМА`.
 40. Keep webhook observability enabled in backend logs: record timing for total webhook handling, role resolution, Google Sheets fetches, dialog-state access, and MAX outbound delivery steps so production slowness can be localized without changing bot behavior.
 41. Keep Google Sheets cache longer for runtime role and schedule lookups, and use shorter timeouts for interactive MAX API calls so callback latency stays bounded during network issues.
+41.1. Clean-chat cursor reads/writes should stay batched for paired `chat:*` and `user:*` keys; avoid reintroducing one SQLite session per key.
 42. Build a `Трудочасы` report tab from SKUD daily records with planned minutes, worked minutes, lunch deduction, daily balance, weekly balance, and late-compensation flags.
 43. Keep MAX webhook self-healing on tunnel rotation: reuse the base URL from `run/localhostrun.url`, normalize it to `/api/webhooks/max`, persist it back into `.env`, and do not clear the last known URL file during tunnel reconnects.
 44. Track aggregate bot activity per `user_id` so top-manager `Аналитика -> Входы` can show everyone who has interacted with the bot, separate `/start` launch counters, and the latest recorded activity without parsing raw logs.

@@ -69,6 +69,8 @@ def _ensure_runtime_schema() -> None:
     }
     employee_directory_required_columns = {
         "office": "ALTER TABLE employee_directory ADD COLUMN office VARCHAR(100) DEFAULT ''",
+        "schedule_name": "ALTER TABLE employee_directory ADD COLUMN schedule_name VARCHAR(255) DEFAULT ''",
+        "schedule_id": "ALTER TABLE employee_directory ADD COLUMN schedule_id VARCHAR(100) DEFAULT ''",
     }
     attendance_day_record_required_columns = {
         "raw_events_json": "ALTER TABLE attendance_day_records ADD COLUMN raw_events_json TEXT DEFAULT '[]'",

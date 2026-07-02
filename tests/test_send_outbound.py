@@ -214,6 +214,36 @@ class SendOutboundTests(unittest.TestCase):
             message_id="bot-card",
         )
 
+    def test_office_seal_ack_callback_uses_notification_only(self) -> None:
+        router = self._build_router()
+
+        inbound = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-ack",
+                payload="office_seal.reminder_ack",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Принято, спасибо."))
+
+        router.max_client.answer_callback.assert_called_once_with(
+            callback_id="cb-ack",
+            notification="Принято, спасибо.",
+        )
+        router.max_client.send_message.assert_not_called()
+        router.bot_message_cursor_store.set.assert_not_called()
+
     def test_callback_still_sends_visible_message_when_answer_callback_fails(self) -> None:
         router = self._build_router()
         router.max_client.answer_callback.side_effect = RuntimeError("answer failed")
@@ -576,6 +606,38 @@ class SendOutboundTests(unittest.TestCase):
 
         router._division_reports.assert_called_once_with("admin", "456", "777")
         self.assertEqual(response.outbound.text, "done")
+
+    def test_office_seal_ack_skips_role_resolver(self) -> None:
+        router = self._build_router()
+        router.role_resolver.resolve_role = MagicMock(side_effect=AssertionError("slow role lookup"))
+        router.user_bot_activity_repository.touch = MagicMock()
+
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=777,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-ack",
+                payload="office_seal.reminder_ack",
+                user=MaxUser(user_id=456, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        router.role_resolver.resolve_role.assert_not_called()
+        router.max_client.answer_callback.assert_called_once_with(
+            callback_id="cb-ack",
+            notification="Принято, спасибо.",
+        )
+        router.user_bot_activity_repository.touch.assert_called_once_with(
+            user_id="456",
+            display_name="Test",
+            role="",
+            started=False,
+        )
+        self.assertEqual(response.outbound.text, "Принято, спасибо.")
 
     def test_orphaned_late_notice_reason_callback_restarts_flow(self) -> None:
         router = MaxWebhookRouter()

@@ -45,8 +45,7 @@ class UserBotActivityRepository:
                 row.start_count = int(row.start_count or 0) + 1
 
             session.commit()
-            session.refresh(row)
-            return row
+            return None
 
     def get_by_user_id(self, user_id: str) -> Optional[UserBotActivityModel]:
         with SessionLocal() as session:

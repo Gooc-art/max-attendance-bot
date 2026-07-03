@@ -1,0 +1,21 @@
+name: Prod Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on:
+      - self-hosted
+      - skud-prod
+    steps:
+      - name: Inspect prod bot
+        run: |
+          cd "$HOME/skud"
+          systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service || true
+          printf '\n--- tunnel url ---\n'
+          cat run/localhostrun.url || true
+          printf '\n--- max subscriptions ---\n'
+          .venv/bin/python3 -c "from app.integrations.max.client import MaxApiClient; import json; print(json.dumps(MaxApiClient.from_settings().get_subscriptions(), ensure_ascii=False, indent=2))"
+          printf '\n--- backend timings ---\n'
+          journalctl --user --no-pager -u skud-backend.service -n 350 | grep -E 'MAX webhook handled|Router event normalized|Role resolved|Google Sheets directory|Google Sheets schedules|ERROR|WARNING' || true

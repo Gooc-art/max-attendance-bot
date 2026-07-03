@@ -105,7 +105,7 @@ class ReportService:
         if source == "approved_substitution":
             return "Замещение"
         if source == "forgot_chip":
-            return "Забыл чип"
+            return "Забыл карточку СКУД"
         if source.startswith("late_notice"):
             return "Опаздываю"
         if case_type == "late":

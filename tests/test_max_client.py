@@ -141,6 +141,35 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertEqual(body["attachments"], [])
         self.assertEqual(body["notify"], False)
 
+    def test_edit_message_updates_text_and_buttons(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"{}"
+        response.status = 200
+
+        with patch("app.integrations.max.client.urlopen", return_value=response) as mocked:
+            client.edit_message(
+                "mid-42",
+                text="ready",
+                buttons=[MaxOutboundButton(title="Старт", action="/start")],
+            )
+
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.method, "PUT")
+        self.assertIn("https://platform-api.max.ru/messages?", request.full_url)
+        self.assertIn("message_id=mid-42", request.full_url)
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["text"], "ready")
+        self.assertEqual(body["attachments"][0]["type"], "inline_keyboard")
+        self.assertEqual(body["notify"], False)
+
     def test_inline_keyboard_uses_emoji_and_row_grouping(self) -> None:
         client = MaxApiClient(
             token="token",
@@ -181,10 +210,11 @@ class MaxApiClientTests(unittest.TestCase):
     def test_running_late_reason_buttons_use_only_late_reasons(self) -> None:
         titles = [button.title for button in running_late_reason_buttons()]
 
-        self.assertIn("Буду отсутствовать", titles)
-        self.assertIn("Согласовано", titles)
-        self.assertIn("Личная причина", titles)
-        self.assertIn("Другое", titles)
+        self.assertIn("Указать причину", titles)
+        self.assertNotIn("Буду отсутствовать", titles)
+        self.assertNotIn("Согласовано", titles)
+        self.assertNotIn("Личная причина", titles)
+        self.assertNotIn("Другое", titles)
         self.assertNotIn("Отпуск", titles)
         self.assertNotIn("Больничный", titles)
         self.assertNotIn("Командировка", titles)

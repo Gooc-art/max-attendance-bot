@@ -378,8 +378,12 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertIn(tomorrow, date_response.outbound.text)
         self.assertEqual(state.step, "choose_reason")
 
-        reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:approved_late", state)
-        self.assertIn("со скольки опаздываешь", reason_response.outbound.text)
+        reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:other", state)
+        self.assertIn("Напиши причину опоздания", reason_response.outbound.text)
+        self.assertEqual(state.step, "enter_other_reason")
+
+        reason_text_response = router._handle_running_late_flow("employee", "emp-1", "Пробка на дороге", "", state)
+        self.assertIn("со скольки опаздываешь", reason_text_response.outbound.text)
         self.assertEqual(state.step, "enter_time")
 
         result = router._handle_running_late_flow("employee", "emp-1", "08:55", "", state)
@@ -398,7 +402,7 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertEqual(created_case["delay_minutes"], 0)
         self.assertEqual(created_case["source"], "late_notice")
         self.assertIn("Опаздываю с 08:55", created_case["employee_reason"])
-        self.assertIn("Согласовано", created_case["employee_reason"])
+        self.assertIn("Пробка на дороге", created_case["employee_reason"])
 
         self.assertEqual(
             router.approval_repository.created[0],
@@ -448,17 +452,17 @@ class RunningLateFlowTests(unittest.TestCase):
                 "schedule_id": "GR003",
                 "manager_user_id": "mgr-default",
                 "manager_name": "Петров Петр Сергеевич",
-                "notice_reason_code": "approved_late",
-                "notice_reason_label": "Согласовано",
+                "notice_reason_code": "other",
+                "notice_reason_label": "Пробка на дороге",
             },
         )
 
         result = router._handle_running_late_flow("employee", "emp-1", "", "common.back", state)
 
-        self.assertIn("Теперь выбери причину", result.outbound.text)
+        self.assertIn("Укажи причину опоздания", result.outbound.text)
         self.assertEqual(state.step, "choose_reason")
 
-    def test_absence_notice_requests_period_reason_and_creates_absence_case(self) -> None:
+    def test_old_absence_notice_reason_no_longer_starts_absence_flow(self) -> None:
         router = self._build_router()
         state = UserDialogState(
             flow=DialogFlow.RUNNING_LATE.value,
@@ -474,27 +478,9 @@ class RunningLateFlowTests(unittest.TestCase):
         )
 
         reason_response = router._handle_running_late_flow("employee", "emp-1", "", "late_notice.reason:absence_notice", state)
-        self.assertIn("дату начала", reason_response.outbound.text)
-        self.assertEqual(state.step, "enter_date_from")
-
-        from_response = router._handle_running_late_flow("employee", "emp-1", "2026-05-21", "", state)
-        self.assertIn("дату окончания", from_response.outbound.text)
-        self.assertEqual(state.step, "enter_date_to")
-
-        to_response = router._handle_running_late_flow("employee", "emp-1", "2026-05-25", "", state)
-        self.assertIn("Напиши причину отсутствия", to_response.outbound.text)
-        self.assertEqual(state.step, "enter_absence_reason")
-
-        result = router._handle_running_late_flow("employee", "emp-1", "Семейные обстоятельства", "", state)
-        self.assertIn("Заявка отправлена на согласование.", result.outbound.text)
-        self.assertEqual(len(router.case_repository.created_cases), 1)
-        created_case = router.case_repository.created_cases[0]
-        self.assertEqual(created_case["case_type"], AttendanceCaseType.ABSENT.value)
-        self.assertEqual(created_case["event_date"], "2026-05-21")
-        self.assertEqual(created_case["actual_start"], "")
-        self.assertEqual(created_case["source"], "attendance_notice")
-        self.assertIn("Период: 2026-05-21 - 2026-05-25", created_case["employee_reason"])
-        self.assertIn("Семейные обстоятельства", created_case["employee_reason"])
+        self.assertIn("причина вводится вручную", reason_response.outbound.text)
+        self.assertEqual(state.step, "choose_reason")
+        self.assertEqual(router.case_repository.created_cases, [])
 
     def test_removed_specific_absence_reasons_are_not_shown(self) -> None:
         from app.bot.buttons import LATE_NOTICE_REASON_LABELS
@@ -503,7 +489,10 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertNotIn("sick_leave", LATE_NOTICE_REASON_LABELS)
         self.assertNotIn("business_trip", LATE_NOTICE_REASON_LABELS)
         self.assertNotIn("remote_day", LATE_NOTICE_REASON_LABELS)
-        self.assertEqual(LATE_NOTICE_REASON_LABELS["absence_notice"], "Буду отсутствовать")
+        self.assertNotIn("absence_notice", LATE_NOTICE_REASON_LABELS)
+        self.assertNotIn("approved_late", LATE_NOTICE_REASON_LABELS)
+        self.assertNotIn("personal_reason", LATE_NOTICE_REASON_LABELS)
+        self.assertEqual(LATE_NOTICE_REASON_LABELS["other"], "Другое")
 
     def test_other_reason_accepts_free_text_before_time(self) -> None:
         router = self._build_router()

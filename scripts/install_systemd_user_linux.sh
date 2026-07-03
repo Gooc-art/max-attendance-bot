@@ -42,7 +42,7 @@ Requires=skud-backend.service
 Type=simple
 WorkingDirectory=$ROOT_DIR
 ExecStart=$ROOT_DIR/scripts/run_tunnel.sh
-Restart=always
+Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 

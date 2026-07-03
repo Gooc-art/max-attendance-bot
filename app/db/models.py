@@ -31,6 +31,21 @@ class BotMessageCursorModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class RuntimeMarkerModel(Base):
+    __tablename__ = "runtime_markers"
+    __table_args__ = (
+        UniqueConstraint("marker_key", name="uq_runtime_markers_marker_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    marker_key: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    marker_type: Mapped[str] = mapped_column(String(50), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="processing", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class SubstitutionDraftModel(Base):
     __tablename__ = "substitution_drafts"
 

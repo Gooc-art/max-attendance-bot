@@ -263,7 +263,10 @@ class OfficeSealingServiceTests(unittest.TestCase):
         self.assertEqual(female_sent, 1)
         self.assertEqual(male_sent, 2)
         self.assertEqual(self.sent_messages[0]["user_id"], 1001)
-        self.assertEqual(self.sent_messages[0]["text"], "Напоминание: пожалуйста, не забудь про кабинет.")
+        self.assertEqual(
+            self.sent_messages[0]["text"],
+            "Напоминание: пожалуйста, не забудь закрыть дверь и опломбировать кабинет.",
+        )
         self.assertEqual(self.sent_messages[0]["buttons"][0].title, "Спасибо за напоминание")
         self.assertEqual(self.sent_messages[0]["buttons"][0].action, "office_seal.reminder_ack")
         self.assertEqual(len(journal.rows), 0)

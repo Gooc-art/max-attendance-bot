@@ -482,7 +482,7 @@ class OfficeSealingService:
             for employee in self._all_active_employees()
             if employee.office and employee.gender == gender
         ]
-        return self._send_to_employees(employees, "Напоминание: пожалуйста, не забудь про кабинет.")
+        return self._send_to_employees(employees, "Напоминание: пожалуйста, не забудь закрыть дверь и опломбировать кабинет.")
 
     @staticmethod
     def acknowledge_reminder() -> str:

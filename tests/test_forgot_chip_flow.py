@@ -23,6 +23,12 @@ class _FakeDirectoryService:
                 return row
         return None
 
+    def get_by_employee_name(self, employee_name: str):
+        for row in self.rows:
+            if row.employee_name == employee_name:
+                return row
+        return None
+
 
 class _EmptyLocalDirectoryRepository:
     def get_by_user_id(self, user_id: str):
@@ -118,7 +124,6 @@ class ForgotChipFlowTests(unittest.TestCase):
 
         self.assertIn("Выбери руководителя", response.outbound.text)
         self.assertIn("Петров Петр Сергеевич", [button.title for button in response.outbound.buttons])
-        self.assertIn("Смирнов Сергей Олегович", [button.title for button in response.outbound.buttons])
         self.assertEqual(response.active_flow, DialogFlow.FORGOT_CHIP.value)
 
     def test_start_flow_prefers_manager_id_matching_current_manager_name(self) -> None:
@@ -163,6 +168,32 @@ class ForgotChipFlowTests(unittest.TestCase):
         button_map = {button.title: button.action for button in response.outbound.buttons}
         self.assertEqual(button_map["Комаровский Андрей Петрович"], "forgot_chip.manager:6393482")
 
+    def test_manager_start_flow_routes_to_top_manager(self) -> None:
+        router = self._build_router()
+        router.google_directory_service.rows[1] = GoogleSheetsEmployeeRecord(
+            employee_name="Петров Петр Сергеевич",
+            employee_user_id="mgr-default",
+            department_name="Отдел продаж",
+            manager_name="Орлов Олег Олегович",
+            manager_user_id="top-1",
+            role="manager",
+            is_active=True,
+        )
+        router.google_directory_service.rows.append(
+            GoogleSheetsEmployeeRecord(
+                employee_name="Орлов Олег Олегович",
+                employee_user_id="top-1",
+                department_name="0. Руководство",
+                role="top_manager",
+                is_active=True,
+            )
+        )
+
+        response = router._start_forgot_chip_flow("manager", "mgr-default")
+
+        button_map = {button.title: button.action for button in response.outbound.buttons}
+        self.assertEqual(button_map["Орлов Олег Олегович"], "forgot_chip.manager:top-1")
+
     def test_valid_time_creates_case_and_sends_for_approval(self) -> None:
         router = self._build_router()
         state = UserDialogState(
@@ -190,7 +221,7 @@ class ForgotChipFlowTests(unittest.TestCase):
 
         result = router._handle_forgot_chip_flow("employee", "emp-1", "08:42", "", state)
 
-        self.assertIn("Заявка `Забыл чип` отправлена на согласование.", result.outbound.text)
+        self.assertIn("Заявка `Забыл карточку СКУД` отправлена на согласование.", result.outbound.text)
         self.assertEqual(result.active_flow, None)
         self.assertEqual(len(router.case_repository.created_cases), 1)
         created_case = router.case_repository.created_cases[0]
@@ -202,7 +233,7 @@ class ForgotChipFlowTests(unittest.TestCase):
         self.assertEqual(created_case["planned_start"], "08:30")
         self.assertEqual(created_case["delay_minutes"], 12)
         self.assertEqual(created_case["source"], "forgot_chip")
-        self.assertIn("Забыл чип", created_case["employee_reason"])
+        self.assertIn("Забыл карточку СКУД", created_case["employee_reason"])
 
         self.assertEqual(
             router.approval_repository.created[0],

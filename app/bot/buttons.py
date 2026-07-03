@@ -74,29 +74,34 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.EMPLOYEE.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Статистика", BotAction.EMPLOYEE_PERSONAL, "📈", 0),
-            btn("Опоздания", BotAction.EMPLOYEE_REASONS, "⏰", 1),
-            btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 1),
+            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
+            btn("Опоздания", BotAction.EMPLOYEE_REASONS, "⏰", 2),
+            btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 2),
         ])
     if role == Role.MANAGER.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
-            btn("Отчеты", BotAction.MANAGER_REPORTS, "📊", 2),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
         ])
     if role == Role.SECURITY.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("СКУД", BotAction.SECURITY_SKUD, "📥", 0),
+            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
+            btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
             btn("Разбор", BotAction.SECURITY_AUDIT, "🗂️", 1),
         ])
     if role == Role.HR.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Справочники", BotAction.HR_REFERENCE, "👥", 0),
+            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
+            btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
             btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
             btn("Отчеты", BotAction.HR_REPORTS, "📊", 1),
             btn("Параметры", BotAction.HR_SETTINGS, "⚙️", 2),
@@ -104,7 +109,9 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.ADMIN.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Личное", BotAction.ADMIN_PERSONAL, "👤", 0),
+            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
+            btn("Личное", BotAction.ADMIN_PERSONAL, "👤", 1),
             btn("Структура", BotAction.ADMIN_STRUCTURE, "🏢", 1),
             btn("СКУД", BotAction.ADMIN_SKUD, "📥", 1),
             btn("Процессы", BotAction.ADMIN_WORKFLOW, "✅", 2),
@@ -193,9 +200,6 @@ ATTENDANCE_REASON_LABELS: Dict[str, str] = {
 }
 
 LATE_NOTICE_REASON_LABELS: Dict[str, str] = {
-    AttendanceReasonCode.ABSENCE_NOTICE.value: "Буду отсутствовать",
-    AttendanceReasonCode.APPROVED_LATE.value: "Согласовано",
-    AttendanceReasonCode.PERSONAL_REASON.value: "Личная причина",
     AttendanceReasonCode.OTHER.value: "Другое",
 }
 
@@ -251,7 +255,7 @@ def employee_reason_section_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Объяснить", BotAction.MENU_SUBMIT_REASON, "✍️", 0),
         btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
-        btn("Забыл чип", BotAction.MENU_FORGOT_CHIP, "🪪", 0),
+        btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 0),
         btn("Мои опоздания", BotAction.MENU_MY_LATES, "⏰", 0),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
     ])
@@ -406,7 +410,7 @@ def admin_personal_buttons() -> List[MaxOutboundButton]:
         btn("Моя строка", BotAction.MENU_MY_ROW, "🪪", 0),
         btn("Привязка", BotAction.MENU_BINDING_CHECK, "🔗", 1),
         btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 1),
-        btn("Забыл чип", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
+        btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
         btn("Права доступа", BotAction.MENU_ACCESS_RIGHTS, "🔐", 2),
         btn("Админ-панель", BotAction.MENU_ADMIN_PANEL, "🛠️", 2),
         btn("Главное меню", BotAction.MAIN_MENU, "🏠", 3),
@@ -414,15 +418,9 @@ def admin_personal_buttons() -> List[MaxOutboundButton]:
 
 
 def running_late_reason_buttons() -> List[MaxOutboundButton]:
-    buttons = []
-    icons = {
-        AttendanceReasonCode.ABSENCE_NOTICE.value: "📅",
-        AttendanceReasonCode.APPROVED_LATE.value: "✅",
-        AttendanceReasonCode.PERSONAL_REASON.value: "📝",
-        AttendanceReasonCode.OTHER.value: "⋯",
-    }
-    for code, label in LATE_NOTICE_REASON_LABELS.items():
-        buttons.append(btn(label, f"{BotAction.LATE_NOTICE_REASON_PREFIX}{code}", icons.get(code), 0))
+    buttons = [
+        btn("Указать причину", f"{BotAction.LATE_NOTICE_REASON_PREFIX}{AttendanceReasonCode.OTHER.value}", "✍️", 0)
+    ]
     buttons.append(btn("Назад", BotAction.BACK, "↩️", 3))
     buttons.append(btn("Главное меню", BotAction.MAIN_MENU, "🏠", 3))
     return readable_rows(buttons, max_per_row=1, long_title_threshold=1, row_width_limit=99)

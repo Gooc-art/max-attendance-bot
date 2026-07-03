@@ -18,6 +18,17 @@ class _FakeRoleResolver:
 
 
 class SkudImportAccessControlTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._marker_claim = patch("app.repositories.runtime_marker_repository.RuntimeMarkerRepository.claim", return_value=True)
+        self._marker_complete = patch("app.repositories.runtime_marker_repository.RuntimeMarkerRepository.complete")
+        self._marker_release = patch("app.repositories.runtime_marker_repository.RuntimeMarkerRepository.release")
+        self._marker_claim.start()
+        self._marker_complete.start()
+        self._marker_release.start()
+        self.addCleanup(self._marker_release.stop)
+        self.addCleanup(self._marker_complete.stop)
+        self.addCleanup(self._marker_claim.stop)
+
     def test_file_upload_is_rejected_for_employee_role(self) -> None:
         router = MaxWebhookRouter()
         router.role_resolver = _FakeRoleResolver("employee")

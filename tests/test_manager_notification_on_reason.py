@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from threading import Event
+from time import perf_counter, sleep
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.bot.router import MaxWebhookRouter
-from app.domain.enums import AttendanceCaseStatus
+from app.domain.dialog_state import UserDialogState
+from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow
 
 
 class _FakeCaseRepository:
@@ -42,10 +45,37 @@ class _FakeCaseRepository:
 class _FakeApprovalRepository:
     def __init__(self):
         self.created = []
+        self.updated = []
+        self.case = _FakeCaseRepository().case
+        self.case.source = "late_notice"
+        self.approval = SimpleNamespace(
+            id=77,
+            case_id=101,
+            manager_user_id="mgr-1",
+            manager_name="Петров Петр Сергеевич",
+            status=ApprovalStatus.PENDING.value,
+            comment="",
+        )
 
     def create_if_missing(self, **kwargs):
         self.created.append(kwargs)
         return 77
+
+    def list_for_manager(self, manager_user_id: str, statuses=None, limit: int = 500):
+        if manager_user_id != self.approval.manager_user_id:
+            return []
+        if statuses and self.approval.status not in statuses:
+            return []
+        return [(self.approval, self.case)]
+
+    def list_for_department_names(self, department_names, statuses=None, limit: int = 500):
+        return []
+
+    def update_status(self, approval_id: int, status: str, comment: str = ""):
+        self.updated.append((approval_id, status, comment))
+        self.approval.status = status
+        self.approval.comment = comment
+        return self.approval
 
 
 class _FakeDirectoryService:
@@ -91,6 +121,29 @@ class ManagerNotificationTests(unittest.TestCase):
         self.assertNotIn("Согласовать", [button.title for button in kwargs["buttons"]])
         self.assertEqual(response.outbound.text, "Причина по случаю #101 сохранена: Личная причина.\nСтатус: На согласовании у руководителя")
 
+    def test_background_manager_notification_does_not_block_employee_response(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        sent = Event()
+
+        def slow_send(**kwargs):
+            sleep(0.2)
+            sent.set()
+
+        router.max_client.send_message.side_effect = slow_send
+
+        started = perf_counter()
+        router._notify_manager_about_reason(
+            _FakeCaseRepository().case,
+            "Забыл карточку СКУД. Указанное время прихода: 08:44",
+            77,
+            background=True,
+        )
+
+        self.assertLess(perf_counter() - started, 0.1)
+        self.assertTrue(sent.wait(1))
+
     def test_approval_decision_triggers_employee_push_notification(self) -> None:
         router = MaxWebhookRouter()
         router.case_repository = _FakeCaseRepository()
@@ -121,6 +174,54 @@ class ManagerNotificationTests(unittest.TestCase):
         self.assertEqual(kwargs["user_id"], "emp-1")
         self.assertIn("Твоя заявка отклонена", kwargs["text"])
         self.assertIn("Кто отклонил: Петров Петр Сергеевич", kwargs["text"])
+
+    def test_rejected_approval_notification_includes_rejection_reason(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        approval = SimpleNamespace(
+            case_id=101,
+            manager_name="Петров Петр Сергеевич",
+            comment="Нет подтверждения времени",
+        )
+
+        router._notify_employee_about_approval_decision(approval, approved=False)
+
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertIn("Причина отказа: Нет подтверждения времени", kwargs["text"])
+
+    def test_late_notice_rejection_requires_reason_before_rejecting(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.case_repository.case.source = "late_notice"
+        router.approval_repository = _FakeApprovalRepository()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+
+        start = router._start_approval_rejection_flow("manager", "mgr-1", 77)
+
+        self.assertIn("Напиши причину отказа", start.outbound.text)
+        self.assertEqual(start.active_flow, DialogFlow.APPROVAL_REJECTION.value)
+        self.assertEqual(router.approval_repository.updated, [])
+
+        state = UserDialogState(
+            flow=DialogFlow.APPROVAL_REJECTION.value,
+            step="enter_reason",
+            data={"approval_id": "77"},
+        )
+        result = router._handle_approval_rejection_flow(
+            "manager",
+            "mgr-1",
+            "Нет подтверждения времени",
+            "",
+            state,
+        )
+
+        self.assertIn("Согласование #77 отклонено", result.outbound.text)
+        self.assertEqual(router.approval_repository.updated, [(77, ApprovalStatus.REJECTED.value, "Нет подтверждения времени")])
+        kwargs = router.max_client.send_message.call_args.kwargs
+        self.assertIn("Причина отказа: Нет подтверждения времени", kwargs["text"])
 
     def test_approval_decision_uses_directory_when_case_has_no_employee_user_id(self) -> None:
         router = MaxWebhookRouter()

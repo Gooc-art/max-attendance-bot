@@ -43,7 +43,14 @@ chmod +x scripts/*.sh
 bash scripts/install_systemd_user_linux.sh
 
 systemctl --user restart skud-backend.service
-systemctl --user restart skud-tunnel.service
+case "${SKUD_DISABLE_TUNNEL:-false}" in
+  1|true|TRUE|yes|YES)
+    systemctl --user stop skud-tunnel.service || true
+    ;;
+  *)
+    systemctl --user restart skud-tunnel.service
+    ;;
+esac
 
 sleep 8
 if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
@@ -52,7 +59,7 @@ if ! curl -sf "http://127.0.0.1:${APP_PORT:-8001}/api/health" >/dev/null; then
   journalctl --user --no-pager -u skud-tunnel.service -n 80 || true
   exit 1
 fi
-if [ -f "$DEPLOY_DIR/run/localhostrun.url" ]; then
+if [ -f "$DEPLOY_DIR/run/localhostrun.url" ] && ! [[ "${SKUD_DISABLE_TUNNEL:-false}" =~ ^(1|true|TRUE|yes|YES)$ ]]; then
   PUBLIC_URL="$(cat "$DEPLOY_DIR/run/localhostrun.url")"
   PUBLIC_URL_HEALTHY=false
   for _ in $(seq 1 18); do

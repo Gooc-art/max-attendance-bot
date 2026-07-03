@@ -202,6 +202,28 @@ class MaxApiClient:
             },
         )
 
+    def edit_message(
+        self,
+        message_id: str,
+        *,
+        text: str,
+        buttons: Optional[List[MaxOutboundButton]] = None,
+        notify: bool = False,
+    ) -> Dict[str, object]:
+        body = self.build_message_body(text=text, buttons=buttons or [], notify=notify)
+        if not self.is_configured():
+            return {
+                "status": "not_configured",
+                "message_id": message_id,
+                "body": body.model_dump(exclude_none=True),
+            }
+        return self._request(
+            "PUT",
+            "messages",
+            params={"message_id": message_id},
+            body=body.model_dump(exclude_none=True),
+        )
+
     def register_webhook(self, url: str, update_types: List[str], secret: str) -> Dict[str, object]:
         body = {
             "url": url,

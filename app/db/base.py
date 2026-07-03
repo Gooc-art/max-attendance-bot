@@ -45,6 +45,10 @@ def _ensure_runtime_schema() -> None:
 
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    if "runtime_markers" not in tables:
+        RuntimeMarkerModel = Base.metadata.tables.get("runtime_markers")
+        if RuntimeMarkerModel is not None:
+            RuntimeMarkerModel.create(bind=engine, checkfirst=True)
     if "attendance_cases" not in tables:
         return
 

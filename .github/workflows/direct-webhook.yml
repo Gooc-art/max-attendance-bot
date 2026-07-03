@@ -1,0 +1,19 @@
+name: Direct Webhook Setup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on:
+      - self-hosted
+      - skud-prod
+    concurrency:
+      group: skud-prod-direct-webhook
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install direct webhook
+        run: sudo -n bash scripts/install_hike89reg_direct_webhook.sh

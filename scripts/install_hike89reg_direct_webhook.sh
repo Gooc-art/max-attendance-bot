@@ -115,8 +115,8 @@ nginx -t
 systemctl reload nginx
 
 printf 'ok\n' > "$WEBROOT/.well-known/acme-challenge/skud-test"
-curl -fsS "http://$DOMAIN/.well-known/acme-challenge/skud-test" | grep -qx ok
-curl -fsS "http://$DOMAIN/api/health" >/dev/null
+curl -fsS -H "Host: $DOMAIN" "http://127.0.0.1/.well-known/acme-challenge/skud-test" | grep -qx ok
+curl -fsS -H "Host: $DOMAIN" "http://127.0.0.1/api/health" >/dev/null
 
 certbot certonly \
   --webroot \
@@ -130,7 +130,7 @@ write_https_config
 nginx -t
 systemctl reload nginx
 
-curl -fsS "https://$DOMAIN/api/health" >/dev/null
+curl -fsS --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/health" >/dev/null
 
 "$ROOT_DIR/.venv/bin/python3" "$ROOT_DIR/scripts/set_env_value.py" "$ROOT_DIR/.env" "SKUD_DISABLE_TUNNEL" "true"
 "$ROOT_DIR/.venv/bin/python3" "$ROOT_DIR/scripts/register_max_webhook.py" --url "https://$DOMAIN"

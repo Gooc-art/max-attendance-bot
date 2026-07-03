@@ -20,7 +20,7 @@
 - `create_google_sheet.py` создает и обновляет структуру Google Sheets, включая загрузку справочников.
 - `docx_leadership_sync.py` синхронизирует структуру руководства из Google Sheets.
 - `scripts/register_max_webhook.py` регистрирует webhook MAX и умеет брать public URL из `run/localhostrun.url`.
-- `scripts/install_direct_webhook_nginx.sh` настраивает прямой HTTPS webhook через nginx/certbot для домена `SKUD_WEBHOOK_DOMAIN` и после успешной проверки ставит `SKUD_DISABLE_TUNNEL=true`.
+- `scripts/install_direct_webhook_nginx.sh` и `scripts/install_hike89reg_direct_webhook.sh` настраивают прямой HTTPS webhook через nginx/certbot для домена `SKUD_WEBHOOK_DOMAIN` и после успешной проверки ставят `SKUD_DISABLE_TUNNEL=true`; для prod `BOTSGSN` использовать `install_hike89reg_direct_webhook.sh`, он пишет `/etc/nginx/conf.d/skud-webhook.conf`.
 - `scripts/deploy_prod.sh` используется для выкладки на прод и не должен перезаписывать `.env`, `data/`, `logs/`, `run/`.
 - Linux-прод через GitHub Actions: `.github/workflows/deploy.yml` запускается на self-hosted runner с label `skud-prod`; `scripts/deploy_local_linux.sh` деплоит код в `~/skud`, сохраняет `.env`, `data/`, `logs/`, `run/`, обновляет `.venv` и перезапускает user-systemd сервисы `skud-backend.service` и `skud-tunnel.service`.
 - `scripts/bootstrap_github_runner_linux.sh` регистрирует self-hosted runner для репозитория `Gooc-art/max-attendance-bot`; для первичной настройки нужен одноразовый `RUNNER_TOKEN`.

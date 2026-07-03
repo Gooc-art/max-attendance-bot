@@ -44,26 +44,37 @@ def receive_max_webhook(
             [attachment.filename for attachment in payload.message.body.attachments],
         )
     dedup_key = webhook_router.incoming_dedup_key(payload)
+    dedup_claim_ms = 0.0
+    handle_ms = 0.0
+    dedup_complete_ms = 0.0
     if dedup_key and not runtime_markers.claim(dedup_key, "incoming", lease_seconds=120):
         logger.info("MAX webhook duplicate suppressed key=%s", dedup_key)
         return MaxWebhookResponse(ok=True, role="", menu=[], outbound=MaxOutboundMessage(text="", buttons=[]))
+    dedup_claim_ms = (perf_counter() - started_at) * 1000
 
     try:
+        handle_started_at = perf_counter()
         response = webhook_router.handle_event(payload)
+        handle_ms = (perf_counter() - handle_started_at) * 1000
     except Exception:
         if dedup_key:
             runtime_markers.release(dedup_key)
         raise
     if dedup_key:
+        complete_started_at = perf_counter()
         runtime_markers.complete(dedup_key, ttl_seconds=600)
+        dedup_complete_ms = (perf_counter() - complete_started_at) * 1000
     elapsed_ms = round((perf_counter() - started_at) * 1000, 1)
     logger.info(
-        "MAX webhook handled update_type=%s chat_id=%s user_id=%s role=%s active_flow=%s elapsed_ms=%s",
+        "MAX webhook handled update_type=%s chat_id=%s user_id=%s role=%s active_flow=%s dedup_claim_ms=%.1f handle_ms=%.1f dedup_complete_ms=%.1f elapsed_ms=%s",
         payload.update_type,
         payload.chat_id,
         payload.user.user_id if payload.user else None,
         response.role,
         response.active_flow,
+        dedup_claim_ms,
+        handle_ms,
+        dedup_complete_ms,
         elapsed_ms,
     )
     return response

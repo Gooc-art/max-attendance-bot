@@ -15,5 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Diagnose nginx
+        run: |
+          hostname
+          id
+          sudo -n ls -la /etc/nginx /etc/nginx/conf.d /etc/nginx/sites-enabled /etc/nginx/sites-available || true
+          sudo -n nginx -T | sed -n '1,220p'
+
       - name: Install direct webhook
         run: sudo -n bash scripts/install_hike89reg_direct_webhook.sh

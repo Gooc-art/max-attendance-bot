@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from time import perf_counter
 
 from fastapi import APIRouter, Header, HTTPException
@@ -15,6 +16,19 @@ router = APIRouter(tags=["max"])
 webhook_router = MaxWebhookRouter(async_callback_outbound=True)
 runtime_markers = RuntimeMarkerRepository()
 logger = logging.getLogger(__name__)
+
+
+def _complete_dedup_marker(marker_key: str) -> None:
+    started_at = perf_counter()
+    try:
+        runtime_markers.complete(marker_key, ttl_seconds=600)
+        logger.info(
+            "MAX webhook dedup completed key=%s elapsed_ms=%.1f",
+            marker_key,
+            (perf_counter() - started_at) * 1000,
+        )
+    except Exception:
+        logger.warning("MAX webhook dedup complete failed key=%s", marker_key, exc_info=True)
 
 
 @router.post("/webhooks/max", response_model=MaxWebhookResponse)
@@ -62,7 +76,8 @@ def receive_max_webhook(
         raise
     if dedup_key:
         complete_started_at = perf_counter()
-        runtime_markers.complete(dedup_key, ttl_seconds=600)
+        # ponytail: the processing lease already suppresses retries; finish TTL outside the response path.
+        threading.Thread(target=_complete_dedup_marker, args=(dedup_key,), daemon=True).start()
         dedup_complete_ms = (perf_counter() - complete_started_at) * 1000
     elapsed_ms = round((perf_counter() - started_at) * 1000, 1)
     logger.info(

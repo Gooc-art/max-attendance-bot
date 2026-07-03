@@ -18,4 +18,4 @@ jobs:
           printf '\n--- max subscriptions ---\n'
           .venv/bin/python3 -c "from app.integrations.max.client import MaxApiClient; import json; print(json.dumps(MaxApiClient.from_settings().get_subscriptions(), ensure_ascii=False, indent=2))"
           printf '\n--- backend timings ---\n'
-          journalctl --user --no-pager -u skud-backend.service -n 450 | grep -E 'MAX webhook handled|Router event normalized|Role resolved|MAX outbound|Google Sheets directory|Google Sheets schedules|ERROR|WARNING' || true
+          journalctl --user --no-pager -u skud-backend.service -n 450 | grep -E 'MAX webhook handled|MAX webhook dedup completed|Router event normalized|Role resolved|MAX outbound|Google Sheets directory|Google Sheets schedules|ERROR|WARNING' || true

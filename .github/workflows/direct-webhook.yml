@@ -24,3 +24,13 @@ jobs:
 
       - name: Install direct webhook
         run: sudo -n bash scripts/install_hike89reg_direct_webhook.sh
+
+      - name: Diagnose direct webhook failure
+        if: failure()
+        run: |
+          sudo -n nginx -T | sed -n '/skud-webhook.conf/,+90p'
+          curl -i http://89-150-35-139.sslip.io/.well-known/acme-challenge/skud-test || true
+          curl -i http://89-150-35-139.sslip.io/api/health || true
+          curl -i -H 'Host: 89-150-35-139.sslip.io' http://127.0.0.1/.well-known/acme-challenge/skud-test || true
+          curl -i -H 'Host: 89-150-35-139.sslip.io' http://127.0.0.1/api/health || true
+          sudo -n ls -la /var/www/letsencrypt/.well-known/acme-challenge || true

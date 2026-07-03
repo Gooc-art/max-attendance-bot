@@ -13,7 +13,7 @@ from app.schemas.max import MaxOutboundMessage, MaxUpdate, MaxWebhookResponse
 
 
 router = APIRouter(tags=["max"])
-webhook_router = MaxWebhookRouter(async_callback_outbound=True)
+webhook_router = MaxWebhookRouter(async_callback_outbound=True, async_user_activity=True)
 runtime_markers = RuntimeMarkerRepository()
 logger = logging.getLogger(__name__)
 

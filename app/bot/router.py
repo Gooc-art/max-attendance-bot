@@ -73,7 +73,7 @@ from app.services.substitution_flow import SubstitutionFlowService
 
 
 class MaxWebhookRouter:
-    def __init__(self, async_callback_outbound: bool = False) -> None:
+    def __init__(self, async_callback_outbound: bool = False, async_user_activity: bool = False) -> None:
         self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
         self.employee_directory_repository = EmployeeDirectoryRepository()
         self.user_role_override_repository = UserRoleOverrideRepository()
@@ -105,6 +105,7 @@ class MaxWebhookRouter:
         self.runtime_marker_repository = RuntimeMarkerRepository()
         self._early_acknowledged_callbacks: set[str] = set()
         self.async_callback_outbound = async_callback_outbound
+        self.async_user_activity = async_user_activity
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
@@ -1069,12 +1070,30 @@ class MaxWebhookRouter:
         return action == BotAction.OFFICE_SEAL_REMINDER_ACK or user_text == "Спасибо за напоминание"
 
     def _touch_user_activity(self, payload: MaxUpdate, event: dict, role: str, started: bool) -> None:
-        self.user_bot_activity_repository.touch(
-            user_id=event["user_id"],
-            display_name=self._event_display_name(payload),
-            role=role,
-            started=started,
-        )
+        kwargs = {
+            "user_id": event["user_id"],
+            "display_name": self._event_display_name(payload),
+            "role": role,
+            "started": started,
+        }
+        if not self.async_user_activity:
+            self.user_bot_activity_repository.touch(**kwargs)
+            return
+        threading.Thread(
+            target=self._touch_user_activity_in_background,
+            kwargs=kwargs,
+            daemon=True,
+        ).start()
+
+    def _touch_user_activity_in_background(self, **kwargs) -> None:
+        try:
+            self.user_bot_activity_repository.touch(**kwargs)
+        except Exception:
+            self.logger.warning(
+                "User bot activity background touch failed user_id=%s",
+                kwargs.get("user_id"),
+                exc_info=True,
+            )
 
     def _mark_office_sealed(self, role: str, user_id: str) -> MaxWebhookResponse:
         result = self.office_sealing_service.mark_sealed(user_id=user_id)

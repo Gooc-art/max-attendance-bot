@@ -17,6 +17,14 @@ on:
         description: Report period
         required: true
         default: week
+      date_from:
+        description: Custom date from, or latest SKUD import when empty
+        required: false
+        default: ""
+      date_to:
+        description: Custom date to, or latest SKUD import when empty
+        required: false
+        default: ""
 
 jobs:
   send:
@@ -28,13 +36,37 @@ jobs:
           .venv/bin/python3 - <<'PY'
           import os
           from app.bot.router import MaxWebhookRouter
+          from app.db.base import SessionLocal
+          from app.db.models import SkudImportModel
+          from sqlalchemy import desc, select
+
+          period = os.environ["INPUT_PERIOD"]
+          date_from = os.environ.get("INPUT_DATE_FROM", "").strip()
+          date_to = os.environ.get("INPUT_DATE_TO", "").strip()
+          if period == "custom" and (not date_from or not date_to):
+              with SessionLocal() as session:
+                  row = session.execute(
+                      select(SkudImportModel)
+                      .where(SkudImportModel.status == "completed")
+                      .where(SkudImportModel.period_start != "")
+                      .where(SkudImportModel.period_end != "")
+                      .order_by(desc(SkudImportModel.created_at))
+                      .limit(1)
+                  ).scalar_one_or_none()
+              if row is None:
+                  raise SystemExit("No completed SKUD import with period_start/period_end")
+              date_from = row.period_start
+              date_to = row.period_end
+              print(f"Using latest SKUD import: {row.filename} {date_from} - {date_to}")
 
           router = MaxWebhookRouter()
           router._generate_and_send_manager_report(
               chat_id=os.environ["INPUT_CHAT_ID"],
               user_id=os.environ["INPUT_USER_ID"],
               role=os.environ["INPUT_ROLE"],
-              period=os.environ["INPUT_PERIOD"],
+              period=period,
+              date_from=date_from,
+              date_to=date_to,
           )
           PY
         env:
@@ -42,3 +74,5 @@ jobs:
           INPUT_CHAT_ID: ${{ inputs.chat_id }}
           INPUT_ROLE: ${{ inputs.role }}
           INPUT_PERIOD: ${{ inputs.period }}
+          INPUT_DATE_FROM: ${{ inputs.date_from }}
+          INPUT_DATE_TO: ${{ inputs.date_to }}

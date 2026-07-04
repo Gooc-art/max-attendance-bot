@@ -1,0 +1,44 @@
+name: Send Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: MAX user_id
+        required: true
+      chat_id:
+        description: MAX chat_id
+        required: true
+      role:
+        description: Report role
+        required: true
+        default: manager
+      period:
+        description: Report period
+        required: true
+        default: week
+
+jobs:
+  send:
+    runs-on: [self-hosted, skud-prod]
+    steps:
+      - name: Send report from prod
+        run: |
+          cd "$HOME/skud"
+          .venv/bin/python3 - <<'PY'
+          import os
+          from app.bot.router import MaxWebhookRouter
+
+          router = MaxWebhookRouter()
+          router._generate_and_send_manager_report(
+              chat_id=os.environ["INPUT_CHAT_ID"],
+              user_id=os.environ["INPUT_USER_ID"],
+              role=os.environ["INPUT_ROLE"],
+              period=os.environ["INPUT_PERIOD"],
+          )
+          PY
+        env:
+          INPUT_USER_ID: ${{ inputs.user_id }}
+          INPUT_CHAT_ID: ${{ inputs.chat_id }}
+          INPUT_ROLE: ${{ inputs.role }}
+          INPUT_PERIOD: ${{ inputs.period }}

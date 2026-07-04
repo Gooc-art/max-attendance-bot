@@ -194,11 +194,7 @@ class ReportService:
             entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         entries = self._sort_visit_rows(entries, primary="arrival")
         title = self._build_title(period, date_from=period_start.isoformat(), date_to=period_end.isoformat())
-        summary_rows = self._build_visit_summary_rows(entries, title, period_start, period_end)
-        detail_tabs = self._build_visit_status_tabs(entries)
-        detail_tabs.append(("Трудочасы", self._build_workhours_rows(filtered)))
-        detail_tabs.append(("Трудочасы отделы", self._build_workhours_department_rows(filtered)))
-        detail_rows = self._build_visit_detail_rows(entries)
+        summary_rows, detail_rows, detail_tabs = self._build_late_report_rows(entries, title, period_start, period_end)
         summary_text = self._rows_to_text(summary_rows)
         return self._create_report_artifact(
             user_id=user_id,
@@ -248,14 +244,8 @@ class ReportService:
         if not entries and case_rows:
             entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
         entries = self._sort_visit_rows(entries, primary="arrival")
-        summary_rows, department_rows = self._build_division_summary_rows(entries, title, period_start, period_end)
-        detail_tabs = self._build_visit_status_tabs(entries)
-        detail_tabs.append(("Трудочасы", self._build_workhours_rows(filtered)))
-        detail_tabs.append(("Трудочасы отделы", self._build_workhours_department_rows(filtered)))
-        detail_rows = self._build_visit_detail_rows(entries)
+        summary_rows, detail_rows, detail_tabs = self._build_late_report_rows(entries, title, period_start, period_end)
         summary_text = self._rows_to_text(summary_rows + [["Разрез по подразделениям", ""]])
-        if department_rows:
-            summary_text = summary_text + "\n" + self._rows_to_text(department_rows)
         return self._create_report_artifact(
             user_id=user_id,
             role=role,
@@ -268,8 +258,7 @@ class ReportService:
             filename_prefix=f"division_{period}",
             period_start=period_start,
             period_end=period_end,
-            sheet1_name="Подразделения",
-            extra_rows=department_rows,
+            sheet1_name="Сводка",
             html_title="Отчет по подразделениям",
         )
 
@@ -512,6 +501,114 @@ class ReportService:
             )
 
         return summary_rows, department_rows
+
+    def _build_late_report_rows(
+        self,
+        rows: List[VisitReportRow],
+        title: str,
+        period_start: date,
+        period_end: date,
+    ) -> Tuple[List[List[str]], List[List[str]], List[Tuple[str, List[List[str]]]]]:
+        late_rows = [row for row in rows if self._is_late_report_row(row)]
+        detail_rows = [self._late_detail_header()]
+        grouped: dict[tuple[str, str], dict[str, object]] = defaultdict(
+            lambda: {
+                "employee": "",
+                "department": "",
+                "count": 0,
+                "late": 0,
+                "approved": 0,
+                "unapproved": 0,
+                "cases": [],
+            }
+        )
+        by_date: dict[str, List[List[str]]] = defaultdict(lambda: [self._late_detail_header()])
+        for row in late_rows:
+            detail = self._late_detail_row(row)
+            detail_rows.append(detail)
+            by_date[detail[0]].append(detail)
+            key = (
+                str(getattr(row.record, "employee_user_id", "") or getattr(row.record, "employee_name", "") or ""),
+                str(getattr(row.record, "employee_name", "") or ""),
+            )
+            bucket = grouped[key]
+            bucket["employee"] = detail[1]
+            bucket["department"] = detail[2]
+            bucket["count"] = int(bucket["count"]) + 1
+            bucket["late"] = int(bucket["late"]) + int(detail[6])
+            bucket["approved"] = int(bucket["approved"]) + int(detail[7])
+            bucket["unapproved"] = int(bucket["unapproved"]) + int(detail[8])
+            bucket["cases"].append(f"{detail[0]}: {detail[9]} - {detail[10]}")
+
+        summary_rows = [
+            ["Сотрудник", "Подразделение", "Опозданий", "Опоздание по СКУД, мин", "Согласовано, мин", "Несогласовано, мин", "Случаи согласования"],
+            ["Отчет", title, "", "", "", "", f"{period_start.isoformat()} - {period_end.isoformat()}"],
+        ]
+        for bucket in sorted(grouped.values(), key=lambda item: (-int(item["unapproved"]), -int(item["late"]), str(item["employee"]))):
+            summary_rows.append(
+                [
+                    str(bucket["employee"]),
+                    str(bucket["department"]),
+                    str(bucket["count"]),
+                    str(bucket["late"]),
+                    str(bucket["approved"]),
+                    str(bucket["unapproved"]),
+                    "; ".join(str(item) for item in bucket["cases"]),
+                ]
+            )
+        if len(summary_rows) == 2:
+            summary_rows.append(["Опоздавших за период нет", "", "0", "0", "0", "0", ""])
+
+        tabs = [(event_date, by_date[event_date]) for event_date in sorted(by_date)]
+        return summary_rows, detail_rows, tabs
+
+    @staticmethod
+    def _late_detail_header() -> List[str]:
+        return [
+            "Дата",
+            "Сотрудник",
+            "Подразделение",
+            "Приход",
+            "Уход",
+            "План прихода",
+            "Опоздание, мин",
+            "Согласовано, мин",
+            "Несогласовано, мин",
+            "Заявка/объяснение",
+            "Статус согласования",
+            "Кто согласовал",
+            "Комментарий",
+        ]
+
+    def _late_detail_row(self, row: VisitReportRow) -> List[str]:
+        late_minutes = max(int(getattr(row.record, "arrival_delta_minutes", 0) or 0), 0)
+        approved = self._late_is_approved(row)
+        return [
+            str(getattr(row.record, "event_date", "") or "-"),
+            str(getattr(row.record, "employee_name", "") or "-"),
+            str(getattr(row.record, "department_name", "") or "-"),
+            str(getattr(row.record, "first_entry_time", "") or "-"),
+            str(getattr(row.record, "last_exit_time", "") or "-"),
+            str(getattr(row.record, "planned_start", "") or "-"),
+            str(late_minutes),
+            str(late_minutes if approved else 0),
+            str(0 if approved else late_minutes),
+            row.kinds_text if row.kinds_text != "-" else "Нет заявки",
+            row.approval_status_text if row.approval_status_text != "-" else "Нет",
+            row.approver_text,
+            row.approval_comment_text,
+        ]
+
+    def _is_late_report_row(self, row: VisitReportRow) -> bool:
+        return (
+            self._row_day_type(row) == "Обычный"
+            and str(getattr(row.record, "arrival_status", "") or "") == "late"
+            and int(getattr(row.record, "arrival_delta_minutes", 0) or 0) > 0
+        )
+
+    @staticmethod
+    def _late_is_approved(row: VisitReportRow) -> bool:
+        return row.case_count > 0 and row.approval_status_text == "Согласовано"
 
     def _build_visit_detail_rows(self, rows) -> List[List[str]]:
         detail_rows = [
@@ -1030,7 +1127,7 @@ class ReportService:
                 first_entry_time=str(getattr(first_case, "actual_start", "") or "-"),
                 arrival_status="late" if any(str(getattr(case, "case_type", "") or "").strip() == "late" for case in matched_cases) else "",
                 arrival_delta_minutes=int(getattr(first_case, "delay_minutes", 0) or 0),
-                last_exit_time="",
+                last_exit_time="-",
                 departure_status="",
                 departure_delta_minutes=0,
                 planned_start=str(getattr(first_case, "planned_start", "") or ""),
@@ -1205,6 +1302,8 @@ class ReportService:
         file_path.write_bytes(writer.build_pdf(title, lines))
 
     def _build_pdf_lines(self, title: str, summary_rows: List[List[str]], detail_rows: List[List[str]], extra_rows: List[List[str]]) -> List[str]:
+        if summary_rows and summary_rows[0][:2] == ["Сотрудник", "Подразделение"]:
+            return self._build_late_pdf_lines(title, summary_rows, detail_rows)
         lines: List[str] = [title, "Сформировано автоматически", ""]
         for row in summary_rows[1:]:
             if len(row) >= 2:
@@ -1286,6 +1385,43 @@ class ReportService:
                     ]
                 )
             )
+        return lines
+
+    def _build_late_pdf_lines(self, title: str, summary_rows: List[List[str]], detail_rows: List[List[str]]) -> List[str]:
+        lines: List[str] = [title, "Сформировано автоматически", "", "Сводка по опоздавшим"]
+        for row in summary_rows[2:]:
+            if len(row) < 7:
+                continue
+            lines.extend(
+                self._wrap_text_block(
+                    [
+                        f"{row[0]} | {row[1]}",
+                        f"Опозданий: {row[2]}, по СКУД: {row[3]} мин, согласовано: {row[4]} мин, несогласовано: {row[5]} мин",
+                        f"Случаи: {row[6] or '-'}",
+                        "-" * 72,
+                    ]
+                )
+            )
+        grouped: dict[str, List[List[str]]] = defaultdict(list)
+        for row in detail_rows[1:]:
+            if len(row) >= 13:
+                grouped[row[0]].append(row)
+        for event_date in sorted(grouped):
+            lines.extend(["", event_date])
+            for row in grouped[event_date]:
+                lines.extend(
+                    self._wrap_text_block(
+                        [
+                            f"Сотрудник: {row[1]}",
+                            f"Подразделение: {row[2]}",
+                            f"Приход: {row[3]}, уход: {row[4]}, план: {row[5]}",
+                            f"Опоздание: {row[6]} мин, согласовано: {row[7]} мин, несогласовано: {row[8]} мин",
+                            f"Заявка/объяснение: {row[9]}",
+                            f"Согласование: {row[10]}, кто: {row[11]}, комментарий: {row[12]}",
+                            "-" * 72,
+                        ]
+                    )
+                )
         return lines
 
     def _filter_detail_rows_by_status(

@@ -3720,7 +3720,7 @@ class MaxWebhookRouter:
         if action == BotAction.BACK or user_text == "Назад":
             if state.step == "choose_manager":
                 dialog_state_store.reset(user_id)
-                return self._employee_reason_menu(role)
+                return self._running_late_back_response(role)
             if state.step == "choose_date":
                 return self._start_running_late_flow(role, user_id)
             if state.step == "choose_reason":

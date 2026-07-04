@@ -465,6 +465,23 @@ class RunningLateFlowTests(unittest.TestCase):
         self.assertIn("Укажи причину опоздания", result.outbound.text)
         self.assertEqual(state.step, "choose_reason")
 
+    def test_manager_back_from_initial_running_late_returns_main_menu(self) -> None:
+        router = self._build_router()
+        state = UserDialogState(
+            flow=DialogFlow.RUNNING_LATE.value,
+            step="choose_manager",
+            data={
+                "employee_name": "Петров Петр Сергеевич",
+                "department_name": "Отдел продаж",
+                "manager_options": {"top-1": "Орлов Олег Олегович"},
+            },
+        )
+
+        result = router._handle_running_late_flow("manager", "mgr-default", "", "common.back", state)
+
+        self.assertEqual(result.outbound.text, "Главное меню готово.")
+        self.assertEqual(result.active_flow, None)
+
     def test_old_absence_notice_reason_no_longer_starts_absence_flow(self) -> None:
         router = self._build_router()
         state = UserDialogState(

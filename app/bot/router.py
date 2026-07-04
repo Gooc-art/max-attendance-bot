@@ -100,6 +100,7 @@ class MaxWebhookRouter:
         )
         self._directory_cache_ttl_seconds = 300
         self._directory_user_cache: dict[str, tuple[float, object]] = {}
+        self._directory_name_cache: dict[str, tuple[float, object]] = {}
         self._directory_recent_cache: dict[int, tuple[float, list[object]]] = {}
         self.bot_message_cursor_store = bot_message_cursor_store
         self.runtime_marker_repository = RuntimeMarkerRepository()
@@ -2100,10 +2101,18 @@ class MaxWebhookRouter:
         return None
 
     def _resolve_directory_record_by_employee_name(self, employee_name: str):
-        local_record = self.employee_directory_repository.get_by_employee_name(employee_name)
+        normalized_name = str(employee_name or "").strip()
+        cached_record = self._cached_directory_name(normalized_name)
+        if cached_record is not None:
+            return cached_record
+        local_record = self.employee_directory_repository.get_by_employee_name(normalized_name)
         if local_record is not None:
+            self._remember_directory_name(normalized_name, local_record)
             return local_record
-        return self.google_directory_service.get_by_employee_name(employee_name)
+        google_record = self.google_directory_service.get_by_employee_name(normalized_name)
+        if google_record is not None:
+            self._remember_directory_name(normalized_name, google_record)
+        return google_record
 
     def _resolve_directory_rows_by_manager_user_id(self, manager_user_id: str):
         local_rows = self.employee_directory_repository.get_by_manager_user_id(manager_user_id)
@@ -2227,6 +2236,26 @@ class MaxWebhookRouter:
     def _remember_directory_user(self, user_id: str, record) -> None:
         if user_id and record is not None:
             self._directory_user_cache[user_id] = (monotonic() + self._directory_cache_ttl_seconds, record)
+            employee_name = str(getattr(record, "employee_name", "") or "").strip()
+            if employee_name:
+                self._remember_directory_name(employee_name, record)
+
+    def _cached_directory_name(self, employee_name: str):
+        cached = self._directory_name_cache.get(employee_name)
+        if not cached:
+            return None
+        expires_at, record = cached
+        if expires_at <= monotonic():
+            self._directory_name_cache.pop(employee_name, None)
+            return None
+        return record
+
+    def _remember_directory_name(self, employee_name: str, record) -> None:
+        if employee_name and record is not None:
+            self._directory_name_cache[employee_name] = (monotonic() + self._directory_cache_ttl_seconds, record)
+            user_id = str(getattr(record, "employee_user_id", "") or "").strip()
+            if user_id:
+                self._directory_user_cache[user_id] = (monotonic() + self._directory_cache_ttl_seconds, record)
 
     def _cached_directory_rows_recent(self, limit: int):
         cached = self._directory_recent_cache.get(limit)

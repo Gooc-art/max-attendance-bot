@@ -93,6 +93,7 @@ class _LocalDirectoryRepository:
     def __init__(self, rows):
         self.rows = rows
         self.list_recent_calls = 0
+        self.get_by_employee_name_calls = 0
 
     def get_by_user_id(self, user_id: str):
         for row in self.rows:
@@ -101,6 +102,7 @@ class _LocalDirectoryRepository:
         return None
 
     def get_by_employee_name(self, employee_name: str):
+        self.get_by_employee_name_calls += 1
         for row in self.rows:
             if getattr(row, "employee_name", "") == employee_name:
                 return row
@@ -252,6 +254,7 @@ class RunningLateFlowTests(unittest.TestCase):
         router._start_running_late_flow("employee", "emp-1")
 
         self.assertEqual(local_repository.list_recent_calls, 0)
+        self.assertEqual(local_repository.get_by_employee_name_calls, 1)
 
     def test_start_flow_uses_active_substitution_for_current_manager(self) -> None:
         router = self._build_router()

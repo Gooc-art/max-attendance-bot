@@ -37,8 +37,8 @@ jobs:
           import os
           from app.bot.router import MaxWebhookRouter
           from app.db.base import SessionLocal
-          from app.db.models import SkudImportModel
-          from sqlalchemy import desc, select
+          from app.db.models import AttendanceCaseModel, AttendanceDayRecordModel, SkudImportModel
+          from sqlalchemy import desc, func, select
 
           period = os.environ["INPUT_PERIOD"]
           date_from = os.environ.get("INPUT_DATE_FROM", "").strip()
@@ -54,10 +54,22 @@ jobs:
                       .limit(1)
                   ).scalar_one_or_none()
               if row is None:
-                  raise SystemExit("No completed SKUD import with period_start/period_end")
-              date_from = row.period_start
-              date_to = row.period_end
-              print(f"Using latest SKUD import: {row.filename} {date_from} - {date_to}")
+                  with SessionLocal() as session:
+                      date_from, date_to = session.execute(
+                          select(func.min(AttendanceDayRecordModel.event_date), func.max(AttendanceDayRecordModel.event_date))
+                      ).one()
+                  if not date_from or not date_to:
+                      with SessionLocal() as session:
+                          date_from, date_to = session.execute(
+                              select(func.min(AttendanceCaseModel.event_date), func.max(AttendanceCaseModel.event_date))
+                          ).one()
+                  if not date_from or not date_to:
+                      raise SystemExit("No SKUD day records or cases with event_date")
+                  print(f"Using attendance data period: {date_from} - {date_to}")
+              else:
+                  date_from = row.period_start
+                  date_to = row.period_end
+                  print(f"Using latest SKUD import: {row.filename} {date_from} - {date_to}")
 
           router = MaxWebhookRouter()
           router._generate_and_send_manager_report(

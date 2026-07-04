@@ -5,6 +5,7 @@
 Обновлять только важные и устойчивые сведения: версии, точки входа, ключевые модули, архитектурные решения, проверенные договоренности по коду. Не записывать временные гипотезы, подробные пересказы функций и мелкие детали, которые легко увидеть рядом с изменяемым кодом.
 
 ## Версии и стек
+- Текущий prod snapshot бота от 2026-07-04: commit `6581864` (`Move dialog state writes off hot path`). Это быстрая inline-версия после оптимизаций callback-outbound, activity tracking, dialog state hot cache и кэша справочника по ФИО.
 - Python backend на `FastAPI`; точка приложения: `app/main.py`.
 - Версия приложения в `FastAPI`: `0.1.0`.
 - Основные зависимости из `requirements.txt`: `fastapi`, `uvicorn`, `python-dotenv`, `sqlalchemy`, `openpyxl`, `google-api-python-client`, `google-auth`.

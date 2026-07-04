@@ -261,6 +261,31 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertIn("chat_id=123", request.full_url)
         self.assertNotIn("user_id=", request.full_url)
 
+    def test_send_file_message_retries_when_attachment_is_not_ready(self) -> None:
+        client = MaxApiClient(
+            token="token",
+            secret="secret",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+            tmp.write(b"report")
+            tmp.flush()
+            with patch.object(client, "upload_file", return_value={"token": "file-token"}) as upload_file:
+                with patch.object(
+                    client,
+                    "_request",
+                    side_effect=[RuntimeError('MAX API POST messages failed: HTTP 400 {"code":"attachment.not.ready"}'), {"ok": True}],
+                ) as request:
+                    with patch("app.integrations.max.client.time.sleep") as sleep:
+                        result = client.send_file_message(chat_id=123, text="report", file_path=tmp.name)
+
+        self.assertEqual(result, {"ok": True})
+        upload_file.assert_called_once()
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(1)
+
 
 if __name__ == "__main__":
     unittest.main()

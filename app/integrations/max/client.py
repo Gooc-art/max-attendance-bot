@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from itertools import groupby
 from pathlib import Path
@@ -136,12 +137,14 @@ class MaxApiClient:
                 "body": body,
             }
         params = self._recipient_params(chat_id=chat_id, user_id=user_id)
-        return self._request(
-            "POST",
-            "messages",
-            params=params,
-            body=body,
-        )
+        for attempt in range(3):
+            try:
+                return self._request("POST", "messages", params=params, body=body)
+            except RuntimeError as exc:
+                if "attachment.not.ready" not in str(exc) or attempt == 2:
+                    raise
+                time.sleep(1)
+        raise RuntimeError("MAX file message retry exhausted")
 
     def answer_callback(
         self,

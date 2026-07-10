@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from threading import Event
 from unittest.mock import MagicMock
 
@@ -782,6 +783,24 @@ class SendOutboundTests(unittest.TestCase):
 
         router._division_reports.assert_called_once_with("admin", "456", "777")
         self.assertEqual(response.outbound.text, "done")
+
+    def test_top_department_absences_groups_absent_cases_by_department(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = MagicMock()
+        router.case_repository.list_all.return_value = [
+            SimpleNamespace(case_type="absent", department_name="Отдел продаж"),
+            SimpleNamespace(case_type="absent", department_name="Отдел продаж"),
+            SimpleNamespace(case_type="late", department_name="Отдел продаж"),
+            SimpleNamespace(case_type="absent", department_name="ИТ"),
+        ]
+
+        response = router._top_department_absences("top_manager")
+
+        self.assertIn("Неявки отделов за весь период", response.outbound.text)
+        self.assertIn("Всего: 3", response.outbound.text)
+        self.assertIn("- Отдел продаж: 2", response.outbound.text)
+        self.assertIn("- ИТ: 1", response.outbound.text)
+        self.assertEqual(response.outbound.buttons[0].action, "top.summary")
 
     def test_office_seal_ack_skips_role_resolver(self) -> None:
         router = self._build_router()

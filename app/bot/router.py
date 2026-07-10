@@ -510,7 +510,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.MENU_DEPARTMENT_ABSENCES or user_text == "Неявки отдела":
+        if action == BotAction.MENU_DEPARTMENT_ABSENCES or user_text in {"Неявки отдела", "Неявки отделов"}:
+            if role == Role.TOP_MANAGER.value:
+                response = self._top_department_absences(role)
+                self._send_outbound(payload, response.outbound)
+                return response
             response = self._department_cases(role, event["user_id"], AttendanceCaseStatus.NEW.value)
             self._send_outbound(payload, response.outbound)
             return response
@@ -1601,6 +1605,42 @@ class MaxWebhookRouter:
                     MaxOutboundButton(title="Согласования", action=BotAction.MENU_APPROVALS),
                     MaxOutboundButton(title="Отчеты", action=BotAction.MANAGER_REPORTS),
                     MaxOutboundButton(title="Назад", action=BotAction.MANAGER_MANAGEMENT),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _top_department_absences(self, role: str) -> MaxWebhookResponse:
+        rows = [
+            case
+            for case in self.case_repository.list_all(limit=5000)
+            if getattr(case, "case_type", "") == AttendanceCaseType.ABSENT.value
+        ]
+        if not rows:
+            text = "Неявок по отделам за весь период пока нет."
+        else:
+            counts: dict[str, int] = {}
+            for case in rows:
+                department = getattr(case, "department_name", "") or "Не указано"
+                counts[department] = counts.get(department, 0) + 1
+            lines = [
+                f"- {department}: {count}"
+                for department, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:20]
+            ]
+            text = "Неявки отделов за весь период:\n\nВсего: {total}\n\n{lines}".format(
+                total=len(rows),
+                lines="\n".join(lines),
+            )
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[
+                    MaxOutboundButton(title="Назад", action=BotAction.TOP_SUMMARY),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),
             active_flow=None,

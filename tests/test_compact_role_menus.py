@@ -116,9 +116,12 @@ class CompactRoleMenuTests(unittest.TestCase):
     def test_top_summary_menu_contains_only_analytics_actions(self) -> None:
         titles = [button.title for button in top_summary_buttons()]
         self.assertIn("Сводка", titles)
+        self.assertIn("Неявки отделов", titles)
         self.assertIn("Просроченные", titles)
         self.assertIn("По отделам", titles)
         self.assertIn("Входы", titles)
+        self.assertNotIn("Мои сотрудники", titles)
+        self.assertNotIn("Опоздания", titles)
         self.assertNotIn("Замещения", titles)
 
     def test_top_reports_menu_contains_only_reports(self) -> None:

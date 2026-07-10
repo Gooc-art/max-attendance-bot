@@ -67,4 +67,4 @@ PY
     echo "::warning title=Google service account missing::$GOOGLE_SERVICE_ACCOUNT_FILE"
   fi
 fi
-systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service
+systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service || true

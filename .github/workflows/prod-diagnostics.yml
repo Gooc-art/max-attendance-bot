@@ -11,11 +11,14 @@ jobs:
     steps:
       - name: Inspect prod bot
         run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           cd "$HOME/skud"
-          systemctl --user --no-pager --full status skud-backend.service skud-tunnel.service || true
+          systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service || true
           printf '\n--- tunnel url ---\n'
           cat run/localhostrun.url || true
           printf '\n--- max subscriptions ---\n'
           .venv/bin/python3 -c "from app.integrations.max.client import MaxApiClient; import json; print(json.dumps(MaxApiClient.from_settings().get_subscriptions(), ensure_ascii=False, indent=2))"
+          printf '\n--- polling log ---\n'
+          journalctl --user --no-pager -u skud-polling.service -n 300 || true
           printf '\n--- backend timings ---\n'
           journalctl --user --no-pager -u skud-backend.service -n 450 | grep -E 'MAX webhook handled|MAX webhook dedup completed|Router event normalized|Role resolved|MAX outbound|Google Sheets directory|Google Sheets schedules|ERROR|WARNING' || true

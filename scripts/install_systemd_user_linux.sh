@@ -50,6 +50,24 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
+cat > "$SYSTEMD_USER_DIR/skud-polling.service" <<EOF
+[Unit]
+Description=SKUD MAX bot polling
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT_DIR
+ExecStart=$ROOT_DIR/scripts/run_polling.sh
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
+EOF
+
 install_office_seal_reminder() {
   local gender="$1"
   local hour="$2"
@@ -115,6 +133,7 @@ WantedBy=timers.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable skud-backend.service skud-tunnel.service
+systemctl --user enable skud-backend.service skud-polling.service
+systemctl --user disable skud-tunnel.service || true
 systemctl --user enable --now skud-office-seal-reminder-female.timer skud-office-seal-reminder-male.timer
 systemctl --user enable --now skud-directory-sync.timer

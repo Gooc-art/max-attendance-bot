@@ -18,3 +18,22 @@ def test_linux_installer_enables_directory_sync_timer() -> None:
     assert "OnUnitActiveSec=6h" in script
     assert "scripts/sync_employee_directory.py" in script
     assert "enable --now skud-directory-sync.timer" in script
+
+
+def test_linux_installer_uses_polling_not_tunnel_for_bot_events() -> None:
+    script = Path("scripts/install_systemd_user_linux.sh").read_text()
+
+    assert "skud-polling.service" in script
+    assert "ExecStart=$ROOT_DIR/scripts/run_polling.sh" in script
+    assert "systemctl --user enable skud-backend.service skud-polling.service" in script
+    assert "systemctl --user disable skud-tunnel.service || true" in script
+
+
+def test_linux_deploy_restarts_polling_and_stops_tunnel() -> None:
+    script = Path("scripts/deploy_local_linux.sh").read_text()
+
+    assert "systemctl --user stop skud-tunnel.service || true" in script
+    assert "systemctl --user restart skud-polling.service" in script
+    assert "is-active --quiet skud-polling.service" in script
+    assert "/api/health" not in script
+    assert "SKUD_PUBLIC_URL" not in script

@@ -33,6 +33,11 @@ class Settings:
     max_bot_webhook_url: str
     max_api_timeout_seconds: int
     max_delete_previous_message: bool
+    polling_marker_file: str
+    polling_timeout_seconds: int
+    polling_limit: int
+    polling_idle_sleep_seconds: int
+    polling_error_sleep_seconds: int
     google_service_account_file: str
     google_sheets_spreadsheet_id: str
     google_sheets_employee_range: str
@@ -60,6 +65,11 @@ def get_settings() -> Settings:
         max_bot_webhook_url=os.getenv("MAX_BOT_WEBHOOK_URL", ""),
         max_api_timeout_seconds=int(os.getenv("MAX_API_TIMEOUT_SECONDS", "3")),
         max_delete_previous_message=_to_bool(os.getenv("MAX_DELETE_PREVIOUS_MESSAGE"), default=True),
+        polling_marker_file=os.getenv("POLLING_MARKER_FILE", str(BASE_DIR / "run" / "max_polling.marker")),
+        polling_timeout_seconds=int(os.getenv("POLLING_TIMEOUT_SECONDS", "1")),
+        polling_limit=int(os.getenv("POLLING_LIMIT", "100")),
+        polling_idle_sleep_seconds=int(os.getenv("POLLING_IDLE_SLEEP_SECONDS", "1")),
+        polling_error_sleep_seconds=int(os.getenv("POLLING_ERROR_SLEEP_SECONDS", "5")),
         google_service_account_file=os.getenv(
             "GOOGLE_SERVICE_ACCOUNT_FILE",
             "/Users/goocbk.ru/secure/attendance-max-bot-service-account.json",

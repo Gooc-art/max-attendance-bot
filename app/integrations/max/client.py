@@ -245,10 +245,45 @@ class MaxApiClient:
             return {"status": "not_configured"}
         return self._request("GET", "subscriptions", params={}, body=None)
 
+    def get_updates(
+        self,
+        *,
+        marker: Optional[str] = None,
+        timeout_seconds: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> Dict[str, object]:
+        if not self.is_configured():
+            return {"status": "not_configured", "updates": []}
+        return self._request(
+            "GET",
+            "updates",
+            params={
+                "marker": marker,
+                "timeout": timeout_seconds,
+                "limit": limit,
+            },
+            body=None,
+        )
+
     def unsubscribe_webhook(self, url: str) -> Dict[str, object]:
         if not self.is_configured():
             return {"status": "not_configured", "url": url}
         return self._request("DELETE", "subscriptions", params={"url": url}, body=None)
+
+    def unsubscribe_all_webhooks(self) -> List[str]:
+        subscriptions = self.get_subscriptions().get("subscriptions", [])
+        deleted: List[str] = []
+        if not isinstance(subscriptions, list):
+            return deleted
+        for subscription in subscriptions:
+            if not isinstance(subscription, dict):
+                continue
+            url = str(subscription.get("url") or subscription.get("webhook_url") or "").strip()
+            if not url:
+                continue
+            self.unsubscribe_webhook(url)
+            deleted.append(url)
+        return deleted
 
     def upload_file(self, file_path: Path) -> Dict[str, object]:
         if not self.is_configured():

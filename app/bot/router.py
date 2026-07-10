@@ -5082,6 +5082,28 @@ class MaxWebhookRouter:
         previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
         delete_ms = (perf_counter() - delete_started_at) * 1000
 
+        if previous_message_ids and self._is_start_payload(inbound):
+            try:
+                self.max_client.edit_message(
+                    previous_message_ids[0],
+                    text=outbound.text,
+                    buttons=outbound.buttons,
+                )
+                self._remember_last_bot_message(inbound, {"mid": previous_message_ids[0]})
+                if len(previous_message_ids) > 1:
+                    self._queue_delete_message_ids(previous_message_ids[1:])
+                return {
+                    "delete_ms": round(delete_ms, 1),
+                    "deleted_messages": max(0, len(previous_message_ids) - 1),
+                    "send_ms": 0.0,
+                    "recipient": "edited_previous",
+                }
+            except Exception:
+                self.logger.warning(
+                    "Failed to edit previous MAX bot message mid=%s",
+                    previous_message_ids[0],
+                )
+
         recipients = self._outbound_recipients(inbound)
         last_error: Exception | None = None
         response: dict[str, object] | None = None
@@ -5142,12 +5164,16 @@ class MaxWebhookRouter:
         seen_message_ids: set[str] = set()
         message_ids: list[str] = []
         for conversation_key in conversation_keys:
-            previous_message_id = previous_by_key.get(conversation_key)
-            if not previous_message_id or previous_message_id in seen_message_ids:
-                continue
-            seen_message_ids.add(previous_message_id)
-            message_ids.append(previous_message_id)
+            for previous_message_id in self._cursor_message_ids(previous_by_key.get(conversation_key, "")):
+                if previous_message_id in seen_message_ids:
+                    continue
+                seen_message_ids.add(previous_message_id)
+                message_ids.append(previous_message_id)
         return message_ids
+
+    @staticmethod
+    def _cursor_message_ids(value: str) -> list[str]:
+        return [item.strip() for item in str(value or "").splitlines() if item.strip()]
 
     def _queue_delete_message_ids(self, message_ids: list[str]) -> None:
         thread = threading.Thread(target=self._delete_message_ids, args=(message_ids,), daemon=True)

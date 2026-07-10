@@ -9,6 +9,22 @@ from app.db.models import BotMessageCursorModel
 
 
 class BotMessageCursorRepository:
+    HISTORY_LIMIT = 5
+
+    @classmethod
+    def _message_history(cls, current_value: str, message_id: str) -> str:
+        seen: set[str] = set()
+        values: list[str] = []
+        for value in [message_id, *str(current_value or "").splitlines()]:
+            value = str(value or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            values.append(value)
+            if len(values) >= cls.HISTORY_LIMIT:
+                break
+        return "\n".join(values)
+
     def get(self, conversation_key: str) -> Optional[str]:
         with SessionLocal() as session:
             model = session.execute(
@@ -57,7 +73,7 @@ class BotMessageCursorRepository:
             else:
                 model.chat_id = chat_id
                 model.user_id = user_id
-                model.message_id = message_id
+                model.message_id = self._message_history(model.message_id, message_id)
             session.commit()
         return message_id
 
@@ -86,7 +102,7 @@ class BotMessageCursorRepository:
                 else:
                     model.chat_id = chat_id
                     model.user_id = user_id
-                    model.message_id = message_id
+                    model.message_id = self._message_history(model.message_id, message_id)
             session.commit()
         return message_id
 

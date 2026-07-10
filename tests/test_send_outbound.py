@@ -201,8 +201,42 @@ class SendOutboundTests(unittest.TestCase):
 
         router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
 
-        router.max_client.delete_message.assert_called_once_with("bot-prev")
-        self.assertEqual(cursor.saved, (["chat:987", "user:123"], "987", "123", "bot-next"))
+        router.max_client.edit_message.assert_called_once_with("bot-prev", text="Hello", buttons=[])
+        router.max_client.send_message.assert_not_called()
+        self.assertEqual(cursor.saved, (["chat:987", "user:123"], "987", "123", "bot-prev"))
+
+    def test_previous_bot_message_delete_uses_cursor_history(self) -> None:
+        class HistoryCursorStore:
+            def get_many(self, keys):
+                return {
+                    "chat:987": "bot-newer\nbot-older",
+                    "user:123": "bot-newer\nbot-older",
+                }
+
+            def set_many(self, keys, chat_id, user_id, message_id):
+                return message_id
+
+        router = self._build_router()
+        router.bot_message_cursor_store = HistoryCursorStore()
+        router.max_client.send_message.return_value = {"mid": "bot-next"}
+        router._queue_delete_message_ids = MagicMock()
+
+        inbound = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
+
+        router.max_client.edit_message.assert_called_once()
+        router.max_client.send_message.assert_not_called()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-older"])
 
     def test_callback_updates_current_message_without_visible_send(self) -> None:
         router = self._build_router()
@@ -457,20 +491,21 @@ class SendOutboundTests(unittest.TestCase):
             ),
         )
 
-        router.max_client.send_message.assert_called_once()
-        router._queue_delete_message_ids.assert_called_once_with(["bot-prev"])
+        router.max_client.edit_message.assert_called_once()
+        router.max_client.send_message.assert_not_called()
+        router._queue_delete_message_ids.assert_not_called()
         self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="chat:987",
             chat_id="987",
             user_id="123",
-            message_id="bot-next",
+            message_id="bot-prev",
         )
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="user:123",
             chat_id="987",
             user_id="123",
-            message_id="bot-next",
+            message_id="bot-prev",
         )
 
     def test_previous_bot_message_falls_back_to_soft_clear_when_delete_fails(self) -> None:

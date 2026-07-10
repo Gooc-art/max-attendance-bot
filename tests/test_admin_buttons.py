@@ -12,15 +12,15 @@ class AdminButtonsTests(unittest.TestCase):
         self.assertEqual(buttons[0].title, "Обо мне")
         self.assertEqual(buttons[0].action, BotAction.WHOAMI)
 
-    def test_admin_menu_does_not_show_employee_actions(self) -> None:
+    def test_admin_menu_shows_employee_actions(self) -> None:
         buttons = main_menu_buttons("admin")
         titles = [button.title for button in buttons]
         actions = [button.action for button in buttons]
 
-        self.assertNotIn("Опаздываю", titles)
-        self.assertNotIn(BotAction.MENU_RUNNING_LATE, actions)
-        self.assertNotIn("Забыл карточку СКУД", titles)
-        self.assertNotIn(BotAction.MENU_FORGOT_CHIP, actions)
+        self.assertIn("Опаздываю", titles)
+        self.assertIn(BotAction.MENU_RUNNING_LATE, actions)
+        self.assertIn("Забыл карточку СКУД", titles)
+        self.assertIn(BotAction.MENU_FORGOT_CHIP, actions)
 
     def test_admin_menu_shows_personal_section(self) -> None:
         buttons = main_menu_buttons("admin")

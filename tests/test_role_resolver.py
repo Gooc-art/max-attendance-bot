@@ -45,7 +45,7 @@ class RoleResolverTests(unittest.TestCase):
         self.assertIs(router.role_resolver.employee_directory_repository, router.employee_directory_repository)
         self.assertIs(router.role_resolver.role_override_repository, router.user_role_override_repository)
 
-    def test_local_cache_role_takes_priority(self) -> None:
+    def test_override_takes_priority_over_local_directory(self) -> None:
         employee_repository = _FakeEmployeeDirectoryRepository("manager")
         resolver = RoleResolver(
             google_directory_service=_FakeGoogleDirectoryService(
@@ -60,19 +60,19 @@ class RoleResolverTests(unittest.TestCase):
             employee_directory_repository=employee_repository,
         )
 
-        self.assertEqual(resolver.resolve_role("max_001", "private"), "manager")
-        self.assertEqual(resolver.resolve_role("max_001", "private"), "manager")
-        self.assertEqual(employee_repository.calls, 1)
+        self.assertEqual(resolver.resolve_role("max_001", "private"), "employee")
+        self.assertEqual(resolver.resolve_role("max_001", "private"), "employee")
+        self.assertEqual(employee_repository.calls, 0)
         self.assertEqual(resolver.google_directory_service.refresh_calls, [])
 
-    def test_override_is_used_when_sheet_is_empty(self) -> None:
+    def test_override_is_used_when_directory_has_different_role(self) -> None:
         resolver = RoleResolver(
             google_directory_service=_FakeGoogleDirectoryService(None),
             role_override_repository=_FakeRoleOverrideRepository("manager"),
             employee_directory_repository=_FakeEmployeeDirectoryRepository("employee"),
         )
 
-        self.assertEqual(resolver.resolve_role("max_002", "private"), "employee")
+        self.assertEqual(resolver.resolve_role("max_002", "private"), "manager")
         self.assertEqual(resolver.google_directory_service.refresh_calls, [])
 
     def test_google_sheet_is_used_when_local_cache_is_empty(self) -> None:
@@ -84,7 +84,7 @@ class RoleResolverTests(unittest.TestCase):
                     is_active=True,
                 )
             ),
-            role_override_repository=_FakeRoleOverrideRepository("employee"),
+            role_override_repository=_FakeRoleOverrideRepository(None),
             employee_directory_repository=_FakeEmployeeDirectoryRepository(None),
         )
 

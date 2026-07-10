@@ -42,6 +42,13 @@ class RoleResolver:
             logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, cached_role, "memory_cache", (perf_counter() - started_at) * 1000)
             return cached_role
 
+        override_role = self.role_override_repository.get_role(user_id)
+        if override_role:
+            source = "override"
+            resolved_role = self._normalize_role(override_role)
+            self._remember_role(user_id, resolved_role)
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
+            return resolved_role
         source = "default"
         record = self.employee_directory_repository.get_by_user_id(user_id)
         if record is not None and record.is_active:
@@ -59,13 +66,6 @@ class RoleResolver:
         if sheet_record is not None and sheet_record.is_active and sheet_record.role:
             source = "google_sheets"
             resolved_role = self._normalize_role(sheet_record.role)
-            self._remember_role(user_id, resolved_role)
-            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
-            return resolved_role
-        override_role = self.role_override_repository.get_role(user_id)
-        if override_role:
-            source = "override"
-            resolved_role = self._normalize_role(override_role)
             self._remember_role(user_id, resolved_role)
             logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
             return resolved_role

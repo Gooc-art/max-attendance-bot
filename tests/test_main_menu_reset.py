@@ -86,6 +86,27 @@ class MainMenuResetTests(unittest.TestCase):
         self.assertEqual(response.outbound.text, "Главное меню готово.")
         self.assertIsNone(dialog_state_store.get("203302812"))
 
+    def test_begin_button_text_opens_main_menu(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+
+        payload = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=203302812),
+                timestamp=1,
+                body=MaxMessageBody(mid="m5", seq=5, text="Начать"),
+                sender=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertEqual(response.outbound.text, "Главное меню готово.")
+        self.assertIsNone(dialog_state_store.get("203302812"))
+
     def test_main_menu_alias_opens_main_menu(self) -> None:
         router = MaxWebhookRouter()
         router.max_client = MagicMock()

@@ -926,7 +926,7 @@ class MaxWebhookRouter:
         text = ""
         if payload.message and payload.message.body:
             text = str(payload.message.body.text or "").strip()
-        return text in {BotAction.START, "Старт"}
+        return text in {BotAction.START, "Старт", "Начать"}
 
     @staticmethod
     def _is_start_event(payload: MaxUpdate, action: str, user_text: str) -> bool:
@@ -934,7 +934,7 @@ class MaxWebhookRouter:
             return True
         normalized_action = str(action or "").strip()
         normalized_text = str(user_text or "").strip()
-        return normalized_action == BotAction.START or normalized_text == BotAction.START
+        return normalized_action in {BotAction.START, "Начать"} or normalized_text in {BotAction.START, "Начать"}
 
     @staticmethod
     def _event_display_name(payload: MaxUpdate) -> str:
@@ -5723,6 +5723,7 @@ class MaxWebhookRouter:
             cls._normalize_navigation_action(BotAction.START),
             cls._normalize_navigation_action("/start"),
             cls._normalize_navigation_action("Старт"),
+            cls._normalize_navigation_action("Начать"),
             cls._normalize_navigation_action("Главное меню"),
             cls._normalize_navigation_action("menu_main"),
             cls._normalize_navigation_action("main_menu"),
@@ -5731,6 +5732,7 @@ class MaxWebhookRouter:
             cls._normalize_navigation_action(BotAction.START),
             cls._normalize_navigation_action("/start"),
             cls._normalize_navigation_action("Старт"),
+            cls._normalize_navigation_action("Начать"),
             cls._normalize_navigation_action("Главное меню"),
             cls._normalize_navigation_action("menu_main"),
             cls._normalize_navigation_action("main_menu"),

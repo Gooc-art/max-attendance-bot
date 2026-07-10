@@ -202,9 +202,9 @@ class SendOutboundTests(unittest.TestCase):
 
         router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
 
-        router.max_client.edit_message.assert_called_once_with("bot-prev", text="Hello", buttons=[])
-        router.max_client.send_message.assert_not_called()
-        self.assertEqual(cursor.saved, (["chat:987", "user:123"], "987", "123", "bot-prev"))
+        router.max_client.edit_message.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+        self.assertEqual(cursor.saved, (["chat:987", "user:123"], "987", "123", "bot-next"))
 
     def test_previous_bot_message_delete_uses_cursor_history(self) -> None:
         class HistoryCursorStore:
@@ -235,9 +235,9 @@ class SendOutboundTests(unittest.TestCase):
 
         router._send_outbound(inbound, MaxOutboundMessage(text="Hello"))
 
-        router.max_client.edit_message.assert_called_once()
-        router.max_client.send_message.assert_not_called()
-        router._queue_delete_message_ids.assert_called_once_with(["bot-older"])
+        router.max_client.edit_message.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-newer", "bot-older"])
 
     def test_callback_updates_current_message_without_visible_send(self) -> None:
         router = self._build_router()
@@ -492,21 +492,21 @@ class SendOutboundTests(unittest.TestCase):
             ),
         )
 
-        router.max_client.edit_message.assert_called_once()
-        router.max_client.send_message.assert_not_called()
-        router._queue_delete_message_ids.assert_not_called()
+        router.max_client.edit_message.assert_not_called()
+        router.max_client.send_message.assert_called_once()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-prev"])
         self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="chat:987",
             chat_id="987",
             user_id="123",
-            message_id="bot-prev",
+            message_id="bot-next",
         )
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="user:123",
             chat_id="987",
             user_id="123",
-            message_id="bot-prev",
+            message_id="bot-next",
         )
 
     def test_previous_bot_message_falls_back_to_soft_clear_when_delete_fails(self) -> None:

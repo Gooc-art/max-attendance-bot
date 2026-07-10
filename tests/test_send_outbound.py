@@ -509,6 +509,27 @@ class SendOutboundTests(unittest.TestCase):
 
         self.assertEqual(key, "")
 
+    def test_start_events_share_incoming_dedup_key(self) -> None:
+        router = MaxWebhookRouter()
+
+        bot_started = MaxUpdate(
+            update_type="bot_started",
+            timestamp=1000,
+            user=MaxUser(user_id=123, first_name="Test"),
+        )
+        start_message = MaxUpdate(
+            update_type="message_created",
+            timestamp=1005,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1005,
+                body=MaxMessageBody(mid="m-start", seq=1, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        self.assertEqual(router.incoming_dedup_key(bot_started), router.incoming_dedup_key(start_message))
+
     def test_callback_without_chat_id_uses_embedded_callback_message(self) -> None:
         router = self._build_router()
 

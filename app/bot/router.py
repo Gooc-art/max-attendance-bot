@@ -880,6 +880,8 @@ class MaxWebhookRouter:
         event_id = cls._incoming_event_id(payload)
         if not scope or not event_id:
             return ""
+        if cls._is_start_payload(payload):
+            return f"in:start:{scope}:{cls._timestamp_bucket(payload.timestamp, 60)}"
         return f"in:{payload.update_type}:{scope}:{event_id}"
 
     @staticmethod
@@ -905,6 +907,22 @@ class MaxWebhookRouter:
         if payload.update_type == "bot_started":
             return f"start:{payload.timestamp}:{payload.payload or ''}"
         return ""
+
+    @staticmethod
+    def _timestamp_bucket(timestamp: int | float | None, seconds: int) -> int:
+        value = float(timestamp or 0)
+        if value > 10_000_000_000:
+            value = value / 1000
+        return int(value // seconds)
+
+    @staticmethod
+    def _is_start_payload(payload: MaxUpdate) -> bool:
+        if payload.update_type == "bot_started":
+            return True
+        text = ""
+        if payload.message and payload.message.body:
+            text = str(payload.message.body.text or "").strip()
+        return text in {BotAction.START, "Старт"}
 
     @staticmethod
     def _is_start_event(payload: MaxUpdate, action: str, user_text: str) -> bool:

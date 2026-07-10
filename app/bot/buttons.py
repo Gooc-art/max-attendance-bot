@@ -82,8 +82,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.MANAGER.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
-            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
@@ -91,16 +89,12 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.SECURITY.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
-            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
             btn("Разбор", BotAction.SECURITY_AUDIT, "🗂️", 1),
         ])
     if role == Role.HR.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
-            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
             btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
             btn("Отчеты", BotAction.HR_REPORTS, "📊", 1),
@@ -109,8 +103,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
     if role == Role.ADMIN.value:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
-            btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
-            btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Личное", BotAction.ADMIN_PERSONAL, "👤", 1),
             btn("Структура", BotAction.ADMIN_STRUCTURE, "🏢", 1),
             btn("СКУД", BotAction.ADMIN_SKUD, "📥", 1),

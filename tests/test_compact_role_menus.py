@@ -36,8 +36,9 @@ class CompactRoleMenuTests(unittest.TestCase):
 
     def test_manager_menu_is_sectioned(self) -> None:
         titles = [button.title for button in main_menu_buttons("manager")]
-        self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
-        self.assertIn("Забыл карточку СКУД", titles)
+        self.assertEqual(titles[:2], ["Обо мне", "Команда"])
+        self.assertNotIn("Опаздываю", titles)
+        self.assertNotIn("Забыл карточку СКУД", titles)
         self.assertIn("Команда", titles)
         self.assertIn("Согласования", titles)
         self.assertNotIn("Отчеты", titles)
@@ -65,10 +66,10 @@ class CompactRoleMenuTests(unittest.TestCase):
 
     def test_security_menu_is_sectioned(self) -> None:
         titles = [button.title for button in main_menu_buttons("security")]
-        self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
+        self.assertEqual(titles[:2], ["Обо мне", "СКУД"])
         self.assertNotIn("Старт", titles)
-        self.assertIn("Опаздываю", titles)
-        self.assertIn("Забыл карточку СКУД", titles)
+        self.assertNotIn("Опаздываю", titles)
+        self.assertNotIn("Забыл карточку СКУД", titles)
         self.assertIn("СКУД", titles)
         self.assertIn("Разбор", titles)
 
@@ -89,10 +90,10 @@ class CompactRoleMenuTests(unittest.TestCase):
         buttons = main_menu_buttons("hr")
         titles = [button.title for button in buttons]
         rows_by_title = {button.title: button.row for button in buttons}
-        self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
+        self.assertEqual(titles[:2], ["Обо мне", "Справочники"])
         self.assertNotIn("Старт", titles)
-        self.assertIn("Опаздываю", titles)
-        self.assertIn("Забыл карточку СКУД", titles)
+        self.assertNotIn("Опаздываю", titles)
+        self.assertNotIn("Забыл карточку СКУД", titles)
         self.assertIn("Справочники", titles)
         self.assertIn("Процессы", titles)
         self.assertIn("Отчеты", titles)
@@ -147,8 +148,9 @@ class CompactRoleMenuTests(unittest.TestCase):
     def test_admin_menu_has_no_duplicate_direct_diagnostic_entries(self) -> None:
         titles = [button.title for button in main_menu_buttons("admin")]
 
-        self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
-        self.assertIn("Забыл карточку СКУД", titles)
+        self.assertEqual(titles[:2], ["Обо мне", "Личное"])
+        self.assertNotIn("Опаздываю", titles)
+        self.assertNotIn("Забыл карточку СКУД", titles)
         self.assertNotIn("Старт", titles)
         self.assertNotIn("Админ-панель", titles)
         self.assertNotIn("Права доступа", titles)

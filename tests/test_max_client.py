@@ -227,6 +227,31 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertNotEqual(rows_by_title["За период"], rows_by_title["Недельный"])
         self.assertNotEqual(rows_by_title["Недельный"], rows_by_title["Квартал"])
 
+    def test_link_button_builds_link_keyboard_button(self) -> None:
+        client = MaxApiClient(
+            token="",
+            secret="",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        body = client.build_message_body(
+            text="Обо мне",
+            buttons=[
+                MaxOutboundButton(
+                    title="Определить устройство",
+                    action="https://demo.lhr.life/device?user_id=1",
+                    button_type="link",
+                    url="https://demo.lhr.life/device?user_id=1",
+                )
+            ],
+        )
+
+        button = body.attachments[0].payload.buttons[0][0]
+        self.assertEqual(button.type, "link")
+        self.assertEqual(button.url, "https://demo.lhr.life/device?user_id=1")
+        self.assertIsNone(button.payload)
+
     def test_send_file_message_requests_upload_and_sends_file_attachment(self) -> None:
         client = MaxApiClient(
             token="token",

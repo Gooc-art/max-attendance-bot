@@ -15,6 +15,8 @@ class _FakeReportService:
             summary_text="Недельный отчет\nПериод: 2026-05-01 - 2026-05-05\nВсего случаев: 2",
             file_path="/tmp/report.xlsx",
             pdf_file_path="/tmp/report.pdf",
+            download_url="https://example.com/report.xlsx",
+            pdf_download_url="https://example.com/report.pdf",
         )
 
     def generate_division_report(self, *, user_id: str, role: str, period: str, date_from: str = "", date_to: str = ""):
@@ -23,6 +25,8 @@ class _FakeReportService:
             summary_text="Отчет по подразделениям\nПериод: 2026-05-01 - 2026-05-31\nВсего случаев: 5",
             file_path="/tmp/division-report.xlsx",
             pdf_file_path="/tmp/division-report.pdf",
+            download_url="https://example.com/division-report.xlsx",
+            pdf_download_url="https://example.com/division-report.pdf",
         )
 
 
@@ -155,6 +159,36 @@ class QuickReportLinkTests(unittest.TestCase):
         self.assertIn("MAX не принял вложения", args[2])
         self.assertIn("https://example.com/report.xlsx", args[2])
         self.assertIn("https://example.com/report.pdf", args[2])
+
+    def test_generated_manager_report_sends_files_without_chat_summary_table(self) -> None:
+        router = MaxWebhookRouter()
+        router.report_service = _FakeReportService()
+        router._send_report_files = MagicMock()
+        router._send_report_message = MagicMock()
+
+        router._generate_and_send_manager_report("777", "888", "manager", "week")
+
+        router._send_report_message.assert_not_called()
+        router._send_report_files.assert_called_once_with(
+            "777",
+            "888",
+            "Недельный отчет",
+            "/tmp/report.xlsx",
+            "/tmp/report.pdf",
+            "https://example.com/report.xlsx",
+            "https://example.com/report.pdf",
+        )
+
+    def test_generated_division_report_sends_files_without_chat_summary_table(self) -> None:
+        router = MaxWebhookRouter()
+        router.report_service = _FakeReportService()
+        router._send_report_files = MagicMock()
+        router._send_report_message = MagicMock()
+
+        router._generate_and_send_division_report("777", "888", "admin", "custom", "2026-05-01", "2026-05-31")
+
+        router._send_report_message.assert_not_called()
+        router._send_report_files.assert_called_once()
 
 
 if __name__ == "__main__":

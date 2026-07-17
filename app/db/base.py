@@ -49,6 +49,11 @@ def _ensure_runtime_schema() -> None:
         RuntimeMarkerModel = Base.metadata.tables.get("runtime_markers")
         if RuntimeMarkerModel is not None:
             RuntimeMarkerModel.create(bind=engine, checkfirst=True)
+    with engine.begin() as connection:
+        if "user_bot_activity" in tables:
+            user_activity_columns = {column["name"] for column in inspector.get_columns("user_bot_activity")}
+            if "device_platform" not in user_activity_columns:
+                connection.execute(text("ALTER TABLE user_bot_activity ADD COLUMN device_platform VARCHAR(50) DEFAULT ''"))
     if "attendance_cases" not in tables:
         return
 

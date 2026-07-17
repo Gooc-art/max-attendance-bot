@@ -171,8 +171,9 @@ class SkudImportService:
         if header_index is None:
             raise ValueError("Не удалось определить строку заголовков в отчете по проходам")
 
+        headers = [cell.strip() for cell in rows[header_index]]
         data_start = header_index + 1
-        while data_start < len(rows) and rows[data_start] and rows[data_start][0].strip() == "Ф.И.О":
+        while data_start < len(rows) and rows[data_start] and rows[data_start][0].strip() in {"Ф.И.О", "Фирма"}:
             data_start += 1
 
         daily_records: Dict[Tuple[str, str], Dict[str, object]] = {}
@@ -194,17 +195,14 @@ class SkudImportService:
                 continue
             total_rows += 1
             try:
-                employee_name = row[0].strip()
-                department_name = row[3].strip()
-                event_value = row[6].strip()
-                zone_value = row[7].strip()
-                dt_value = row[4].strip()
-                if not employee_name or not dt_value:
-                    continue
-                if event_value != "Проход":
+                parsed_row = self._parse_access_report_row(headers, row)
+                if parsed_row is None:
                     continue
 
-                event_dt = datetime.strptime(dt_value, "%d.%m.%Y %H:%M:%S")
+                employee_name, department_name, dt_value, direction = parsed_row
+                event_dt = self._parse_event_date(dt_value)
+                if event_dt is None:
+                    raise ValueError("не удалось распознать дату и время")
                 if min_dt is None or event_dt < min_dt:
                     min_dt = event_dt
                 if max_dt is None or event_dt > max_dt:
@@ -241,20 +239,18 @@ class SkudImportService:
                     }
                     daily_records[key] = current
                 current["total_passes"] = int(current.get("total_passes", 0) or 0) + 1
-                is_entry = zone_value == "Здание"
-                is_exit = zone_value == "Внешний мир"
                 current.setdefault("events", []).append(
                     {
                         "dt": event_dt.isoformat(),
-                        "zone": zone_value,
-                        "kind": "entry" if is_entry else "exit" if is_exit else "other",
+                        "zone": direction,
+                        "kind": direction,
                     }
                 )
-                if is_entry:
+                if direction == "entry":
                     current_first = str(current.get("first_entry_dt", ""))
                     if not current_first or event_dt.isoformat() < current_first:
                         current["first_entry_dt"] = event_dt.isoformat()
-                if is_exit:
+                if direction == "exit":
                     current_last = str(current.get("last_exit_dt", ""))
                     if not current_last or event_dt.isoformat() > current_last:
                         current["last_exit_dt"] = event_dt.isoformat()
@@ -379,7 +375,9 @@ class SkudImportService:
 
     @staticmethod
     def _looks_like_access_report(text: str) -> bool:
-        return "Отчет по проходам" in text and "Ф.И.О" in text and "Событие" in text
+        old_access_report = "Отчет по проходам" in text and "Ф.И.О" in text and "Событие" in text
+        detailed_access_report = "Подробный отч" in text and "Сотрудник" in text and "Направление" in text
+        return old_access_report or detailed_access_report
 
     @staticmethod
     def _looks_like_employee_summary_report(text: str) -> bool:
@@ -400,7 +398,34 @@ class SkudImportService:
             values = [cell.strip() for cell in row]
             if "Ф.И.О" in values and "Событие" in values:
                 return index
+            if "Сотрудник" in values and "Дата и время" in values and "Направление" in values:
+                return index
         return None
+
+    @staticmethod
+    def _parse_access_report_row(headers: List[str], row: List[str]) -> Tuple[str, str, str, str] | None:
+        values = [header.strip() for header in headers]
+        if "Ф.И.О" in values and "Событие" in values:
+            if len(row) < 8:
+                return None
+            if row[6].strip() != "Проход":
+                return None
+            zone_value = row[7].strip()
+            direction = "entry" if zone_value == "Здание" else "exit" if zone_value == "Внешний мир" else "other"
+            return row[0].strip(), row[3].strip(), row[4].strip(), direction
+
+        data = {
+            header: (row[index].strip() if index < len(row) else "")
+            for index, header in enumerate(values)
+            if header
+        }
+        employee_name = data.get("Сотрудник", "")
+        dt_value = data.get("Дата и время", "")
+        direction_value = data.get("Направление", "").lower()
+        if not employee_name or not dt_value:
+            return None
+        direction = "entry" if direction_value == "вход" else "exit" if direction_value == "выход" else "other"
+        return employee_name, data.get("Подразделение", ""), dt_value, direction
 
     @staticmethod
     def _find_employee_summary_header_row(rows: List[List[str]]) -> int | None:
@@ -797,6 +822,10 @@ class SkudImportService:
                 return datetime.strptime(value, fmt)
             except ValueError:
                 continue
+        match = re.fullmatch(r"\s*(\d{2}\.\d{2}\.\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*", value)
+        if match:
+            normalized = f"{match.group(1)} {int(match.group(2)):02d}:{match.group(3)}:{match.group(4)}"
+            return datetime.strptime(normalized, "%d.%m.%Y %H:%M:%S")
         return None
 
     @staticmethod

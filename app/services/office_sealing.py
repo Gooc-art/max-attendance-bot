@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService, GoogleSheetsEmployeeRecord
 from app.integrations.max.client import MaxApiClient
 from app.repositories.employee_directory_repository import EmployeeDirectoryRepository
+from app.services.bot_message_cursor import bot_message_cursor_store
 from app.schemas.max import MaxAttachment, MaxOutboundButton
 
 
@@ -287,12 +288,14 @@ class OfficeSealingService:
         employee_repository: EmployeeDirectoryRepository | None = None,
         journal_service: OfficeSealJournalService | None = None,
         max_client: MaxApiClient | None = None,
+        cursor_store=None,
     ) -> None:
         settings = get_settings()
         self.directory_service = directory_service or GoogleSheetsDirectoryService.from_settings()
         self.employee_repository = employee_repository or EmployeeDirectoryRepository()
         self.journal_service = journal_service or OfficeSealJournalService()
         self.max_client = max_client or MaxApiClient.from_settings()
+        self.cursor_store = cursor_store or bot_message_cursor_store
         self.timezone_name = settings.office_seal_company_timezone
         self.window_start = self._parse_time(settings.office_seal_window_start, fallback=time(18, 0))
         self.window_end = self._parse_time(settings.office_seal_window_end, fallback=time(22, 0))
@@ -526,22 +529,56 @@ class OfficeSealingService:
 
     def _send_to_employees(self, employees: Iterable[OfficeSealEmployee], text: str) -> int:
         sent = 0
+        seen_user_ids: set[str] = set()
         for employee in employees:
             if not employee.user_id:
                 continue
+            user_id = str(employee.user_id).strip()
+            if not user_id or user_id in seen_user_ids:
+                continue
+            seen_user_ids.add(user_id)
             buttons = [MaxOutboundButton(title="Спасибо за напоминание", action="office_seal.reminder_ack")]
             try:
-                self.max_client.send_message(user_id=int(employee.user_id), text=text, buttons=buttons)
+                response = self.max_client.send_message(user_id=int(user_id), text=text, buttons=buttons)
+                self._remember_user_message(user_id, response)
                 sent += 1
             except ValueError:
                 try:
-                    self.max_client.send_message(user_id=employee.user_id, text=text, buttons=buttons)
+                    response = self.max_client.send_message(user_id=user_id, text=text, buttons=buttons)
+                    self._remember_user_message(user_id, response)
                     sent += 1
                 except Exception:
                     continue
             except Exception:
                 continue
         return sent
+
+    def _remember_user_message(self, user_id: str, response: dict) -> None:
+        message_id = self._extract_message_id(response)
+        if not message_id:
+            return
+        self.cursor_store.set(
+            conversation_key=f"user:{user_id}",
+            chat_id="",
+            user_id=user_id,
+            message_id=message_id,
+        )
+
+    @staticmethod
+    def _extract_message_id(response: dict) -> str:
+        if not isinstance(response, dict):
+            return ""
+        candidates = [response.get("mid"), response.get("message_id")]
+        message = response.get("message")
+        if isinstance(message, dict):
+            candidates.append(message.get("mid"))
+            body = message.get("body")
+            if isinstance(body, dict):
+                candidates.append(body.get("mid"))
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return ""
 
     def _manager_user_ids(self) -> List[str]:
         records = self.directory_service.list_employees()

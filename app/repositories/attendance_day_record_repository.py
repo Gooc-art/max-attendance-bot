@@ -9,19 +9,41 @@ from app.db.models import AttendanceDayRecordModel
 
 
 class AttendanceDayRecordRepository:
+    @staticmethod
+    def _apply_period(query, *, date_from: str = "", date_to: str = ""):
+        if date_from:
+            query = query.where(AttendanceDayRecordModel.event_date >= date_from)
+        if date_to:
+            query = query.where(AttendanceDayRecordModel.event_date <= date_to)
+        return query
+
     def upsert_many(self, rows: List[Dict[str, object]]) -> int:
         count = 0
+        keyed_rows = []
+        record_keys: set[str] = set()
+        for data in rows:
+            record_key = str(data.get("record_key", "")).strip()
+            if not record_key:
+                continue
+            keyed_rows.append((record_key, data))
+            record_keys.add(record_key)
+
+        if not keyed_rows:
+            return 0
+
         with SessionLocal() as session:
-            for data in rows:
-                record_key = str(data.get("record_key", "")).strip()
-                if not record_key:
-                    continue
-                row = session.execute(
-                    select(AttendanceDayRecordModel).where(AttendanceDayRecordModel.record_key == record_key)
-                ).scalar_one_or_none()
+            existing_by_key = {
+                row.record_key: row
+                for row in session.execute(
+                    select(AttendanceDayRecordModel).where(AttendanceDayRecordModel.record_key.in_(record_keys))
+                ).scalars()
+            }
+            for record_key, data in keyed_rows:
+                row = existing_by_key.get(record_key)
                 if row is None:
                     row = AttendanceDayRecordModel(record_key=record_key)
                     session.add(row)
+                    existing_by_key[record_key] = row
                 row.employee_user_id = str(data.get("employee_user_id", "")).strip()
                 row.employee_name = str(data.get("employee_name", "")).strip()
                 row.department_name = str(data.get("department_name", "")).strip()
@@ -51,34 +73,52 @@ class AttendanceDayRecordRepository:
             session.commit()
         return count
 
-    def list_all(self, limit: int = 5000) -> List[AttendanceDayRecordModel]:
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = "") -> List[AttendanceDayRecordModel]:
         with SessionLocal() as session:
+            query = self._apply_period(select(AttendanceDayRecordModel), date_from=date_from, date_to=date_to)
             rows = session.execute(
-                select(AttendanceDayRecordModel)
-                .order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
+                query.order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
                 .limit(limit)
             ).scalars().all()
             return list(rows)
 
-    def list_for_manager_user(self, manager_user_id: str, limit: int = 500) -> List[AttendanceDayRecordModel]:
+    def list_for_manager_user(
+        self,
+        manager_user_id: str,
+        limit: int = 500,
+        date_from: str = "",
+        date_to: str = "",
+    ) -> List[AttendanceDayRecordModel]:
         with SessionLocal() as session:
+            query = self._apply_period(
+                select(AttendanceDayRecordModel).where(AttendanceDayRecordModel.manager_user_id == manager_user_id),
+                date_from=date_from,
+                date_to=date_to,
+            )
             rows = session.execute(
-                select(AttendanceDayRecordModel)
-                .where(AttendanceDayRecordModel.manager_user_id == manager_user_id)
-                .order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
+                query.order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
                 .limit(limit)
             ).scalars().all()
             return list(rows)
 
-    def list_for_department_names(self, department_names: List[str], limit: int = 500) -> List[AttendanceDayRecordModel]:
+    def list_for_department_names(
+        self,
+        department_names: List[str],
+        limit: int = 500,
+        date_from: str = "",
+        date_to: str = "",
+    ) -> List[AttendanceDayRecordModel]:
         departments = [name for name in {str(item).strip() for item in department_names} if name]
         if not departments:
             return []
         with SessionLocal() as session:
+            query = self._apply_period(
+                select(AttendanceDayRecordModel).where(AttendanceDayRecordModel.department_name.in_(departments)),
+                date_from=date_from,
+                date_to=date_to,
+            )
             rows = session.execute(
-                select(AttendanceDayRecordModel)
-                .where(AttendanceDayRecordModel.department_name.in_(departments))
-                .order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
+                query.order_by(AttendanceDayRecordModel.event_date.desc(), AttendanceDayRecordModel.employee_name.asc())
                 .limit(limit)
             ).scalars().all()
             return list(rows)

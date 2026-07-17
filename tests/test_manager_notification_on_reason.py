@@ -6,9 +6,11 @@ from time import perf_counter, sleep
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, DialogFlow
+from app.schemas.max import MaxCallback, MaxUpdate, MaxUser
 
 
 class _FakeCaseRepository:
@@ -222,6 +224,32 @@ class ManagerNotificationTests(unittest.TestCase):
         self.assertEqual(router.approval_repository.updated, [(77, ApprovalStatus.REJECTED.value, "Нет подтверждения времени")])
         kwargs = router.max_client.send_message.call_args.kwargs
         self.assertIn("Причина отказа: Нет подтверждения времени", kwargs["text"])
+
+    def test_approval_button_cannot_approve_another_manager_case(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.approval_repository = _FakeApprovalRepository()
+        router.role_resolver.resolve_role = MagicMock(return_value="manager")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router._touch_user_activity = MagicMock()
+
+        response = router.handle_event(
+            MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                chat_id=123,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id="cb-approve",
+                    payload=f"{BotAction.APPROVAL_APPROVE_PREFIX}77",
+                    user=MaxUser(user_id=999, first_name="Other"),
+                ),
+            )
+        )
+
+        self.assertIn("Согласование #77 не найдено", response.outbound.text)
+        self.assertEqual(router.approval_repository.updated, [])
 
     def test_approval_decision_uses_directory_when_case_has_no_employee_user_id(self) -> None:
         router = MaxWebhookRouter()

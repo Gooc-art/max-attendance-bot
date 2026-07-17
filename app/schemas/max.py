@@ -70,12 +70,15 @@ class MaxOutboundButton(BaseModel):
     action: str
     emoji: Optional[str] = None
     row: int = 0
+    button_type: Literal["callback", "link"] = "callback"
+    url: Optional[str] = None
 
 
 class MaxKeyboardButton(BaseModel):
-    type: Literal["callback"] = "callback"
+    type: Literal["callback", "link"] = "callback"
     text: str
     payload: Optional[str] = None
+    url: Optional[str] = None
     intent: str = "default"
 
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import SessionLocal
-from app.db.models import RuntimeMarkerModel
+from app.db.models import RuntimeMarkerModel, utc_now
 
 
 class RuntimeMarkerRepository:
@@ -15,7 +15,7 @@ class RuntimeMarkerRepository:
         if not key:
             return True
 
-        now = datetime.utcnow()
+        now = utc_now()
         expires_at = now + timedelta(seconds=lease_seconds)
         with SessionLocal() as session:
             marker = RuntimeMarkerModel(
@@ -54,7 +54,7 @@ class RuntimeMarkerRepository:
         if not key:
             return
 
-        now = datetime.utcnow()
+        now = utc_now()
         with SessionLocal() as session:
             marker = session.execute(
                 select(RuntimeMarkerModel).where(RuntimeMarkerModel.marker_key == key).limit(1)
@@ -73,4 +73,3 @@ class RuntimeMarkerRepository:
         with SessionLocal() as session:
             session.execute(delete(RuntimeMarkerModel).where(RuntimeMarkerModel.marker_key == key))
             session.commit()
-

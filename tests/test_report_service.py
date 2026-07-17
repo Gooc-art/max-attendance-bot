@@ -14,8 +14,10 @@ from app.services.report_service import ReportService
 class _FakeVisitRepository:
     def __init__(self):
         self.list_all_called = False
+        self.calls = []
 
-    def list_for_manager_user(self, user_id: str, limit: int = 500):
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
+        self.calls.append(("manager", date_from, date_to))
         return [
             SimpleNamespace(
                 id=1,
@@ -63,26 +65,42 @@ class _FakeVisitRepository:
             ),
         ]
 
-    def list_all(self, limit: int = 5000):
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
         self.list_all_called = True
+        self.calls.append(("all", date_from, date_to))
         return self.list_for_manager_user("all", limit=limit)
 
 
 class _EmptyVisitRepository:
-    def list_for_manager_user(self, user_id: str, limit: int = 500):
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
         return []
 
-    def list_all(self, limit: int = 5000):
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
         return []
+
+
+class _PeriodFilteredVisitRepository(_FakeVisitRepository):
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
+        self.calls.append(("manager", date_from, date_to))
+        if date_from == "2026-05-01" and date_to == "2026-05-02":
+            return super().list_for_manager_user(user_id, limit=limit, date_from=date_from, date_to=date_to)
+        return []
+
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
+        self.list_all_called = True
+        self.calls.append(("all", date_from, date_to))
+        return self.list_for_manager_user("all", limit=limit, date_from=date_from, date_to=date_to)
 
 
 class _FakeCaseRepository:
     def __init__(self):
         self.list_all_called = False
         self.list_for_manager_called = False
+        self.calls = []
 
-    def list_for_manager_user(self, user_id: str, limit: int = 500):
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
         self.list_for_manager_called = True
+        self.calls.append(("manager", date_from, date_to))
         return [
             SimpleNamespace(
                 id=1,
@@ -116,18 +134,68 @@ class _FakeCaseRepository:
             ),
         ]
 
-    def list_all(self, limit: int = 5000):
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
         self.list_all_called = True
+        self.calls.append(("all", date_from, date_to))
         return self.list_for_manager_user("all", limit=limit)
+
+
+class _CaseRepositoryWithOutsidePeriod:
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
+        return [
+            SimpleNamespace(
+                id=1,
+                employee_user_id="emp_1",
+                employee_name="Иванов Иван Иванович",
+                department_name="Отдел продаж",
+                manager_user_id="mgr-1",
+                manager_name="Петров Петр Сергеевич",
+                case_type="late",
+                employee_reason="В периоде",
+                event_date="2026-05-01",
+                source="manual",
+                planned_start="08:30",
+                actual_start="08:44",
+                delay_minutes=14,
+            ),
+            SimpleNamespace(
+                id=2,
+                employee_user_id="emp_2",
+                employee_name="Смирнов Сергей Олегович",
+                department_name="Отдел продаж",
+                manager_user_id="mgr-1",
+                manager_name="Петров Петр Сергеевич",
+                case_type="late",
+                employee_reason="Вне периода",
+                event_date="2026-06-01",
+                source="manual",
+                planned_start="08:30",
+                actual_start="08:50",
+                delay_minutes=20,
+            ),
+        ]
+
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
+        return self.list_for_manager_user("all", limit=limit)
+
+
+class _EmptyCaseRepository:
+    def list_for_manager_user(self, user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
+        return []
+
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
+        return []
 
 
 class _FakeApprovalRepository:
     def __init__(self):
         self.list_all_called = False
         self.list_for_manager_called = False
+        self.calls = []
 
-    def list_for_manager_user(self, manager_user_id: str, limit: int = 500):
+    def list_for_manager_user(self, manager_user_id: str, limit: int = 500, date_from: str = "", date_to: str = ""):
         self.list_for_manager_called = True
+        self.calls.append(("manager", date_from, date_to))
         cases = _FakeCaseRepository().list_for_manager_user(manager_user_id, limit=limit)
         return [
             (
@@ -137,8 +205,9 @@ class _FakeApprovalRepository:
             for case in cases
         ]
 
-    def list_all(self, limit: int = 5000):
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = ""):
         self.list_all_called = True
+        self.calls.append(("all", date_from, date_to))
         return self.list_for_manager_user("all", limit=limit)
 
 
@@ -186,6 +255,14 @@ class _SuccessfulImportRepository:
         return SimpleNamespace(period_start="2026-05-01", period_end="2026-05-02")
 
 
+class _GlobalSuccessfulImportRepository:
+    def get_latest_successful_for_user(self, user_id: str):
+        return None
+
+    def get_latest_successful(self):
+        return SimpleNamespace(period_start="2026-05-01", period_end="2026-05-02")
+
+
 class ReportServiceTests(unittest.TestCase):
     @staticmethod
     def _sheet_xml_by_name(archive: zipfile.ZipFile, sheet_name: str) -> str:
@@ -220,6 +297,9 @@ class ReportServiceTests(unittest.TestCase):
             self.assertIn("/api/reports/", artifact.pdf_download_url)
             self.assertTrue(artifact.download_url.endswith("/download"))
             self.assertTrue(artifact.pdf_download_url.endswith("/download/pdf"))
+            self.assertIn(("manager", "2026-05-01", "2026-05-02"), service.visit_repository.calls)
+            self.assertIn(("manager", "2026-05-01", "2026-05-02"), service.case_repository.calls)
+            self.assertIn(("manager", "2026-05-01", "2026-05-02"), service.approval_repository.calls)
 
             with zipfile.ZipFile(artifact.file_path) as archive:
                 workbook_xml = archive.read("xl/workbook.xml")
@@ -305,7 +385,13 @@ class ReportServiceTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             service.reports_dir = Path(tmpdir)
-            artifact = service.generate_manager_report(user_id="mgr-1", role="manager", period="week")
+            artifact = service.generate_manager_report(
+                user_id="mgr-1",
+                role="manager",
+                period="custom",
+                date_from="2026-05-01",
+                date_to="2026-05-02",
+            )
 
             self.assertTrue(Path(artifact.file_path).exists())
             self.assertTrue(Path(artifact.pdf_file_path).exists())
@@ -320,10 +406,33 @@ class ReportServiceTests(unittest.TestCase):
                 self.assertIn("Случаи", sheet_names)
                 summary_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
                 cases_xml = self._sheet_xml_by_name(archive, "Случаи")
-                self.assertIn("Недельный отчет", summary_xml)
+                self.assertIn("Отчет за период 2026-05-01 - 2026-05-02", summary_xml)
                 self.assertIn("Иванов Иван Иванович", cases_xml)
                 self.assertIn("Заявка/объяснение", cases_xml)
                 self.assertIn("Статус согласования", cases_xml)
+
+    def test_case_only_report_filters_cases_by_selected_period(self) -> None:
+        service = ReportService()
+        service.visit_repository = _EmptyVisitRepository()
+        service.case_repository = _CaseRepositoryWithOutsidePeriod()
+        service.approval_repository = _FakeApprovalRepository()
+        service.skud_import_repository = _NoSuccessfulImportRepository()
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_manager_report(
+                user_id="mgr-1",
+                role="manager",
+                period="custom",
+                date_from="2026-05-01",
+                date_to="2026-05-02",
+            )
+
+            with zipfile.ZipFile(artifact.file_path) as archive:
+                cases_xml = self._sheet_xml_by_name(archive, "Случаи")
+                self.assertIn("Иванов Иван Иванович", cases_xml)
+                self.assertNotIn("Смирнов Сергей Олегович", cases_xml)
 
     def test_manager_without_team_uses_latest_successful_upload_period(self) -> None:
         visit_repo = _FakeVisitRepository()
@@ -332,11 +441,11 @@ class ReportServiceTests(unittest.TestCase):
         service = ReportService()
         service.visit_repository = _EmptyVisitRepository()
         service.case_repository = SimpleNamespace(
-            list_for_manager_user=lambda user_id, limit=500: [],
+            list_for_manager_user=lambda user_id, limit=500, date_from="", date_to="": [],
             list_all=case_repo.list_all,
         )
         service.approval_repository = SimpleNamespace(
-            list_for_manager_user=lambda user_id, limit=500: [],
+            list_for_manager_user=lambda user_id, limit=500, date_from="", date_to="": [],
             list_all=approval_repo.list_all,
         )
         service.skud_import_repository = _SuccessfulImportRepository()
@@ -358,6 +467,22 @@ class ReportServiceTests(unittest.TestCase):
         self.assertTrue(approval_repo.list_all_called)
         self.assertIn("Иванов Иван Иванович", artifact.summary_text)
         self.assertIn("Согласовано", artifact.summary_text)
+
+    def test_empty_quick_report_uses_latest_global_upload_period(self) -> None:
+        service = ReportService()
+        service.visit_repository = _PeriodFilteredVisitRepository()
+        service.case_repository = _EmptyCaseRepository()
+        service.approval_repository = _FakeApprovalRepository()
+        service.skud_import_repository = _GlobalSuccessfulImportRepository()
+        service.report_repository = _FakeReportRepository()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service.reports_dir = Path(tmpdir)
+            artifact = service.generate_manager_report(user_id="mgr-1", role="manager", period="week")
+
+        self.assertEqual(artifact.period_start, "2026-05-01")
+        self.assertEqual(artifact.period_end, "2026-05-02")
+        self.assertIn("Иванов Иван Иванович", artifact.summary_text)
 
     def test_generate_manager_report_uses_global_scope_for_top_manager(self) -> None:
         visit_repo = _FakeVisitRepository()

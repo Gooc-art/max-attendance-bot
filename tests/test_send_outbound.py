@@ -76,6 +76,36 @@ class SendOutboundTests(unittest.TestCase):
             message_id="bot-1",
         )
 
+    def test_duplicate_visible_outbound_is_suppressed_across_events(self) -> None:
+        router = self._build_router()
+        router.runtime_marker_repository.claim.side_effect = [True, False]
+        router.max_client.send_message.return_value = {"mid": "bot-1"}
+        outbound = MaxOutboundMessage(
+            text="Главное меню готово.",
+            buttons=[MaxOutboundButton(title="Отчеты", action="menu.reports")],
+        )
+        first = MaxUpdate(
+            update_type="bot_started",
+            timestamp=1,
+            chat_id=987,
+            user=MaxUser(user_id=123, first_name="Test"),
+        )
+        second = MaxUpdate(
+            update_type="message_created",
+            timestamp=2,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=2,
+                body=MaxMessageBody(mid="m2", seq=2, text="/start"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(first, outbound)
+        router._send_outbound(second, outbound)
+
+        router.max_client.send_message.assert_called_once()
+
     def test_async_callback_outbound_returns_before_max_send(self) -> None:
         router = self._build_router()
         router.async_callback_outbound = True
@@ -266,8 +296,12 @@ class SendOutboundTests(unittest.TestCase):
         router.max_client.answer_callback.assert_called_once()
         callback_kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(callback_kwargs["callback_id"], "cb-1")
-        self.assertEqual(callback_kwargs["new_text"], "Hello")
-        self.assertEqual(callback_kwargs["buttons"][0].title, "Старт")
+        self.assertEqual(callback_kwargs["notification"], INVISIBLE_MESSAGE_TEXT)
+        router.max_client.edit_message.assert_called_once_with(
+            "bot-card",
+            text="Hello",
+            buttons=[MaxOutboundButton(title="Старт", action="/start")],
+        )
         router.max_client.send_message.assert_not_called()
         self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
         router.bot_message_cursor_store.set.assert_any_call(
@@ -283,7 +317,30 @@ class SendOutboundTests(unittest.TestCase):
             message_id="bot-card",
         )
 
-    def test_handle_event_acknowledges_callback_before_editing_message(self) -> None:
+    def test_callback_update_deletes_previous_cursor_message(self) -> None:
+        router = self._build_router()
+        router.bot_message_cursor_store.get.return_value = "bot-prev"
+        router._queue_delete_message_ids = MagicMock()
+
+        inbound = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(timestamp=1, callback_id="cb-1", user=MaxUser(user_id=123, first_name="Test")),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Главное меню готово."))
+
+        router.max_client.edit_message.assert_called_once()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-prev"])
+
+    def test_handle_event_answers_callback_once_with_final_message(self) -> None:
         router = self._build_router()
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
         router.user_bot_activity_repository.touch = MagicMock()
@@ -313,14 +370,14 @@ class SendOutboundTests(unittest.TestCase):
             callback_id="cb-1",
             notification=INVISIBLE_MESSAGE_TEXT,
         )
-        router.max_client.edit_message.assert_called_once()
-        edit_args = router.max_client.edit_message.call_args
-        self.assertEqual(edit_args.args[0], "bot-card")
-        self.assertEqual(edit_args.kwargs["text"], "Главное меню готово.")
-        self.assertIn("Руководство", [button.title for button in edit_args.kwargs["buttons"]])
+        router.max_client.edit_message.assert_called_once_with(
+            "bot-card",
+            text="Главное меню готово.",
+            buttons=response.outbound.buttons,
+        )
         router.max_client.send_message.assert_not_called()
 
-    def test_office_seal_ack_callback_uses_notification_only(self) -> None:
+    def test_office_seal_ack_callback_deletes_callback_message(self) -> None:
         router = self._build_router()
 
         inbound = MaxUpdate(
@@ -347,8 +404,71 @@ class SendOutboundTests(unittest.TestCase):
             callback_id="cb-ack",
             notification="Принято, спасибо.",
         )
+        router.max_client.delete_message.assert_called_once_with("bot-card")
+        router.max_client.edit_message.assert_not_called()
         router.max_client.send_message.assert_not_called()
         router.bot_message_cursor_store.set.assert_not_called()
+
+    def test_office_seal_ack_soft_clears_callback_message_when_delete_fails(self) -> None:
+        router = self._build_router()
+        router.max_client.delete_message.side_effect = RuntimeError("delete forbidden")
+
+        inbound = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-ack",
+                payload="office_seal.reminder_ack",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Принято, спасибо."))
+
+        router.max_client.delete_message.assert_called_once_with("bot-card")
+        router.max_client.soft_clear_message.assert_called_once_with("bot-card")
+        router.max_client.edit_message.assert_not_called()
+        router.max_client.send_message.assert_not_called()
+
+    def test_office_seal_ack_deletes_callback_message_when_answer_callback_fails(self) -> None:
+        router = self._build_router()
+        router.max_client.answer_callback.side_effect = RuntimeError("answer failed")
+        router.max_client.send_message.return_value = {"status": "ok", "mid": "bot-3"}
+
+        inbound = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-ack",
+                payload="office_seal.reminder_ack",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Принято, спасибо."))
+
+        router.max_client.answer_callback.assert_called_once_with(
+            callback_id="cb-ack",
+            notification="Принято, спасибо.",
+        )
+        router.max_client.delete_message.assert_called_once_with("bot-card")
+        router.max_client.send_message.assert_called_once()
 
     def test_callback_still_sends_visible_message_when_answer_callback_fails(self) -> None:
         router = self._build_router()
@@ -421,8 +541,12 @@ class SendOutboundTests(unittest.TestCase):
         router.max_client.answer_callback.assert_called_once()
         answer_kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(answer_kwargs["callback_id"], "cb-main")
-        self.assertEqual(answer_kwargs["new_text"], "Главное меню готово.")
-        self.assertEqual(answer_kwargs["buttons"][0].title, "Старт")
+        self.assertEqual(answer_kwargs["notification"], INVISIBLE_MESSAGE_TEXT)
+        router.max_client.edit_message.assert_called_once_with(
+            "bot-main-card",
+            text="Главное меню готово.",
+            buttons=[MaxOutboundButton(title="Старт", action="/start")],
+        )
         self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="chat:987",
@@ -596,8 +720,12 @@ class SendOutboundTests(unittest.TestCase):
 
         callback_kwargs = router.max_client.answer_callback.call_args.kwargs
         self.assertEqual(callback_kwargs["callback_id"], "cb-user")
-        self.assertEqual(callback_kwargs["new_text"], "Меню")
-        self.assertEqual(callback_kwargs["buttons"][0].title, "Старт")
+        self.assertEqual(callback_kwargs["notification"], INVISIBLE_MESSAGE_TEXT)
+        router.max_client.edit_message.assert_called_once_with(
+            "bot-card",
+            text="Меню",
+            buttons=[MaxOutboundButton(title="Старт", action="/start")],
+        )
         router.max_client.send_message.assert_not_called()
         router.bot_message_cursor_store.set.assert_called_once_with(
             conversation_key="user:456",
@@ -656,6 +784,26 @@ class SendOutboundTests(unittest.TestCase):
         router.runtime_marker_repository.complete.assert_not_called()
         router.bot_message_cursor_store.set.assert_not_called()
 
+    def test_whoami_visible_message_is_not_saved_as_clearable_cursor(self) -> None:
+        router = self._build_router()
+        router.max_client.send_message.return_value = {"mid": "whoami-mid"}
+
+        inbound = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="Обо мне"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Обо мне:\n\nУстройство: Android"))
+
+        router.max_client.send_message.assert_called_once()
+        router.bot_message_cursor_store.set.assert_not_called()
+
     def test_outgoing_marker_released_when_send_fails(self) -> None:
         router = self._build_router()
         router.max_client.send_message.side_effect = RuntimeError("MAX down")
@@ -676,6 +824,33 @@ class SendOutboundTests(unittest.TestCase):
         self.assertEqual(router.max_client.send_message.call_count, 2)
         self.assertEqual(router.runtime_marker_repository.release.call_count, 2)
         router.runtime_marker_repository.complete.assert_not_called()
+
+    def test_same_callback_text_with_new_callback_id_is_not_suppressed(self) -> None:
+        router = self._build_router()
+        claimed = set()
+
+        def claim(marker_key: str, marker_type: str, lease_seconds: int = 120):
+            if marker_key in claimed:
+                return False
+            claimed.add(marker_key)
+            return True
+
+        router.runtime_marker_repository.claim.side_effect = claim
+
+        for callback_id in ["cb-1", "cb-2"]:
+            inbound = MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id=callback_id,
+                    payload="/whoami",
+                    user=MaxUser(user_id=123, first_name="Test"),
+                ),
+            )
+            router._send_outbound(inbound, MaxOutboundMessage(text="Обо мне:\n\nУстройство: Android"))
+
+        self.assertEqual(router.max_client.answer_callback.call_count, 2)
 
     def test_callback_without_chat_id_uses_embedded_message_even_with_saved_chat(self) -> None:
         router = self._build_router()
@@ -742,7 +917,12 @@ class SendOutboundTests(unittest.TestCase):
 
         router.max_client.answer_callback.assert_called_once()
         callback_kwargs = router.max_client.answer_callback.call_args.kwargs
-        self.assertEqual(callback_kwargs["new_text"], "Твои случаи")
+        self.assertEqual(callback_kwargs["notification"], INVISIBLE_MESSAGE_TEXT)
+        router.max_client.edit_message.assert_called_once_with(
+            "m1",
+            text="Твои случаи",
+            buttons=[MaxOutboundButton(title="Назад", action="employee.reasons")],
+        )
         router.max_client.send_message.assert_not_called()
         router.max_client.delete_message.assert_not_called()
         router.bot_message_cursor_store.set.assert_called_once_with(

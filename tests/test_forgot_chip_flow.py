@@ -140,7 +140,7 @@ class ForgotChipFlowTests(unittest.TestCase):
                     employee_user_id="23325864",
                     department_name="0. Руководство",
                     manager_name="Комаровский Андрей Петрович",
-                    manager_user_id="12771658",
+                    manager_user_id="6393482",
                     schedule_name="Пятидневка",
                     schedule_id="GR004",
                     role="employee",
@@ -157,7 +157,7 @@ class ForgotChipFlowTests(unittest.TestCase):
                     employee_name="Комаровский Андрей Петрович",
                     employee_user_id="6393482",
                     department_name="1-ОКПКиПиБ",
-                    role="top_manager",
+                    role="manager",
                     is_active=True,
                 ),
             ]

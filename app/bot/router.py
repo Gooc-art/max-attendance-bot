@@ -12,7 +12,6 @@ from app.bot.actions import BotAction
 from app.bot.buttons import (
     admin_personal_buttons,
     admin_reports_buttons,
-    admin_settings_buttons,
     admin_skud_buttons,
     admin_structure_buttons,
     admin_workflow_buttons,
@@ -28,7 +27,6 @@ from app.bot.buttons import (
     employee_reason_section_buttons,
     hr_reference_buttons,
     hr_reports_buttons,
-    hr_settings_buttons,
     hr_workflow_buttons,
     manager_management_buttons,
     manager_reports_buttons,
@@ -37,7 +35,6 @@ from app.bot.buttons import (
     reports_menu_buttons,
     running_late_date_buttons,
     running_late_reason_buttons,
-    security_audit_buttons,
     security_skud_buttons,
     substitution_approval_card_buttons,
     substitution_notification_buttons,
@@ -48,6 +45,7 @@ from app.bot.buttons import (
 )
 from app.bot.menus import get_menu_for_role
 from app.config import get_settings
+from app.db.models import utc_now
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus, AttendanceCaseType, AttendanceReasonCode, DialogFlow, Role
 from app.domain.dialog_state import UserDialogState
 from app.domain.role_labels import display_role_name
@@ -72,6 +70,66 @@ from app.services.role_resolver import RoleResolver
 from app.services.substitution_flow import SubstitutionFlowService
 
 
+MANAGER_ROLES = {Role.MANAGER.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+STRUCTURE_ROLES = {Role.HR.value, Role.ADMIN.value}
+SKUD_ROLES = {Role.MANAGER.value, Role.SECURITY.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+WORKFLOW_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+REPORT_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+
+ACTION_ALLOWED_ROLES = {
+    BotAction.MANAGER_MANAGEMENT: MANAGER_ROLES,
+    BotAction.MANAGER_REPORTS: {Role.MANAGER.value},
+    BotAction.MANAGER_WORKFLOW: {Role.MANAGER.value},
+    BotAction.MENU_EMPLOYEES: MANAGER_ROLES,
+    BotAction.MENU_DEPARTMENT_LATES: MANAGER_ROLES,
+    BotAction.MENU_DEPARTMENT_ABSENCES: MANAGER_ROLES,
+    BotAction.MENU_SUMMARY: MANAGER_ROLES,
+    BotAction.SECURITY_SKUD: {Role.SECURITY.value, Role.TOP_MANAGER.value},
+    BotAction.SECURITY_AUDIT: set(),
+    BotAction.MENU_SECURITY_IMPORT: SKUD_ROLES,
+    BotAction.MENU_IMPORT_HISTORY: SKUD_ROLES,
+    BotAction.MENU_MATCH_ERRORS: set(),
+    BotAction.MENU_UNPROCESSED: set(),
+    BotAction.HR_REFERENCE: {Role.HR.value},
+    BotAction.HR_WORKFLOW: {Role.HR.value},
+    BotAction.HR_REPORTS: {Role.HR.value},
+    BotAction.HR_SETTINGS: set(),
+    BotAction.MENU_STAFF: STRUCTURE_ROLES,
+    BotAction.MENU_DEPARTMENTS: STRUCTURE_ROLES,
+    BotAction.MENU_SCHEDULES: set(),
+    BotAction.MENU_EXCEPTIONS: set(),
+    BotAction.MENU_SETTINGS: set(),
+    BotAction.MENU_ACCESS_RIGHTS: {Role.ADMIN.value},
+    BotAction.MENU_ADMIN_PANEL: {Role.ADMIN.value},
+    BotAction.TOP_SUMMARY: {Role.TOP_MANAGER.value},
+    BotAction.TOP_REPORTS: {Role.TOP_MANAGER.value},
+    BotAction.TOP_WORKFLOW: {Role.TOP_MANAGER.value},
+    BotAction.MENU_BOT_ACTIVITY: {Role.TOP_MANAGER.value},
+    BotAction.MENU_DIVISION_REPORTS: REPORT_ROLES,
+    BotAction.MENU_OVERDUE_APPROVALS: MANAGER_ROLES,
+    BotAction.MENU_APPROVALS: WORKFLOW_ROLES,
+    BotAction.MENU_REPORTS: REPORT_ROLES,
+    BotAction.MENU_SUBSTITUTIONS: WORKFLOW_ROLES,
+    BotAction.SUBSTITUTION_CREATE: WORKFLOW_ROLES,
+    BotAction.SUBSTITUTION_LIST: WORKFLOW_ROLES,
+    BotAction.SUBSTITUTION_CANCEL: WORKFLOW_ROLES,
+    BotAction.SUBSTITUTION_EXTEND: WORKFLOW_ROLES,
+    BotAction.REPORT_WEEK: REPORT_ROLES,
+    BotAction.REPORT_MONTH: REPORT_ROLES,
+    BotAction.REPORT_QUARTER: REPORT_ROLES,
+    BotAction.REPORT_CUSTOM: REPORT_ROLES,
+    BotAction.REPORT_DEVICES: {Role.MANAGER.value, Role.TOP_MANAGER.value},
+    BotAction.ADMIN_PERSONAL: {Role.ADMIN.value},
+    BotAction.ADMIN_STRUCTURE: {Role.ADMIN.value},
+    BotAction.ADMIN_SKUD: {Role.ADMIN.value},
+    BotAction.ADMIN_WORKFLOW: {Role.ADMIN.value},
+    BotAction.ADMIN_REPORTS: {Role.ADMIN.value},
+    BotAction.ADMIN_SETTINGS: set(),
+    BotAction.MENU_MY_ROW: {Role.ADMIN.value},
+    BotAction.MENU_BINDING_CHECK: {Role.ADMIN.value},
+}
+
+
 class MaxWebhookRouter:
     def __init__(self, async_callback_outbound: bool = False, async_user_activity: bool = False) -> None:
         self.google_directory_service = GoogleSheetsDirectoryService.from_settings()
@@ -92,19 +150,19 @@ class MaxWebhookRouter:
         self.skud_import_repository = SkudImportRepository()
         self.max_client = MaxApiClient.from_settings()
         self.delete_previous_message = get_settings().max_delete_previous_message
+        self.bot_message_cursor_store = bot_message_cursor_store
         self.max_file_import_service = MaxFileImportService()
         self.office_sealing_service = OfficeSealingService(
             directory_service=self.google_directory_service,
             employee_repository=self.employee_directory_repository,
             max_client=self.max_client,
+            cursor_store=self.bot_message_cursor_store,
         )
         self._directory_cache_ttl_seconds = 300
         self._directory_user_cache: dict[str, tuple[float, object]] = {}
         self._directory_name_cache: dict[str, tuple[float, object]] = {}
         self._directory_recent_cache: dict[int, tuple[float, list[object]]] = {}
-        self.bot_message_cursor_store = bot_message_cursor_store
         self.runtime_marker_repository = RuntimeMarkerRepository()
-        self._early_acknowledged_callbacks: set[str] = set()
         self.async_callback_outbound = async_callback_outbound
         self.async_user_activity = async_user_activity
         self.logger = logging.getLogger(__name__)
@@ -206,8 +264,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             self._touch_user_activity(payload, event, role="", started=False)
             return response
-        self._acknowledge_callback_click(payload)
-
         role_started_at = perf_counter()
         role = self.role_resolver.resolve_role(
             user_id=event["user_id"],
@@ -232,6 +288,11 @@ class MaxWebhookRouter:
         )
         self._touch_user_activity(payload, event, role=role, started=self._is_start_event(payload, action, user_text))
 
+        denied_response = self._forbidden_action_response(role, action)
+        if denied_response is not None:
+            self._send_outbound(payload, denied_response.outbound)
+            return denied_response
+
         if self._is_main_menu_action(action, user_text):
             dialog_state_store.reset(event["user_id"])
             response = self._menu_response(role, "Главное меню готово.")
@@ -241,6 +302,12 @@ class MaxWebhookRouter:
         if active_state and (action == BotAction.CANCEL or user_text.lower() == "отмена"):
             dialog_state_store.reset(event["user_id"])
             response = self._menu_response(role, "Действие отменено.")
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.WHOAMI or user_text in {"Обо мне", "Кто я", "/whoami"}:
+            dialog_state_store.reset(event["user_id"])
+            response = self._whoami(role, event["user_id"], event["chat_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -334,11 +401,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.WHOAMI or user_text in {"Обо мне", "Кто я", "/whoami"}:
-            response = self._whoami(role, event["user_id"], event["chat_id"])
-            self._send_outbound(payload, response.outbound)
-            return response
-
         if action in {"/manager", "/employee", "/security", "/hr", "/admin", "/top"}:
             target_role = {
                 "/manager": Role.MANAGER.value,
@@ -390,11 +452,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SECURITY_AUDIT:
-            response = self._security_audit_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
         if action == BotAction.HR_REFERENCE:
             response = self._hr_reference_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -407,11 +464,6 @@ class MaxWebhookRouter:
 
         if action == BotAction.HR_REPORTS:
             response = self._hr_reports_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.HR_SETTINGS:
-            response = self._hr_settings_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -579,21 +631,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.MENU_SCHEDULES or user_text == "Графики":
-            response = self._schedules_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.MENU_EXCEPTIONS or user_text == "Исключения":
-            response = self._exceptions_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.MENU_SETTINGS or user_text in {"Системные настройки", "Настройки"}:
-            response = self._settings_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
         if action == BotAction.MENU_ACCESS_RIGHTS or user_text == "Права доступа":
             response = self._access_rights_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -629,11 +666,6 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_SETTINGS:
-            response = self._admin_settings_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
         if action == BotAction.MENU_MY_ROW or user_text == "Моя строка":
             response = self._my_row(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
@@ -641,16 +673,6 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_BINDING_CHECK or user_text in {"Проверить привязку", "Привязка"}:
             response = self._binding_check(role, event["user_id"])
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.MENU_MATCH_ERRORS or user_text in {"Ошибки сопоставления", "Ошибки"}:
-            response = self._match_errors_menu(role)
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.MENU_UNPROCESSED or user_text in {"Необработанные записи", "Необработанные"}:
-            response = self._unprocessed_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -736,6 +758,10 @@ class MaxWebhookRouter:
 
         if action.startswith(BotAction.APPROVAL_APPROVE_PREFIX):
             approval_id = self._parse_id(action, BotAction.APPROVAL_APPROVE_PREFIX)
+            if self._pending_approval_for_manager(event["user_id"], approval_id) is None:
+                response = self._stub_section(role, "Согласование #{0} не найдено.".format(approval_id))
+                self._send_outbound(payload, response.outbound)
+                return response
             approval = self.approval_repository.update_status(approval_id, ApprovalStatus.APPROVED.value)
             self._notify_employee_about_approval_decision(approval, approved=True)
             response = self._approvals_list(
@@ -777,6 +803,11 @@ class MaxWebhookRouter:
 
         if action == BotAction.REPORT_CUSTOM:
             response = self._start_report_period_flow(role, event["user_id"], report_kind="manager", chat_id=event["chat_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.REPORT_DEVICES:
+            response = self._device_report(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -839,10 +870,7 @@ class MaxWebhookRouter:
 
         menu = get_menu_for_role(role)
         message = MaxOutboundMessage(
-            text="Роль определена как: {role}. Кнопка `{text}` пока подключена как заглушка.".format(
-                role=display_role_name(role),
-                text=user_text or action or "без текста",
-            ),
+            text="Не понял команду. Открой главное меню и выбери действие кнопкой.",
             buttons=main_menu_buttons(role),
         )
         self._send_outbound(payload, message)
@@ -1012,6 +1040,21 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
+    def _forbidden_action_response(self, role: str, action: str) -> MaxWebhookResponse | None:
+        allowed_roles = ACTION_ALLOWED_ROLES.get(action)
+        if allowed_roles is None or role in allowed_roles:
+            return None
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Этот раздел недоступен для твоей роли.",
+                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+            ),
+            active_flow=None,
+        )
+
     def _employee_personal_menu(self, role: str, user_id: str) -> MaxWebhookResponse:
         rows = self._list_employee_cases_for_user(user_id)
         pending_reason = self._list_pending_reason_cases_for_user(user_id)
@@ -1083,7 +1126,7 @@ class MaxWebhookRouter:
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=self.office_sealing_service.acknowledge_reminder(),
-                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+                buttons=[],
             ),
             active_flow=None,
         )
@@ -1241,18 +1284,6 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _security_audit_menu(self, role: str) -> MaxWebhookResponse:
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text="Раздел разбора: ошибки сопоставления и необработанные записи.",
-                buttons=security_audit_buttons(),
-            ),
-            active_flow=None,
-        )
-
     def _hr_reference_menu(self, role: str) -> MaxWebhookResponse:
         return MaxWebhookResponse(
             ok=True,
@@ -1285,18 +1316,6 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text="Отчетный блок HR.",
                 buttons=hr_reports_buttons(),
-            ),
-            active_flow=None,
-        )
-
-    def _hr_settings_menu(self, role: str) -> MaxWebhookResponse:
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text="Параметры HR.",
-                buttons=hr_settings_buttons(),
             ),
             active_flow=None,
         )
@@ -1682,12 +1701,15 @@ class MaxWebhookRouter:
         if role != Role.TOP_MANAGER.value:
             return self._stub_section(role, "Раздел доступен только главному руководителю.")
 
-        now = datetime.utcnow()
+        now = utc_now()
         seen_total = self.user_bot_activity_repository.count_seen_total()
         started_total = self.user_bot_activity_repository.count_started_total()
         started_week = self.user_bot_activity_repository.count_started_since(now - timedelta(days=7))
         active_week = self.user_bot_activity_repository.count_active_since(now - timedelta(days=7))
         rows = self.user_bot_activity_repository.list_recent_seen(limit=10)
+        device_counts = {"Android": 0, "iOS": 0, "неизвестно": 0}
+        for row in rows:
+            device_counts[self._display_device_platform(getattr(row, "device_platform", ""))] += 1
 
         lines = [
             "Входы в бот:\n",
@@ -1695,6 +1717,7 @@ class MaxWebhookRouter:
             f"Взаимодействовали за 7 дней: {active_week}",
             f"Запускали бот за 7 дней: {started_week}",
             f"Запускали бот всего: {started_total}",
+            f"Устройства в последних {len(rows)}: Android: {device_counts['Android']}, iOS: {device_counts['iOS']}, неизвестно: {device_counts['неизвестно']}",
         ]
 
         if rows:
@@ -1703,7 +1726,8 @@ class MaxWebhookRouter:
             for row in rows:
                 name = self._activity_display_name(row.user_id, row.display_name)
                 role_label = display_role_name(str(row.role or "employee"))
-                lines.append(f"{name} | {role_label} | {self._format_dt(row.last_seen_at)}")
+                device = self._display_device_platform(getattr(row, "device_platform", ""))
+                lines.append(f"{name} | {role_label} | {device} | {self._format_dt(row.last_seen_at)}")
         else:
             lines.append("")
             lines.append("Пока никто не взаимодействовал с ботом.")
@@ -1718,6 +1742,38 @@ class MaxWebhookRouter:
                     MaxOutboundButton(title="Сводка", action=BotAction.MENU_SUMMARY),
                     MaxOutboundButton(title="По отделам", action=BotAction.MENU_DIVISION_REPORTS),
                     MaxOutboundButton(title="Назад", action=BotAction.TOP_SUMMARY),
+                ],
+            ),
+            active_flow=None,
+        )
+
+    def _device_report(self, role: str) -> MaxWebhookResponse:
+        if role not in {Role.MANAGER.value, Role.TOP_MANAGER.value}:
+            return self._stub_section(role, "Отчет доступен руководителям.")
+
+        counts = self.user_bot_activity_repository.count_by_device_platform()
+        android = int(counts.get("android", 0) or 0)
+        ios = int(counts.get("ios", 0) or 0)
+        unknown = int(counts.get("unknown", 0) or 0)
+        total = android + ios + unknown
+        detected = android + ios
+        back_action = BotAction.TOP_REPORTS if role == Role.TOP_MANAGER.value else BotAction.MANAGER_REPORTS
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=(
+                    "Устройства пользователей:\n\n"
+                    f"Android: {android}\n"
+                    f"iOS: {ios}\n"
+                    f"Неизвестно: {unknown}\n"
+                    f"Определили устройство: {detected}\n"
+                    f"Всего пользователей: {total}"
+                ),
+                buttons=[
+                    MaxOutboundButton(title="Назад", action=back_action),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),
             active_flow=None,
@@ -2253,11 +2309,11 @@ class MaxWebhookRouter:
             statuses=[ApprovalStatus.PENDING.value],
             limit=500,
         )
-        overdue_before = datetime.utcnow() - timedelta(days=2)
+        overdue_before = utc_now() - timedelta(days=2)
         curated = [
             (approval, case)
             for approval, case in curated_pending
-            if getattr(approval, "created_at", datetime.utcnow()) <= overdue_before
+            if getattr(approval, "created_at", utc_now()) <= overdue_before
         ]
         merged = []
         seen: set[str] = set()
@@ -2327,67 +2383,6 @@ class MaxWebhookRouter:
 
     def _remember_directory_rows_recent(self, limit: int, rows) -> None:
         self._directory_recent_cache[limit] = (monotonic() + self._directory_cache_ttl_seconds, list(rows or []))
-
-    def _schedules_menu(self, role: str) -> MaxWebhookResponse:
-        text = (
-            "Раздел графиков готов к заполнению.\n\n"
-            "Текущий основной график в боте: 08:30 - 18:00, понедельник-пятница.\n"
-            "Фактический справочник графиков подключим следующим шагом."
-        )
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text=text,
-                buttons=[
-                    MaxOutboundButton(title="Исключения", action=BotAction.MENU_EXCEPTIONS),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
-            ),
-            active_flow=None,
-        )
-
-    def _exceptions_menu(self, role: str) -> MaxWebhookResponse:
-        text = (
-            "Исключения сейчас ведутся через импорт справочника и будущий CRUD.\n\n"
-            "Поддерживаемые типы: отпуск, больничный, командировка, удаленная работа, разрешенное опоздание."
-        )
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text=text,
-                buttons=[
-                    MaxOutboundButton(title="Графики", action=BotAction.MENU_SCHEDULES),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
-            ),
-            active_flow=None,
-        )
-
-    def _settings_menu(self, role: str) -> MaxWebhookResponse:
-        text = (
-            "Системные настройки:\n\n"
-            "Порог опоздания: 10 минут\n"
-            "Неявка после: 12:00\n"
-            "Срок ответа сотрудника: 1 рабочий день\n"
-            "Срок согласования: 1 рабочий день"
-        )
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text=text,
-                buttons=[
-                    MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
-            ),
-            active_flow=None,
-        )
 
     def _access_rights_menu(self, role: str) -> MaxWebhookResponse:
         if role != Role.ADMIN.value:
@@ -2526,22 +2521,9 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _admin_settings_menu(self, role: str) -> MaxWebhookResponse:
-        if role != Role.ADMIN.value:
-            return self._stub_section(role, "Раздел настроек доступен только администратору.")
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text="Системные настройки и параметры контроля.",
-                buttons=admin_settings_buttons(),
-            ),
-            active_flow=None,
-        )
-
     def _whoami(self, role: str, user_id: str, chat_id: str) -> MaxWebhookResponse:
         local_record = self.employee_directory_repository.get_by_user_id(user_id)
+        activity_record = self.user_bot_activity_repository.get_by_user_id(user_id)
         sheet_record = None if local_record is not None else self.google_directory_service.get_by_user_id(user_id)
         directory_record = local_record or sheet_record
         if directory_record is not None:
@@ -2575,20 +2557,47 @@ class MaxWebhookRouter:
             sheet_status = "В Google Sheets по этому user_id запись не найдена."
             needed_id = user_id
 
+        help_text = (
+            "Чтобы бот показал нужные разделы, в таблице `Сотрудники` у тебя должен быть тот же ID в MAX "
+            "и правильная роль.\n"
+            "Нужный ID для таблицы: {needed_id}"
+        ).format(needed_id=needed_id)
+        device_platform = self._display_device_platform(getattr(activity_record, "device_platform", ""))
+        device_link = self._device_detection_url(user_id)
+        device_text = f"Устройство: {device_platform}"
+        buttons = []
+        if device_link:
+            buttons.append(
+                MaxOutboundButton(
+                    title="Определить устройство",
+                    action=device_link,
+                    row=0,
+                    button_type="link",
+                    url=device_link,
+                )
+            )
+        buttons.extend([
+            MaxOutboundButton(title="Обновить", action=BotAction.WHOAMI),
+            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+        ])
+        if role == Role.ADMIN.value:
+            buttons.insert(0, MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL))
+
         text = (
             "Обо мне:\n\n"
+            "{device_text}\n\n"
             "Твой ID в MAX: {user_id}\n"
             "Чат: {chat_id}\n"
             "Роль в боте: {role}\n\n"
             "{sheet_status}\n\n"
-            "Чтобы бот показал админ-панель, в таблице `Сотрудники` у тебя должен быть тот же ID в MAX.\n"
-            "Нужный ID для таблицы: {needed_id}"
+            "{help_text}"
         ).format(
             user_id=user_id,
             chat_id=chat_id,
             role=display_role_name(role),
+            device_text=device_text,
             sheet_status=sheet_status,
-            needed_id=needed_id,
+            help_text=help_text,
         )
         return MaxWebhookResponse(
             ok=True,
@@ -2596,13 +2605,27 @@ class MaxWebhookRouter:
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL),
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                ],
+                buttons=buttons,
             ),
             active_flow=None,
         )
+
+    @staticmethod
+    def _display_device_platform(value: str) -> str:
+        return {
+            "android": "Android",
+            "ios": "iOS",
+            "unknown": "неизвестно",
+        }.get(str(value or "").strip().lower(), "неизвестно")
+
+    @staticmethod
+    def _device_detection_url(user_id: str) -> str:
+        base = get_settings().public_base_url.strip().rstrip("/")
+        if base.endswith("/api/webhooks/max"):
+            base = base[: -len("/api/webhooks/max")]
+        if not base:
+            return ""
+        return f"{base}/device?user_id={user_id}"
 
     def _my_row(self, role: str, user_id: str) -> MaxWebhookResponse:
         sheet_record = self.google_directory_service.get_by_user_id(user_id)
@@ -2702,42 +2725,6 @@ class MaxWebhookRouter:
             except Exception:
                 return False
         return False
-
-    def _match_errors_menu(self, role: str) -> MaxWebhookResponse:
-        text = (
-            "Ошибки сопоставления пока не ведутся как отдельный журнал.\n\n"
-            "Когда справочник сотрудников и MAX ID будут заполнены, здесь появятся строки, которые не удалось связать."
-        )
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text=text,
-                buttons=[
-                    MaxOutboundButton(title="Назад", action=BotAction.SECURITY_AUDIT),
-                ],
-            ),
-            active_flow=None,
-        )
-
-    def _unprocessed_menu(self, role: str) -> MaxWebhookResponse:
-        text = (
-            "Необработанные записи сейчас отсутствуют в отдельном журнале.\n\n"
-            "После загрузки справочника и расширения импорта этот раздел можно будет подключить к очереди разборов."
-        )
-        return MaxWebhookResponse(
-            ok=True,
-            role=role,
-            menu=get_menu_for_role(role),
-            outbound=MaxOutboundMessage(
-                text=text,
-                buttons=[
-                    MaxOutboundButton(title="Назад", action=BotAction.SECURITY_AUDIT),
-                ],
-            ),
-            active_flow=None,
-        )
 
     def _handle_attachments(self, role: str, user_id: str, attachments: list, message_id: str = "") -> MaxWebhookResponse | None:
         file_attachments = [attachment for attachment in attachments if self._is_supported_file_attachment(attachment)]
@@ -5004,25 +4991,46 @@ class MaxWebhookRouter:
                 if marker_key and not self.runtime_marker_repository.claim(marker_key, "outgoing", lease_seconds=120):
                     return
                 try:
-                    if self._is_office_seal_reminder_ack(callback_action, ""):
+                    if callback_action == BotAction.OFFICE_SEAL_REMINDER_ACK:
+                        if inbound.message and inbound.message.body.mid:
+                            message_ids = [inbound.message.body.mid]
+                        else:
+                            message_ids = self._previous_bot_message_ids(inbound)
+                        try:
+                            self.max_client.answer_callback(
+                                callback_id=inbound.callback.callback_id,
+                                notification=outbound.text,
+                            )
+                        finally:
+                            self._delete_message_ids(message_ids)
+                            self._cursor_reset_many(self._conversation_keys(inbound))
+                        if marker_key:
+                            self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
+                        return
+                    if inbound.message and inbound.message.body.mid:
+                        previous_message_ids = [
+                            message_id
+                            for message_id in self._previous_bot_message_ids(inbound)
+                            if message_id != inbound.message.body.mid
+                        ]
                         self.max_client.answer_callback(
                             callback_id=inbound.callback.callback_id,
-                            notification=outbound.text,
+                            notification=INVISIBLE_MESSAGE_TEXT,
                         )
-                    elif self._consume_early_acknowledged_callback(inbound.callback.callback_id) and inbound.message and inbound.message.body.mid:
                         self.max_client.edit_message(
                             inbound.message.body.mid,
                             text=outbound.text,
                             buttons=outbound.buttons,
                         )
-                        self._remember_current_callback_message(inbound)
+                        self._remember_current_callback_message(inbound, outbound.text)
+                        if previous_message_ids:
+                            self._queue_delete_message_ids(previous_message_ids)
                     else:
                         self.max_client.answer_callback(
                             callback_id=inbound.callback.callback_id,
                             new_text=outbound.text,
                             buttons=outbound.buttons,
                         )
-                        self._remember_current_callback_message(inbound)
                     if marker_key:
                         self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
                     callback_render_ms = (perf_counter() - callback_started_at) * 1000
@@ -5083,40 +5091,6 @@ class MaxWebhookRouter:
             )
             return
 
-    def _acknowledge_callback_click(self, inbound: MaxUpdate) -> None:
-        if not self.max_client.is_configured():
-            return
-        if inbound.update_type != "message_callback" or not inbound.callback:
-            return
-        if not (inbound.message and inbound.message.body.mid):
-            return
-        self._early_acknowledged_callbacks.add(inbound.callback.callback_id)
-        thread = threading.Thread(
-            target=self._send_callback_ack,
-            args=(inbound.callback.callback_id,),
-            daemon=True,
-        )
-        thread.start()
-
-    def _send_callback_ack(self, callback_id: str) -> None:
-        try:
-            self.max_client.answer_callback(
-                callback_id=callback_id,
-                notification=INVISIBLE_MESSAGE_TEXT,
-            )
-        except Exception:
-            self.logger.warning(
-                "Failed to early acknowledge MAX callback callback_id=%s",
-                callback_id,
-                exc_info=True,
-            )
-
-    def _consume_early_acknowledged_callback(self, callback_id: str) -> bool:
-        if callback_id not in self._early_acknowledged_callbacks:
-            return False
-        self._early_acknowledged_callbacks.discard(callback_id)
-        return True
-
     def _send_visible_outbound(self, inbound: MaxUpdate, outbound: MaxOutboundMessage) -> dict[str, float | int | str]:
         delete_started_at = perf_counter()
         previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
@@ -5166,7 +5140,7 @@ class MaxWebhookRouter:
                 "recipient": recipient_used,
             }
 
-        self._remember_last_bot_message(inbound, response)
+        self._remember_last_bot_message(inbound, response, outbound.text)
         if previous_message_ids:
             self._queue_delete_message_ids(previous_message_ids)
         return {
@@ -5217,7 +5191,10 @@ class MaxWebhookRouter:
                     )
         return deleted_messages
 
-    def _remember_last_bot_message(self, inbound: MaxUpdate, response: dict[str, object]) -> None:
+    def _remember_last_bot_message(self, inbound: MaxUpdate, response: dict[str, object], outbound_text: str = "") -> None:
+        text = str(outbound_text or "")
+        if text.startswith("Обо мне:"):
+            return
         message_id = self._extract_message_id(response)
         conversation_keys = self._conversation_keys(inbound)
         if not conversation_keys:
@@ -5230,7 +5207,9 @@ class MaxWebhookRouter:
 
         self._cursor_set_many(conversation_keys, chat_id, user_id, message_id)
 
-    def _remember_current_callback_message(self, inbound: MaxUpdate) -> None:
+    def _remember_current_callback_message(self, inbound: MaxUpdate, outbound_text: str = "") -> None:
+        if str(outbound_text or "").startswith("Обо мне:"):
+            return
         message_id = ""
         if inbound.message and inbound.message.body:
             message_id = str(inbound.message.body.mid or "").strip()
@@ -5431,22 +5410,14 @@ class MaxWebhookRouter:
                 date_from=date_from,
                 date_to=date_to,
             )
-            self._send_report_message(
-                chat_id,
-                user_id,
-                "{title} готов.\n\n{summary}".format(
-                    title=artifact.title,
-                    summary=artifact.summary_text,
-                ),
-            )
             self._send_report_files(
                 chat_id,
                 user_id,
                 artifact.title,
                 artifact.file_path,
                 artifact.pdf_file_path,
-                artifact.download_url,
-                artifact.pdf_download_url,
+                getattr(artifact, "download_url", ""),
+                getattr(artifact, "pdf_download_url", ""),
             )
         except Exception:
             self.logger.exception(
@@ -5477,22 +5448,14 @@ class MaxWebhookRouter:
                 date_from=date_from,
                 date_to=date_to,
             )
-            self._send_report_message(
-                chat_id,
-                user_id,
-                "{title} готов.\n\n{summary}".format(
-                    title=artifact.title,
-                    summary=artifact.summary_text,
-                ),
-            )
             self._send_report_files(
                 chat_id,
                 user_id,
                 artifact.title,
                 artifact.file_path,
                 artifact.pdf_file_path,
-                artifact.download_url,
-                artifact.pdf_download_url,
+                getattr(artifact, "download_url", ""),
+                getattr(artifact, "pdf_download_url", ""),
             )
         except Exception:
             self.logger.exception(
@@ -5611,9 +5574,6 @@ class MaxWebhookRouter:
     ) -> str:
         if not recipient_type or not recipient_value:
             return ""
-        event_id = self._incoming_event_id(inbound)
-        if not event_id:
-            return ""
         buttons = [
             {
                 "title": button.title,
@@ -5624,7 +5584,7 @@ class MaxWebhookRouter:
             for button in outbound.buttons
         ]
         digest = sha256(repr((outbound.text, buttons)).encode("utf-8")).hexdigest()[:24]
-        return f"out:{recipient_type}:{recipient_value}:{event_id}:{digest}"
+        return f"out:{recipient_type}:{recipient_value}:{digest}"
 
     def _conversation_participants(self, inbound: MaxUpdate) -> tuple[str, str]:
         chat_id = ""

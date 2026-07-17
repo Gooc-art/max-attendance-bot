@@ -1,22 +1,39 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional, Tuple
 
 from sqlalchemy import select
 
 from app.db.base import SessionLocal
-from app.db.models import ApprovalModel, AttendanceCaseModel
+from app.db.models import ApprovalModel, AttendanceCaseModel, utc_now
 from app.domain.enums import ApprovalStatus, AttendanceCaseStatus
 
 
 class ApprovalRepository:
-    def list_all(self, limit: int = 5000) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
+    @staticmethod
+    def _apply_case_period(query, *, date_from: str = "", date_to: str = ""):
+        if date_from:
+            query = query.where(AttendanceCaseModel.event_date >= date_from)
+        if date_to:
+            query = query.where(AttendanceCaseModel.event_date <= date_to)
+        return query
+
+    def list_all(
+        self,
+        limit: int = 5000,
+        date_from: str = "",
+        date_to: str = "",
+    ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
         with SessionLocal() as session:
-            rows = session.execute(
+            query = self._apply_case_period(
                 select(ApprovalModel, AttendanceCaseModel)
-                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
-                .order_by(ApprovalModel.created_at.desc())
+                .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id),
+                date_from=date_from,
+                date_to=date_to,
+            )
+            rows = session.execute(
+                query.order_by(ApprovalModel.created_at.desc())
                 .limit(limit)
             ).all()
             return list(rows)
@@ -37,12 +54,16 @@ class ApprovalRepository:
         manager_user_id: str,
         statuses: Optional[List[str]] = None,
         limit: int = 20,
+        date_from: str = "",
+        date_to: str = "",
     ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
         with SessionLocal() as session:
-            query = (
+            query = self._apply_case_period(
                 select(ApprovalModel, AttendanceCaseModel)
                 .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
-                .where(ApprovalModel.manager_user_id == manager_user_id)
+                .where(ApprovalModel.manager_user_id == manager_user_id),
+                date_from=date_from,
+                date_to=date_to,
             )
             if statuses:
                 query = query.where(ApprovalModel.status.in_(statuses))
@@ -53,23 +74,34 @@ class ApprovalRepository:
         self,
         manager_user_id: str,
         limit: int = 500,
+        date_from: str = "",
+        date_to: str = "",
     ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
-        return self.list_for_manager(manager_user_id=manager_user_id, limit=limit)
+        return self.list_for_manager(
+            manager_user_id=manager_user_id,
+            limit=limit,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
     def list_for_department_names(
         self,
         department_names: List[str],
         statuses: Optional[List[str]] = None,
         limit: int = 500,
+        date_from: str = "",
+        date_to: str = "",
     ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
         departments = [name for name in {str(item).strip() for item in department_names} if name]
         if not departments:
             return []
         with SessionLocal() as session:
-            query = (
+            query = self._apply_case_period(
                 select(ApprovalModel, AttendanceCaseModel)
                 .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)
-                .where(AttendanceCaseModel.department_name.in_(departments))
+                .where(AttendanceCaseModel.department_name.in_(departments)),
+                date_from=date_from,
+                date_to=date_to,
             )
             if statuses:
                 query = query.where(ApprovalModel.status.in_(statuses))
@@ -83,7 +115,7 @@ class ApprovalRepository:
         limit: int = 20,
     ) -> List[Tuple[ApprovalModel, AttendanceCaseModel]]:
         with SessionLocal() as session:
-            overdue_before = datetime.utcnow() - timedelta(days=overdue_days)
+            overdue_before = utc_now() - timedelta(days=overdue_days)
             rows = session.execute(
                 select(ApprovalModel, AttendanceCaseModel)
                 .join(AttendanceCaseModel, AttendanceCaseModel.id == ApprovalModel.case_id)

@@ -63,3 +63,14 @@ class SkudImportRepository:
                 .order_by(desc(SkudImportModel.created_at))
                 .limit(1)
             ).scalar_one_or_none()
+
+    def get_latest_successful(self) -> Optional[SkudImportModel]:
+        with SessionLocal() as session:
+            return session.execute(
+                select(SkudImportModel)
+                .where(SkudImportModel.status == "completed")
+                .where(SkudImportModel.period_start != "")
+                .where(SkudImportModel.period_end != "")
+                .order_by(desc(SkudImportModel.created_at))
+                .limit(1)
+            ).scalar_one_or_none()

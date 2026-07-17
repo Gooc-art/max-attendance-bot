@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
+from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
 from app.domain.enums import DialogFlow
@@ -198,6 +199,39 @@ class MainMenuResetTests(unittest.TestCase):
         response = router.handle_event(payload)
 
         self.assertIn("У тебя пока нет зарегистрированных случаев", response.outbound.text)
+        self.assertIsNone(dialog_state_store.get("203302812"))
+
+    def test_whoami_resets_active_flow_before_dialog_handler(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router.employee_directory_repository.get_by_user_id = MagicMock(return_value=None)
+        router.google_directory_service.get_by_user_id = MagicMock(return_value=None)
+
+        dialog_state_store.set(
+            "203302812",
+            UserDialogState(
+                flow=DialogFlow.RUNNING_LATE.value,
+                step="choose_reason",
+                data={"manager_user_id": "mgr-1"},
+            ),
+        )
+
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-whoami",
+                payload=BotAction.WHOAMI,
+                user=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertIn("Обо мне:", response.outbound.text)
         self.assertIsNone(dialog_state_store.get("203302812"))
 
 

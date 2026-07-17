@@ -4,13 +4,13 @@ import re
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any, Iterable, List
 from urllib.request import Request, urlopen
 
 from app.config import BASE_DIR
+from app.db.models import utc_now
 from app.integrations.max.client import MaxApiClient
 from app.schemas.max import MaxAttachment
 from app.services.skud_import import SkudImportResult, SkudImportService
@@ -185,7 +185,7 @@ class MaxFileImportService:
         safe_stem = SAFE_FILENAME_RE.sub("_", stem).strip("._") or "attachment"
         safe_suffix = SAFE_FILENAME_RE.sub("", suffix) if suffix else ""
         safe_name = f"{safe_stem}{safe_suffix}"
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
         target = self.upload_dir / f"{timestamp}_{safe_name}"
         target.write_bytes(content)
         return target

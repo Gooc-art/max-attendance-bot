@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import MagicMock, patch
 
+from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
+from app.domain.enums import Role
+from app.domain.role_labels import display_role_name
 from app.integrations.google_sheets.directory import GoogleSheetsEmployeeRecord
 
 
@@ -23,6 +27,7 @@ class _FakeGoogleDirectoryService:
 class WhoAmITests(unittest.TestCase):
     def test_whoami_uses_local_directory_before_google_sheets(self) -> None:
         router = MaxWebhookRouter()
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
         router.google_directory_service = _FakeGoogleDirectoryService(
             GoogleSheetsEmployeeRecord(employee_name="Медленная Google запись", employee_user_id="203302812")
         )
@@ -43,6 +48,7 @@ class WhoAmITests(unittest.TestCase):
 
     def test_whoami_shows_user_id_and_sheet_match(self) -> None:
         router = MaxWebhookRouter()
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
         router.employee_directory_repository.get_by_user_id = lambda user_id: None
         router.google_directory_service = _FakeGoogleDirectoryService(
             GoogleSheetsEmployeeRecord(
@@ -64,9 +70,33 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Найдено в Google Sheets", response.outbound.text)
         self.assertIn("ФИО: Кутлуев Родион Романович\nПодразделение: 0.1. Зам_руководителя\nКабинет: 314", response.outbound.text)
         self.assertIn("Нужный ID для таблицы: 203302812", response.outbound.text)
+        self.assertEqual(response.outbound.buttons[0].action, BotAction.MENU_ADMIN_PANEL)
+        self.assertEqual(response.outbound.buttons[1].button_type, "link")
+        self.assertEqual(response.outbound.buttons[2].action, BotAction.WHOAMI)
+
+    def test_whoami_shows_device_detection_button(self) -> None:
+        router = MaxWebhookRouter()
+        router.employee_directory_repository.get_by_user_id = lambda user_id: None
+        router.google_directory_service = _FakeGoogleDirectoryService(record=None, configured=True)
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(
+            return_value=type("Activity", (), {"device_platform": "android"})()
+        )
+
+        with patch("app.bot.router.get_settings") as get_settings:
+            get_settings.return_value.public_base_url = "https://demo.lhr.life/api/webhooks/max"
+            response = router._whoami("employee", "203302812", "123")
+
+        self.assertIn("Устройство: Android", response.outbound.text)
+        self.assertNotIn("https://demo.lhr.life/device?user_id=203302812", response.outbound.text)
+        self.assertLess(response.outbound.text.index("Устройство: Android"), response.outbound.text.index("Твой ID в MAX"))
+        button = response.outbound.buttons[0]
+        self.assertEqual(button.title, "Определить устройство")
+        self.assertEqual(button.button_type, "link")
+        self.assertEqual(button.url, "https://demo.lhr.life/device?user_id=203302812")
 
     def test_whoami_normalizes_manager_role_from_sheet_label(self) -> None:
         router = MaxWebhookRouter()
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
         router.employee_directory_repository.get_by_user_id = lambda user_id: None
         router.google_directory_service = _FakeGoogleDirectoryService(
             GoogleSheetsEmployeeRecord(
@@ -86,6 +116,7 @@ class WhoAmITests(unittest.TestCase):
 
     def test_whoami_reports_unconfigured_google_sheets_runtime(self) -> None:
         router = MaxWebhookRouter()
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
         router.employee_directory_repository.get_by_user_id = lambda user_id: None
         router.google_directory_service = _FakeGoogleDirectoryService(record=None, configured=False)
 
@@ -94,6 +125,28 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Google Sheets в этой runtime-среде не настроен", response.outbound.text)
         self.assertIn("это не означает, что записи нет", response.outbound.text)
         self.assertNotIn("запись не найдена", response.outbound.text)
+
+    def test_whoami_result_matches_each_bot_role(self) -> None:
+        for role in Role:
+            with self.subTest(role=role.value):
+                router = MaxWebhookRouter()
+                router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
+                router.employee_directory_repository.get_by_user_id = lambda user_id, role=role: GoogleSheetsEmployeeRecord(
+                    employee_name="Тест Пользователь",
+                    employee_user_id=user_id,
+                    role=role.value,
+                    is_active=True,
+                )
+
+                response = router._whoami(role.value, "23325864", "296369649")
+                actions = [button.action for button in response.outbound.buttons]
+
+                self.assertIn(f"Роль в боте: {display_role_name(role.value)}", response.outbound.text)
+                self.assertIn(BotAction.MAIN_MENU, actions)
+                if role == Role.ADMIN:
+                    self.assertIn(BotAction.MENU_ADMIN_PANEL, actions)
+                else:
+                    self.assertNotIn(BotAction.MENU_ADMIN_PANEL, actions)
 
 
 if __name__ == "__main__":

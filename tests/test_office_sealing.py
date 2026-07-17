@@ -271,6 +271,44 @@ class OfficeSealingServiceTests(unittest.TestCase):
         self.assertEqual(self.sent_messages[0]["buttons"][0].action, "office_seal.reminder_ack")
         self.assertEqual(len(journal.rows), 0)
 
+    def test_gender_reminders_remember_sent_message_for_ack_cleanup(self) -> None:
+        cursor = SimpleNamespace(saved=[])
+        cursor.set = lambda **kwargs: cursor.saved.append(kwargs)
+        service, _journal = self._service()
+        service.max_client.send_message = lambda **kwargs: {"mid": "reminder-mid"}
+        service.cursor_store = cursor
+
+        sent = service.send_reminders_for_gender(
+            "female",
+            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
+        )
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(
+            cursor.saved,
+            [
+                {
+                    "conversation_key": "user:1001",
+                    "chat_id": "",
+                    "user_id": "1001",
+                    "message_id": "reminder-mid",
+                }
+            ],
+        )
+
+    def test_gender_reminders_skip_duplicate_user_ids(self) -> None:
+        service, _journal = self._service()
+        employee = service.directory_service.employee
+        service.directory_service.list_employees = lambda: [employee, employee]
+
+        sent = service.send_reminders_for_gender(
+            "female",
+            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
+        )
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(len(self.sent_messages), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

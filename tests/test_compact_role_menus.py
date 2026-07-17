@@ -10,12 +10,10 @@ from app.bot.buttons import (
     hr_reference_buttons,
     main_menu_buttons,
     admin_reports_buttons,
-    admin_settings_buttons,
     admin_skud_buttons,
     admin_structure_buttons,
     admin_workflow_buttons,
     manager_reports_buttons,
-    security_audit_buttons,
     security_skud_buttons,
     substitutions_menu_buttons,
     top_reports_buttons,
@@ -53,6 +51,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Месячный", titles)
         self.assertIn("Квартал", titles)
         self.assertIn("По отделам", titles)
+        self.assertIn("Устройства", titles)
         self.assertNotIn("Сводка", titles)
         self.assertNotIn("Просроченные", titles)
 
@@ -70,7 +69,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Опаздываю", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertIn("СКУД", titles)
-        self.assertIn("Разбор", titles)
+        self.assertNotIn("Разбор", titles)
 
     def test_security_skud_menu_contains_only_import_tools(self) -> None:
         titles = [button.title for button in security_skud_buttons()]
@@ -78,12 +77,6 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("История", titles)
         self.assertNotIn("Ошибки", titles)
         self.assertNotIn("Необработанные", titles)
-
-    def test_security_audit_menu_contains_only_review_tools(self) -> None:
-        titles = [button.title for button in security_audit_buttons()]
-        self.assertIn("Ошибки", titles)
-        self.assertIn("Необработанные", titles)
-        self.assertNotIn("История", titles)
 
     def test_hr_menu_is_sectioned(self) -> None:
         buttons = main_menu_buttons("hr")
@@ -96,9 +89,8 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Справочники", titles)
         self.assertIn("Процессы", titles)
         self.assertIn("Отчеты", titles)
-        self.assertIn("Параметры", titles)
+        self.assertNotIn("Параметры", titles)
         self.assertNotEqual(rows_by_title["Справочники"], rows_by_title["Процессы"])
-        self.assertNotEqual(rows_by_title["Отчеты"], rows_by_title["Параметры"])
 
     def test_top_menu_is_sectioned(self) -> None:
         buttons = main_menu_buttons("top_manager")
@@ -131,6 +123,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Месячный", titles)
         self.assertIn("Квартал", titles)
         self.assertIn("По отделам", titles)
+        self.assertIn("Устройства", titles)
         self.assertNotIn("Согласования", titles)
 
     def test_substitutions_menu_uses_period_and_remove_wording(self) -> None:
@@ -145,7 +138,6 @@ class CompactRoleMenuTests(unittest.TestCase):
         rows_by_title = {button.title: button.row for button in buttons}
 
         self.assertNotEqual(rows_by_title["Структура"], rows_by_title["Процессы"])
-        self.assertNotEqual(rows_by_title["Отчеты"], rows_by_title["Параметры"])
 
     def test_admin_menu_has_no_duplicate_direct_diagnostic_entries(self) -> None:
         titles = [button.title for button in main_menu_buttons("admin")]
@@ -176,7 +168,6 @@ class CompactRoleMenuTests(unittest.TestCase):
             admin_skud_buttons(),
             admin_workflow_buttons(),
             admin_reports_buttons(),
-            admin_settings_buttons(),
         ]:
             titles = [button.title for button in buttons]
             self.assertIn("Назад", titles)

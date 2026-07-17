@@ -161,34 +161,36 @@ class ReportService:
         date_to: str = "",
     ) -> ReportArtifact:
         period_start, period_end = self._resolve_period_range(period, date_from=date_from, date_to=date_to)
+        period_start_text = period_start.isoformat()
+        period_end_text = period_end.isoformat()
         if role in {"admin", "top_manager"}:
-            rows = self.visit_repository.list_all(limit=5000)
-            case_rows = self.case_repository.list_all(limit=5000)
-            approval_rows = self.approval_repository.list_all(limit=5000)
+            rows = self.visit_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+            case_rows = self.case_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+            approval_rows = self.approval_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
         else:
-            rows = self.visit_repository.list_for_manager_user(user_id, limit=500)
-            case_rows = self.case_repository.list_for_manager_user(user_id, limit=500)
-            approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500)
-            departments = self._active_curated_departments(user_id, period_start.isoformat(), period_end.isoformat())
+            rows = self.visit_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            case_rows = self.case_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            departments = self._active_curated_departments(user_id, period_start_text, period_end_text)
             if departments:
-                rows = self._merge_by_id(rows, self.visit_repository.list_for_department_names(departments, limit=500))
-                case_rows = self._merge_by_id(case_rows, self.case_repository.list_for_department_names(departments, limit=500))
+                rows = self._merge_by_id(rows, self.visit_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text))
+                case_rows = self._merge_by_id(case_rows, self.case_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text))
                 approval_rows = self._merge_approval_rows(
                     approval_rows,
-                    self.approval_repository.list_for_department_names(departments, limit=500),
+                    self.approval_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text),
                 )
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
-        if role == "manager" and not rows and not case_rows:
-            latest_import = self.skud_import_repository.get_latest_successful_for_user(user_id)
-            if latest_import is not None:
-                uploaded_start = self._parse_report_date(latest_import.period_start)
-                uploaded_end = self._parse_report_date(latest_import.period_end)
-                if uploaded_start is not None and uploaded_end is not None:
-                    period_start, period_end = uploaded_start, uploaded_end
-                    rows = self.visit_repository.list_all(limit=5000)
-                    case_rows = self.case_repository.list_all(limit=5000)
-                    approval_rows = self.approval_repository.list_all(limit=5000)
-                    filtered = self._filter_cases_by_period(rows, period_start, period_end)
+        if period != "custom" and not rows and not case_rows:
+            imported_period = self._latest_successful_import_period(user_id)
+            if imported_period is not None:
+                period_start, period_end = imported_period
+                period_start_text = period_start.isoformat()
+                period_end_text = period_end.isoformat()
+                rows = self.visit_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                case_rows = self.case_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                approval_rows = self.approval_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                filtered = self._filter_cases_by_period(rows, period_start, period_end)
+        case_rows = self._filter_cases_by_period(case_rows, period_start, period_end)
         entries = self._build_visit_entries(filtered, case_rows, approval_rows)
         if not entries and case_rows:
             entries = self._build_visit_entries_from_cases(case_rows, approval_rows)
@@ -222,23 +224,37 @@ class ReportService:
         date_to: str = "",
     ) -> ReportArtifact:
         period_start, period_end = self._resolve_period_range(period, date_from=date_from, date_to=date_to)
+        period_start_text = period_start.isoformat()
+        period_end_text = period_end.isoformat()
         if role in {"admin", "top_manager"}:
-            rows = self.visit_repository.list_all(limit=5000)
-            case_rows = self.case_repository.list_all(limit=5000)
-            approval_rows = self.approval_repository.list_all(limit=5000)
+            rows = self.visit_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+            case_rows = self.case_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+            approval_rows = self.approval_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
         else:
-            rows = self.visit_repository.list_for_manager_user(user_id, limit=500)
-            case_rows = self.case_repository.list_for_manager_user(user_id, limit=500)
-            approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500)
-            departments = self._active_curated_departments(user_id, period_start.isoformat(), period_end.isoformat())
+            rows = self.visit_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            case_rows = self.case_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            approval_rows = self.approval_repository.list_for_manager_user(user_id, limit=500, date_from=period_start_text, date_to=period_end_text)
+            departments = self._active_curated_departments(user_id, period_start_text, period_end_text)
             if departments:
-                rows = self._merge_by_id(rows, self.visit_repository.list_for_department_names(departments, limit=500))
-                case_rows = self._merge_by_id(case_rows, self.case_repository.list_for_department_names(departments, limit=500))
+                rows = self._merge_by_id(rows, self.visit_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text))
+                case_rows = self._merge_by_id(case_rows, self.case_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text))
                 approval_rows = self._merge_approval_rows(
                     approval_rows,
-                    self.approval_repository.list_for_department_names(departments, limit=500),
+                    self.approval_repository.list_for_department_names(departments, limit=500, date_from=period_start_text, date_to=period_end_text),
                 )
         filtered = self._filter_cases_by_period(rows, period_start, period_end)
+        case_rows = self._filter_cases_by_period(case_rows, period_start, period_end)
+        if period != "custom" and not filtered and not case_rows:
+            imported_period = self._latest_successful_import_period(user_id)
+            if imported_period is not None:
+                period_start, period_end = imported_period
+                period_start_text = period_start.isoformat()
+                period_end_text = period_end.isoformat()
+                rows = self.visit_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                case_rows = self.case_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                approval_rows = self.approval_repository.list_all(limit=5000, date_from=period_start_text, date_to=period_end_text)
+                filtered = self._filter_cases_by_period(rows, period_start, period_end)
+                case_rows = self._filter_cases_by_period(case_rows, period_start, period_end)
         title = "Отчет по подразделениям" if period != "custom" else "Отчет по подразделениям за период"
         entries = self._build_visit_entries(filtered, case_rows, approval_rows)
         if not entries and case_rows:
@@ -288,6 +304,18 @@ class ReportService:
         if period == "quarter":
             return today - timedelta(days=90), today
         return today - timedelta(days=7), today
+
+    def _latest_successful_import_period(self, user_id: str) -> Tuple[date, date] | None:
+        latest_import = self.skud_import_repository.get_latest_successful_for_user(user_id)
+        if latest_import is None:
+            latest_import = getattr(self.skud_import_repository, "get_latest_successful", lambda: None)()
+        if latest_import is None:
+            return None
+        uploaded_start = self._parse_report_date(latest_import.period_start)
+        uploaded_end = self._parse_report_date(latest_import.period_end)
+        if uploaded_start is None or uploaded_end is None:
+            return None
+        return uploaded_start, uploaded_end
 
     def _event_date_in_range(self, value: str, start: date, end: date) -> bool:
         try:

@@ -10,6 +10,14 @@ from app.domain.enums import AttendanceCaseStatus
 
 
 class AttendanceCaseRepository:
+    @staticmethod
+    def _apply_period(query, *, date_from: str = "", date_to: str = ""):
+        if date_from:
+            query = query.where(AttendanceCaseModel.event_date >= date_from)
+        if date_to:
+            query = query.where(AttendanceCaseModel.event_date <= date_to)
+        return query
+
     def create_case(
         self,
         *,
@@ -57,11 +65,11 @@ class AttendanceCaseRepository:
             ).scalars().all()
             return list(rows)
 
-    def list_all(self, limit: int = 5000) -> List[AttendanceCaseModel]:
+    def list_all(self, limit: int = 5000, date_from: str = "", date_to: str = "") -> List[AttendanceCaseModel]:
         with SessionLocal() as session:
+            query = self._apply_period(select(AttendanceCaseModel), date_from=date_from, date_to=date_to)
             rows = session.execute(
-                select(AttendanceCaseModel)
-                .order_by(AttendanceCaseModel.created_at.desc())
+                query.order_by(AttendanceCaseModel.created_at.desc())
                 .limit(limit)
             ).scalars().all()
             return list(rows)
@@ -123,12 +131,21 @@ class AttendanceCaseRepository:
             ).scalars().all()
             return list(rows)
 
-    def list_for_manager_user(self, manager_user_id: str, limit: int = 20) -> List[AttendanceCaseModel]:
+    def list_for_manager_user(
+        self,
+        manager_user_id: str,
+        limit: int = 20,
+        date_from: str = "",
+        date_to: str = "",
+    ) -> List[AttendanceCaseModel]:
         with SessionLocal() as session:
+            query = self._apply_period(
+                select(AttendanceCaseModel).where(AttendanceCaseModel.manager_user_id == manager_user_id),
+                date_from=date_from,
+                date_to=date_to,
+            )
             rows = session.execute(
-                select(AttendanceCaseModel)
-                .where(AttendanceCaseModel.manager_user_id == manager_user_id)
-                .order_by(AttendanceCaseModel.created_at.desc())
+                query.order_by(AttendanceCaseModel.created_at.desc())
                 .limit(limit)
             ).scalars().all()
             return list(rows)
@@ -169,12 +186,18 @@ class AttendanceCaseRepository:
         department_names: List[str],
         statuses: Optional[List[str]] = None,
         limit: int = 500,
+        date_from: str = "",
+        date_to: str = "",
     ) -> List[AttendanceCaseModel]:
         departments = [name for name in {str(item).strip() for item in department_names} if name]
         if not departments:
             return []
         with SessionLocal() as session:
-            query = select(AttendanceCaseModel).where(AttendanceCaseModel.department_name.in_(departments))
+            query = self._apply_period(
+                select(AttendanceCaseModel).where(AttendanceCaseModel.department_name.in_(departments)),
+                date_from=date_from,
+                date_to=date_to,
+            )
             if statuses:
                 query = query.where(AttendanceCaseModel.status.in_(statuses))
             rows = session.execute(

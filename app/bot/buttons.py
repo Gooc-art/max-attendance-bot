@@ -94,7 +94,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
-            btn("Разбор", BotAction.SECURITY_AUDIT, "🗂️", 1),
         ])
     if role == Role.HR.value:
         return readable_rows([
@@ -104,7 +103,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
             btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
             btn("Отчеты", BotAction.HR_REPORTS, "📊", 1),
-            btn("Параметры", BotAction.HR_SETTINGS, "⚙️", 2),
         ])
     if role == Role.ADMIN.value:
         return readable_rows([
@@ -116,7 +114,6 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("СКУД", BotAction.ADMIN_SKUD, "📥", 1),
             btn("Процессы", BotAction.ADMIN_WORKFLOW, "✅", 2),
             btn("Отчеты", BotAction.ADMIN_REPORTS, "📊", 2),
-            btn("Параметры", BotAction.ADMIN_SETTINGS, "⚙️", 3),
         ])
     if role == Role.TOP_MANAGER.value:
         return readable_rows([
@@ -276,6 +273,7 @@ def manager_management_buttons() -> List[MaxOutboundButton]:
         btn("Опоздания", BotAction.MENU_DEPARTMENT_LATES, "⏱️", 0),
         btn("Неявки отдела", BotAction.MENU_DEPARTMENT_ABSENCES, "🚫", 1),
         btn("Сводка", BotAction.MENU_SUMMARY, "📈", 1),
+        btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 3),
     ])
 
@@ -288,6 +286,7 @@ def manager_reports_buttons() -> List[MaxOutboundButton]:
         btn("Недельный", BotAction.REPORT_WEEK, "🗓️", 1),
         btn("Месячный", BotAction.REPORT_MONTH, "📊", 1),
         btn("Квартал", BotAction.REPORT_QUARTER, "📈", 2),
+        btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 3),
     ])
 
@@ -308,21 +307,11 @@ def security_skud_buttons() -> List[MaxOutboundButton]:
     ])
 
 
-def security_audit_buttons() -> List[MaxOutboundButton]:
-    return readable_rows([
-        btn("Ошибки", BotAction.MENU_MATCH_ERRORS, "⚠️", 0),
-        btn("Необработанные", BotAction.MENU_UNPROCESSED, "🗂️", 1),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
-    ])
-
-
 def hr_reference_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Сотрудники", BotAction.MENU_STAFF, "👥", 0),
         btn("Подразделения", BotAction.MENU_DEPARTMENTS, "🏢", 0),
-        btn("Графики", BotAction.MENU_SCHEDULES, "🗓️", 1),
-        btn("Исключения", BotAction.MENU_EXCEPTIONS, "🚪", 1),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
+        btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])
 
 
@@ -342,19 +331,13 @@ def hr_reports_buttons() -> List[MaxOutboundButton]:
     ])
 
 
-def hr_settings_buttons() -> List[MaxOutboundButton]:
-    return readable_rows([
-        btn("Настройки", BotAction.MENU_SETTINGS, "⚙️", 0),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
-    ])
-
-
 def top_summary_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Сводка", BotAction.MENU_SUMMARY, "📈", 0),
         btn("Неявки отделов", BotAction.MENU_DEPARTMENT_ABSENCES, "🚫", 1),
         btn("Просроченные", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 1),
         btn("По отделам", BotAction.MENU_DIVISION_REPORTS, "🏢", 2),
+        btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
         btn("Входы", BotAction.MENU_BOT_ACTIVITY, "🚪", 3),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 4),
     ])
@@ -367,6 +350,7 @@ def top_reports_buttons() -> List[MaxOutboundButton]:
         btn("Недельный", BotAction.REPORT_WEEK, "🗓️", 1),
         btn("Месячный", BotAction.REPORT_MONTH, "📊", 1),
         btn("Квартал", BotAction.REPORT_QUARTER, "📈", 2),
+        btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 3),
     ])
 
@@ -440,9 +424,7 @@ def admin_structure_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Сотрудники", BotAction.MENU_STAFF, "👥", 0),
         btn("Подразделения", BotAction.MENU_DEPARTMENTS, "🏢", 0),
-        btn("Графики", BotAction.MENU_SCHEDULES, "🗓️", 1),
-        btn("Исключения", BotAction.MENU_EXCEPTIONS, "🚪", 1),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
+        btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])
 
 
@@ -450,9 +432,7 @@ def admin_skud_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Импорт СКУД", BotAction.MENU_SECURITY_IMPORT, "📥", 0),
         btn("История", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
-        btn("Ошибки", BotAction.MENU_MATCH_ERRORS, "⚠️", 1),
-        btn("Необработанные", BotAction.MENU_UNPROCESSED, "🗂️", 1),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
+        btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])
 
 
@@ -473,11 +453,4 @@ def admin_reports_buttons() -> List[MaxOutboundButton]:
         btn("Отчеты", BotAction.MENU_REPORTS, "📊", 0),
         btn("По отделам", BotAction.MENU_DIVISION_REPORTS, "🏢", 1),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 2),
-    ])
-
-
-def admin_settings_buttons() -> List[MaxOutboundButton]:
-    return readable_rows([
-        btn("Настройки", BotAction.MENU_SETTINGS, "⚙️", 0),
-        btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])

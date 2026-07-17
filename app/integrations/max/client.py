@@ -66,7 +66,10 @@ class MaxApiClient:
                 text = button.title
                 if button.emoji:
                     text = f"{button.emoji} {text}"
-                row_buttons.append(MaxKeyboardButton(text=text, payload=button.action))
+                if button.button_type == "link":
+                    row_buttons.append(MaxKeyboardButton(type="link", text=text, url=button.url or button.action))
+                else:
+                    row_buttons.append(MaxKeyboardButton(text=text, payload=button.action))
             keyboard_buttons.append(row_buttons)
         return [
             MaxInlineKeyboardAttachment(

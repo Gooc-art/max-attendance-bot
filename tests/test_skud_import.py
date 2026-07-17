@@ -257,6 +257,61 @@ class SkudImportServiceTests(unittest.TestCase):
         self.assertEqual(day_repo.rows[0]["arrival_status"], "late")
         self.assertEqual(day_repo.rows[0]["arrival_delta_minutes"], 1)
 
+    def test_detailed_turnstile_report_imports_entry_and_exit(self) -> None:
+        access_report = (
+            "Подробный отчёт: c 01.06.2026 по 26.06.2026\n"
+            ";;;;;;;;;;\n"
+            "Фирма;Подразделение;Сотрудник;Должность;Таб. №;Дата и время;Направление;Дверь;Комментарий;Расчет ведется;Зона доступа\n"
+            "ФНС;г. Салехард;Иванова Анна Сергеевна;;;01.06.2026 8:31:00;Вход;Турникет;...;Да;2\n"
+            "ФНС;г. Салехард;Иванова Анна Сергеевна;;;01.06.2026 17:20:00;Выход;Турникет;...;Нет;1\n"
+        ).encode("utf-8")
+
+        day_repo = _FakeAttendanceDayRecordRepository()
+
+        with patch("app.services.skud_import.AttendanceCaseRepository", _FakeAttendanceCaseRepository), patch(
+            "app.services.skud_import.ApprovalRepository", _FakeApprovalRepository
+        ), patch(
+            "app.services.skud_import.EmployeeDirectoryRepository", _FakeEmployeeDirectoryRepository
+        ), patch(
+            "app.services.skud_import.SkudImportRepository", _FakeSkudImportRepository
+        ), patch(
+            "app.services.skud_import.AttendanceDayRecordRepository", lambda: day_repo
+        ), patch(
+            "app.services.skud_import.GoogleSheetsDirectoryService.from_settings",
+            return_value=SimpleNamespace(
+                get_by_employee_name=lambda employee_name: SimpleNamespace(
+                    employee_name=employee_name,
+                    employee_user_id="max_010",
+                    manager_name="Петров Петр Сергеевич",
+                    manager_user_id="max_020",
+                    department_name="Отдел продаж",
+                    schedule_name="Пятидневка - Девушки 08:30-12:30 / 14:00-17:15",
+                    schedule_id="ГР003",
+                    role="employee",
+                    is_active=True,
+                )
+            ),
+        ), patch(
+            "app.services.skud_import.GoogleSheetsScheduleService.from_settings",
+            return_value=_FakeGoogleSheetsScheduleService(),
+        ), patch(
+            "app.services.skud_import.SubstitutionRepository",
+            return_value=_FakeSubstitutionRepository(),
+        ):
+            service = SkudImportService()
+            result = service.import_csv(filename="report.txt", content=access_report, created_by_user_id="sec_001")
+
+        self.assertEqual(result.error_rows, 0)
+        self.assertEqual(result.total_rows, 2)
+        self.assertEqual(result.unique_employees, 1)
+        self.assertEqual(result.period_start, "2026-06-01")
+        self.assertEqual(result.period_end, "2026-06-01")
+        self.assertEqual(len(day_repo.rows), 1)
+        record = day_repo.rows[0]
+        self.assertEqual(record["first_entry_time"], "08:31")
+        self.assertEqual(record["last_exit_time"], "17:20")
+        self.assertEqual(record["arrival_status"], "late")
+
     def test_access_report_import_tracks_early_arrival_and_late_departure(self) -> None:
         access_report = (
             "Отчет по проходам\n"

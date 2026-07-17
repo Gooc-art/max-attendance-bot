@@ -82,6 +82,7 @@ class BotAction:
     REPORT_MONTH = "reports.month"
     REPORT_QUARTER = "reports.quarter"
     REPORT_CUSTOM = "reports.custom"
+    REPORT_DEVICES = "reports.devices"
 
     APPROVALS_NEW = "approvals.new"
     APPROVALS_IN_PROGRESS = "approvals.in_progress"

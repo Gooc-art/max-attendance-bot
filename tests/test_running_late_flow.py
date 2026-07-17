@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -214,7 +215,7 @@ class RunningLateFlowTests(unittest.TestCase):
                     employee_name="Комаровский Андрей Петрович",
                     employee_user_id="6393482",
                     department_name="1-ОКПКиПиБ",
-                    role="top_manager",
+                    role="manager",
                     is_active=True,
                 ),
             ]
@@ -288,7 +289,7 @@ class RunningLateFlowTests(unittest.TestCase):
                     employee_user_id="23325864",
                     department_name="0. Руководство",
                     manager_name="Комаровский Андрей Петрович",
-                    manager_user_id="12771658",
+                    manager_user_id="6393482",
                     schedule_name="Пятидневка",
                     schedule_id="GR004",
                     role="employee",
@@ -305,7 +306,7 @@ class RunningLateFlowTests(unittest.TestCase):
                     employee_name="Комаровский Андрей Петрович",
                     employee_user_id="6393482",
                     department_name="1-ОКПКиПиБ",
-                    role="top_manager",
+                    role="manager",
                     is_active=True,
                 ),
             ]
@@ -355,6 +356,8 @@ class RunningLateFlowTests(unittest.TestCase):
 
     def test_full_flow_creates_late_notice_case(self) -> None:
         router = self._build_router()
+        sent = Event()
+        router.max_client.send_message.side_effect = lambda **kwargs: sent.set() or {"status": "ok"}
         state = UserDialogState(
             flow=DialogFlow.RUNNING_LATE.value,
             step="choose_manager",
@@ -416,6 +419,7 @@ class RunningLateFlowTests(unittest.TestCase):
                 "status": ApprovalStatus.PENDING.value,
             },
         )
+        self.assertTrue(sent.wait(1))
         router.max_client.send_message.assert_called_once()
         notification = router.max_client.send_message.call_args.kwargs["text"]
         self.assertIn("Опаздывает с: 08:55", notification)

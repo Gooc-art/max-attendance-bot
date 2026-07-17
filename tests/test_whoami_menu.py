@@ -87,7 +87,7 @@ class WhoAmITests(unittest.TestCase):
             response = router._whoami("employee", "203302812", "123")
 
         self.assertIn("Устройство: Android", response.outbound.text)
-        self.assertNotIn("https://demo.lhr.life/device?user_id=203302812", response.outbound.text)
+        self.assertIn("Определить устройство: https://demo.lhr.life/device?user_id=203302812", response.outbound.text)
         self.assertLess(response.outbound.text.index("Устройство: Android"), response.outbound.text.index("Твой ID в MAX"))
         button = response.outbound.buttons[0]
         self.assertEqual(button.title, "Определить устройство")

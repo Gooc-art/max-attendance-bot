@@ -2589,7 +2589,10 @@ class MaxWebhookRouter:
             "Нужный ID для таблицы: {needed_id}"
         ).format(needed_id=needed_id)
         device_platform = self._display_device_platform(getattr(activity_record, "device_platform", ""))
+        device_link = self._device_detection_url(user_id)
         device_text = f"Устройство: {device_platform}"
+        if device_link:
+            device_text += f"\nОпределить устройство: {device_link}"
         buttons = [
             self._device_detection_button(user_id),
             MaxOutboundButton(title="Обновить", action=BotAction.WHOAMI),

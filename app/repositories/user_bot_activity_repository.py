@@ -105,6 +105,7 @@ class UserBotActivityRepository:
             rows = session.execute(
                 select(UserBotActivityModel.device_platform, func.count())
                 .select_from(UserBotActivityModel)
+                .where(UserBotActivityModel.interaction_count > 0)
                 .group_by(UserBotActivityModel.device_platform)
             ).all()
         counts = {"android": 0, "ios": 0, "unknown": 0}

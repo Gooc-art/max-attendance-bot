@@ -46,9 +46,13 @@ class UserBotActivityRepositoryTests(unittest.TestCase):
         ios_user = f"test-device-ios-{uuid4().hex}"
         unknown_user = f"test-device-unknown-{uuid4().hex}"
 
+        repo.touch(user_id=android_user, display_name="Android", role="employee", started=False)
+        repo.touch(user_id=ios_user, display_name="iOS", role="employee", started=False)
+        repo.touch(user_id=unknown_user, display_name="Unknown", role="employee", started=False)
         repo.set_device_platform(user_id=android_user, device_platform="android")
         repo.set_device_platform(user_id=ios_user, device_platform="ios")
         repo.set_device_platform(user_id=unknown_user, device_platform="desktop")
+        repo.set_device_platform(user_id=f"test-device-api-only-{uuid4().hex}", device_platform="ios")
 
         counts = repo.count_by_device_platform()
 

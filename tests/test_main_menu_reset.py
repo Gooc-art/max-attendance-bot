@@ -15,6 +15,26 @@ class MainMenuResetTests(unittest.TestCase):
     def tearDown(self) -> None:
         dialog_state_store.reset("203302812")
 
+    def _router_for_role(self, role: str) -> MaxWebhookRouter:
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value=role)
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+        return router
+
+    def _message(self, text: str) -> MaxUpdate:
+        return MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=203302812),
+                timestamp=1,
+                body=MaxMessageBody(mid="m-text-fallback", seq=1, text=text),
+                sender=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
     def test_main_menu_resets_active_flow_before_any_dialog_handler(self) -> None:
         router = MaxWebhookRouter()
         router.max_client = MagicMock()
@@ -255,6 +275,52 @@ class MainMenuResetTests(unittest.TestCase):
 
         self.assertIn("Обо мне:", response.outbound.text)
         self.assertIsNone(dialog_state_store.get("203302812"))
+
+    def test_top_manager_text_analytics_opens_top_summary(self) -> None:
+        response = self._router_for_role("top_manager").handle_event(self._message("Аналитика"))
+
+        self.assertIn("Аналитика верхнего уровня", response.outbound.text)
+
+    def test_top_manager_text_reports_opens_top_reports(self) -> None:
+        response = self._router_for_role("top_manager").handle_event(self._message("Отчеты"))
+
+        self.assertIn("Отчеты верхнего уровня", response.outbound.text)
+
+    def test_role_section_text_fallbacks_open_expected_menus(self) -> None:
+        cases = [
+            ("manager", "Команда", "Раздел команды"),
+            ("security", "СКУД", "СКУД: загрузка"),
+            ("hr", "Справочники", "Справочники HR"),
+            ("hr", "Процессы", "Процессы HR"),
+            ("admin", "Личное", "Личный раздел администратора"),
+            ("admin", "Структура", "Структура и справочники"),
+            ("admin", "СКУД", "Импорт СКУД"),
+            ("admin", "Процессы", "Согласования"),
+            ("employee", "Руководство", "руководства"),
+        ]
+        for role, text, expected in cases:
+            with self.subTest(role=role, text=text):
+                response = self._router_for_role(role).handle_event(self._message(text))
+                self.assertIn(expected, response.outbound.text)
+
+    def test_unknown_callback_refreshes_stale_menu(self) -> None:
+        router = self._router_for_role("employee")
+        payload = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-stale",
+                payload="unknown.action",
+                user=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
+        response = router.handle_event(payload)
+
+        self.assertIn("Главное меню обновлено", response.outbound.text)
+        self.assertTrue(response.outbound.buttons)
 
 
 if __name__ == "__main__":

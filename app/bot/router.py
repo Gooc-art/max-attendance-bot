@@ -427,12 +427,12 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.EMPLOYEE_MANAGER:
+        if action == BotAction.EMPLOYEE_MANAGER or (user_text == "Руководство" and role == Role.EMPLOYEE.value):
             response = self._employee_manager_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.MANAGER_MANAGEMENT:
+        if action == BotAction.MANAGER_MANAGEMENT or (user_text == "Команда" and role == Role.MANAGER.value):
             response = self._manager_management_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -447,17 +447,17 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SECURITY_SKUD:
+        if action == BotAction.SECURITY_SKUD or (user_text == "СКУД" and role in {Role.SECURITY.value, Role.TOP_MANAGER.value}):
             response = self._security_skud_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.HR_REFERENCE:
+        if action == BotAction.HR_REFERENCE or (user_text == "Справочники" and role == Role.HR.value):
             response = self._hr_reference_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.HR_WORKFLOW:
+        if action == BotAction.HR_WORKFLOW or (user_text == "Процессы" and role == Role.HR.value):
             response = self._hr_workflow_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -467,7 +467,7 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.TOP_SUMMARY:
+        if action == BotAction.TOP_SUMMARY or (user_text == "Аналитика" and role == Role.TOP_MANAGER.value):
             response = self._top_summary_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -581,6 +581,21 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if user_text == "Отчеты" and role == Role.TOP_MANAGER.value:
+            response = self._top_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if user_text == "Отчеты" and role == Role.ADMIN.value:
+            response = self._admin_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if user_text == "Отчеты" and role == Role.HR.value:
+            response = self._hr_reports_menu(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action == BotAction.MENU_REPORTS or user_text == "Отчеты":
             response = self._reports_menu(role)
             self._send_outbound(payload, response.outbound)
@@ -641,22 +656,22 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_PERSONAL:
+        if action == BotAction.ADMIN_PERSONAL or (user_text == "Личное" and role == Role.ADMIN.value):
             response = self._admin_personal_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_STRUCTURE:
+        if action == BotAction.ADMIN_STRUCTURE or (user_text == "Структура" and role == Role.ADMIN.value):
             response = self._admin_structure_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_SKUD:
+        if action == BotAction.ADMIN_SKUD or (user_text == "СКУД" and role == Role.ADMIN.value):
             response = self._admin_skud_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.ADMIN_WORKFLOW:
+        if action == BotAction.ADMIN_WORKFLOW or (user_text == "Процессы" and role == Role.ADMIN.value):
             response = self._admin_workflow_menu(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -867,6 +882,12 @@ class MaxWebhookRouter:
                 )
                 self._send_outbound(payload, response.outbound)
                 return response
+
+        if payload.update_type == "message_callback" and action:
+            dialog_state_store.reset(event["user_id"])
+            response = self._menu_response(role, "Главное меню обновлено.", event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
 
         menu = get_menu_for_role(role)
         message = MaxOutboundMessage(

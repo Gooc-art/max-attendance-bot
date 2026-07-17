@@ -91,6 +91,30 @@ class RoleResolverTests(unittest.TestCase):
         self.assertEqual(resolver.resolve_role("max_003", "private"), "admin")
         self.assertEqual(resolver.google_directory_service.refresh_calls, [False])
 
+    def test_google_sheet_role_takes_priority_over_stale_local_directory(self) -> None:
+        resolver = RoleResolver(
+            google_directory_service=_FakeGoogleDirectoryService(
+                GoogleSheetsEmployeeRecord(
+                    employee_user_id="max_004",
+                    role="top_manager",
+                    is_active=True,
+                )
+            ),
+            role_override_repository=_FakeRoleOverrideRepository(None),
+            employee_directory_repository=_FakeEmployeeDirectoryRepository("manager"),
+        )
+
+        self.assertEqual(resolver.resolve_role("max_004", "private"), "top_manager")
+
+    def test_local_directory_is_used_when_google_sheet_has_no_active_record(self) -> None:
+        resolver = RoleResolver(
+            google_directory_service=_FakeGoogleDirectoryService(None),
+            role_override_repository=_FakeRoleOverrideRepository(None),
+            employee_directory_repository=_FakeEmployeeDirectoryRepository("manager"),
+        )
+
+        self.assertEqual(resolver.resolve_role("max_005", "private"), "manager")
+
 
 if __name__ == "__main__":
     unittest.main()

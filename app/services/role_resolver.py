@@ -50,6 +50,13 @@ class RoleResolver:
             logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
             return resolved_role
         source = "default"
+        sheet_record = self.google_directory_service.get_by_user_id(user_id)
+        if sheet_record is not None and sheet_record.is_active and sheet_record.role:
+            source = "google_sheets"
+            resolved_role = self._normalize_role(sheet_record.role)
+            self._remember_role(user_id, resolved_role)
+            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
+            return resolved_role
         record = self.employee_directory_repository.get_by_user_id(user_id)
         if record is not None and record.is_active:
             if record.role:
@@ -62,13 +69,6 @@ class RoleResolver:
             self._remember_role(user_id, "employee")
             logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, "employee", source, (perf_counter() - started_at) * 1000)
             return "employee"
-        sheet_record = self.google_directory_service.get_by_user_id(user_id)
-        if sheet_record is not None and sheet_record.is_active and sheet_record.role:
-            source = "google_sheets"
-            resolved_role = self._normalize_role(sheet_record.role)
-            self._remember_role(user_id, resolved_role)
-            logger.info("Role resolved user_id=%s chat_id=%s role=%s source=%s elapsed_ms=%.1f", user_id, chat_id, resolved_role, source, (perf_counter() - started_at) * 1000)
-            return resolved_role
         if user_id.startswith(self.SECURITY_PREFIX):
             source = "security_prefix"
             self._remember_role(user_id, "security")

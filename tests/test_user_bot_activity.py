@@ -43,12 +43,12 @@ class UserBotActivityRepositoryTests(unittest.TestCase):
 
     def test_count_by_device_platform_groups_unknown_values(self) -> None:
         repo = UserBotActivityRepository()
-        android_user = f"test-device-android-{uuid4().hex}"
-        ios_user = f"test-device-ios-{uuid4().hex}"
-        unknown_user = f"test-device-unknown-{uuid4().hex}"
+        suffix = uuid4().hex
+        android_user = f"real-device-android-{suffix}"
+        ios_user = f"real-device-ios-{suffix}"
+        unknown_user = f"real-device-unknown-{suffix}"
 
         repo.touch(user_id=android_user, display_name="Android", role="employee", started=False)
-        repo.touch(user_id=ios_user, display_name="iOS", role="employee", started=False)
         repo.touch(user_id=unknown_user, display_name="Unknown", role="employee", started=False)
         repo.set_device_platform(user_id=android_user, device_platform="android")
         repo.set_device_platform(user_id=ios_user, device_platform="ios")

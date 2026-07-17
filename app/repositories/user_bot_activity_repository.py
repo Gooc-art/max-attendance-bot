@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.db.base import SessionLocal
 from app.db.models import UserBotActivityModel, utc_now
@@ -105,7 +105,15 @@ class UserBotActivityRepository:
             rows = session.execute(
                 select(UserBotActivityModel.device_platform, func.count())
                 .select_from(UserBotActivityModel)
-                .where(UserBotActivityModel.interaction_count > 0)
+                .where(
+                    and_(
+                        UserBotActivityModel.user_id.not_like("test-%"),
+                        or_(
+                            UserBotActivityModel.interaction_count > 0,
+                            UserBotActivityModel.device_platform.in_(("android", "ios")),
+                        ),
+                    )
+                )
                 .group_by(UserBotActivityModel.device_platform)
             ).all()
         counts = {"android": 0, "ios": 0, "unknown": 0}

@@ -44,6 +44,8 @@ def readable_rows(
                     action=original.action,
                     emoji=original.emoji,
                     row=current_row,
+                    button_type=original.button_type,
+                    url=original.url,
                 )
             )
             current_row += 1
@@ -62,6 +64,8 @@ def readable_rows(
                 action=original.action,
                 emoji=original.emoji,
                 row=current_row,
+                button_type=original.button_type,
+                url=original.url,
             )
         )
         row_width += title_width
@@ -86,6 +90,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
+            btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
         ])
     if role == Role.SECURITY.value:
@@ -122,6 +127,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
             btn("Отчеты", BotAction.TOP_REPORTS, "📊", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 2),
+            btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
         ])
     return readable_rows([

@@ -39,6 +39,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Команда", titles)
         self.assertIn("Согласования", titles)
         self.assertNotIn("Отчеты", titles)
+        self.assertIn("Устройства", titles)
         self.assertIn("Замещения", titles)
         self.assertNotIn("Старт", titles)
         self.assertNotIn("Процессы", titles)
@@ -102,6 +103,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertIn("Согласования", titles)
         self.assertIn("Отчеты", titles)
         self.assertIn("СКУД", titles)
+        self.assertIn("Устройства", titles)
         self.assertIn("Замещения", titles)
         self.assertNotIn("Процессы", titles)
 

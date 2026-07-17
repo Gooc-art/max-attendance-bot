@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from app.integrations.max.client import INVISIBLE_MESSAGE_TEXT, MaxApiClient
 from app.bot.buttons import attendance_reason_buttons, reports_menu_buttons, running_late_reason_buttons
+from app.bot.buttons import readable_rows
 from app.schemas.max import MaxOutboundButton
 
 
@@ -251,6 +252,19 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertEqual(button.type, "link")
         self.assertEqual(button.url, "https://demo.lhr.life/device?user_id=1")
         self.assertIsNone(button.payload)
+
+    def test_readable_rows_preserves_link_button_fields(self) -> None:
+        buttons = readable_rows([
+            MaxOutboundButton(
+                title="Определить устройство",
+                action="https://demo.lhr.life/device?user_id=1",
+                button_type="link",
+                url="https://demo.lhr.life/device?user_id=1",
+            )
+        ])
+
+        self.assertEqual(buttons[0].button_type, "link")
+        self.assertEqual(buttons[0].url, "https://demo.lhr.life/device?user_id=1")
 
     def test_send_file_message_requests_upload_and_sends_file_attachment(self) -> None:
         client = MaxApiClient(

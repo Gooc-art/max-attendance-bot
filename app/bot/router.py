@@ -295,13 +295,13 @@ class MaxWebhookRouter:
 
         if self._is_main_menu_action(action, user_text):
             dialog_state_store.reset(event["user_id"])
-            response = self._menu_response(role, "Главное меню готово.")
+            response = self._menu_response(role, "Главное меню готово.", event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
         if active_state and (action == BotAction.CANCEL or user_text.lower() == "отмена"):
             dialog_state_store.reset(event["user_id"])
-            response = self._menu_response(role, "Действие отменено.")
+            response = self._menu_response(role, "Действие отменено.", event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -413,7 +413,7 @@ class MaxWebhookRouter:
             self.user_role_override_repository.set_role(event["user_id"], target_role)
             self.role_resolver.clear_user_cache(event["user_id"])
             self._directory_user_cache.pop(event["user_id"], None)
-            response = self._menu_response(target_role, "Роль переключена на: {0}".format(display_role_name(target_role)))
+            response = self._menu_response(target_role, "Роль переключена на: {0}".format(display_role_name(target_role)), event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -871,7 +871,7 @@ class MaxWebhookRouter:
         menu = get_menu_for_role(role)
         message = MaxOutboundMessage(
             text="Не понял команду. Открой главное меню и выбери действие кнопкой.",
-            buttons=main_menu_buttons(role),
+            buttons=self._main_menu_buttons(role, event["user_id"]),
         )
         self._send_outbound(payload, message)
         return MaxWebhookResponse(ok=True, role=role, menu=menu, outbound=message)
@@ -1027,7 +1027,7 @@ class MaxWebhookRouter:
             return "-"
         return value.strftime("%Y-%m-%d %H:%M")
 
-    def _menu_response(self, role: str, text: str) -> MaxWebhookResponse:
+    def _menu_response(self, role: str, text: str, user_id: str = "") -> MaxWebhookResponse:
         menu = get_menu_for_role(role)
         prefix = ""
         if role == Role.ADMIN.value:
@@ -1036,9 +1036,31 @@ class MaxWebhookRouter:
             ok=True,
             role=role,
             menu=menu,
-            outbound=MaxOutboundMessage(text=prefix + text, buttons=main_menu_buttons(role)),
+            outbound=MaxOutboundMessage(text=prefix + text, buttons=self._main_menu_buttons(role, user_id)),
             active_flow=None,
         )
+
+    def _main_menu_buttons(self, role: str, user_id: str = "") -> list[MaxOutboundButton]:
+        buttons = list(main_menu_buttons(role))
+        device_link = self._device_detection_url(user_id) if user_id else ""
+        if not device_link:
+            return buttons
+        shifted: list[MaxOutboundButton] = []
+        for button in buttons:
+            shifted.append(button.model_copy(update={"row": button.row + 1 if button.row >= 1 else button.row}))
+        insert_at = 1 if shifted and shifted[0].title == "Обо мне" else 0
+        shifted.insert(
+            insert_at,
+            MaxOutboundButton(
+                title="Определить устройство",
+                action=device_link,
+                emoji="📱",
+                row=1,
+                button_type="link",
+                url=device_link,
+            ),
+        )
+        return shifted
 
     def _forbidden_action_response(self, role: str, action: str) -> MaxWebhookResponse | None:
         allowed_roles = ACTION_ALLOWED_ROLES.get(action)
@@ -2563,23 +2585,11 @@ class MaxWebhookRouter:
             "Нужный ID для таблицы: {needed_id}"
         ).format(needed_id=needed_id)
         device_platform = self._display_device_platform(getattr(activity_record, "device_platform", ""))
-        device_link = self._device_detection_url(user_id)
         device_text = f"Устройство: {device_platform}"
-        buttons = []
-        if device_link:
-            buttons.append(
-                MaxOutboundButton(
-                    title="Определить устройство",
-                    action=device_link,
-                    row=0,
-                    button_type="link",
-                    url=device_link,
-                )
-            )
-        buttons.extend([
+        buttons = [
             MaxOutboundButton(title="Обновить", action=BotAction.WHOAMI),
             MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-        ])
+        ]
         if role == Role.ADMIN.value:
             buttons.insert(0, MaxOutboundButton(title="Админ-панель", action=BotAction.MENU_ADMIN_PANEL))
 
@@ -3112,7 +3122,7 @@ class MaxWebhookRouter:
             return self._approval_card(role, user_id, approval_id)
         if action == BotAction.MAIN_MENU:
             dialog_state_store.reset(user_id)
-            return self._menu_response(role, "Главное меню готово.")
+            return self._menu_response(role, "Главное меню готово.", user_id)
 
         comment = str(user_text or "").strip()
         if not comment:
@@ -3538,12 +3548,12 @@ class MaxWebhookRouter:
             return BotAction.ADMIN_PERSONAL
         return BotAction.MAIN_MENU
 
-    def _running_late_back_response(self, role: str) -> MaxWebhookResponse:
+    def _running_late_back_response(self, role: str, user_id: str = "") -> MaxWebhookResponse:
         if role == Role.EMPLOYEE.value:
             return self._employee_reason_menu(role)
         if role == Role.ADMIN.value:
             return self._admin_personal_menu(role)
-        return self._menu_response(role, "Главное меню готово.")
+        return self._menu_response(role, "Главное меню готово.", user_id)
 
     def _handle_attendance_reason_flow(
         self,
@@ -3637,7 +3647,7 @@ class MaxWebhookRouter:
         if action == BotAction.BACK or user_text == "Назад":
             if state.step == "choose_manager":
                 dialog_state_store.reset(user_id)
-                return self._running_late_back_response(role)
+                return self._running_late_back_response(role, user_id)
             return self._start_forgot_chip_flow(role, user_id)
 
         if state.step == "choose_manager" and action.startswith(BotAction.FORGOT_CHIP_MANAGER_PREFIX):
@@ -3765,7 +3775,7 @@ class MaxWebhookRouter:
         if action == BotAction.BACK or user_text == "Назад":
             if state.step == "choose_manager":
                 dialog_state_store.reset(user_id)
-                return self._running_late_back_response(role)
+                return self._running_late_back_response(role, user_id)
             if state.step == "choose_date":
                 return self._start_running_late_flow(role, user_id)
             if state.step == "choose_reason":

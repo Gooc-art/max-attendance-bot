@@ -55,7 +55,6 @@ cat > "$SYSTEMD_USER_DIR/skud-public-url-tunnel.service" <<EOF
 Description=SKUD public URL tunnel for web pages
 After=network-online.target skud-backend.service
 Wants=network-online.target
-Requires=skud-backend.service
 
 [Service]
 Type=simple

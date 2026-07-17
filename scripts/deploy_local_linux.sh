@@ -44,13 +44,17 @@ bash scripts/install_systemd_user_linux.sh
 
 systemctl --user restart skud-backend.service
 systemctl --user stop skud-tunnel.service || true
+rm -f run/public_url_tunnel.url
 systemctl --user restart skud-public-url-tunnel.service
 systemctl --user restart skud-polling.service
 
 sleep 3
-for _ in $(seq 1 12); do
+for _ in $(seq 1 20); do
   if [ -s run/public_url_tunnel.url ]; then
-    break
+    PUBLIC_URL="$(cat run/public_url_tunnel.url)"
+    if curl -fsS "$PUBLIC_URL/api/health" >/dev/null; then
+      break
+    fi
   fi
   sleep 2
 done

@@ -5,6 +5,7 @@ from uuid import uuid4
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.repositories.user_bot_activity_repository import UserBotActivityRepository
 from app.schemas.max import MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
@@ -159,6 +160,21 @@ class TopBotActivityRouteTests(unittest.TestCase):
         self.assertIn("Неизвестно: 10", response.outbound.text)
         self.assertIn("Определили устройство: 11", response.outbound.text)
         self.assertIn("Всего пользователей: 21", response.outbound.text)
+
+    def test_summary_screen_keeps_device_report_button(self) -> None:
+        router = MaxWebhookRouter()
+        router._manager_approval_rows = MagicMock(return_value=[])
+        router._manager_case_rows = MagicMock(return_value=[])
+
+        manager_response = router._summary_menu("manager", "1")
+        top_response = router._summary_menu("top_manager", "1")
+
+        manager_buttons = {button.title: button.action for button in manager_response.outbound.buttons}
+        top_buttons = {button.title: button.action for button in top_response.outbound.buttons}
+        self.assertEqual(manager_buttons["Устройства"], BotAction.REPORT_DEVICES)
+        self.assertEqual(manager_buttons["Назад"], BotAction.MANAGER_MANAGEMENT)
+        self.assertEqual(top_buttons["Устройства"], BotAction.REPORT_DEVICES)
+        self.assertEqual(top_buttons["Назад"], BotAction.TOP_SUMMARY)
 
 
 if __name__ == "__main__":

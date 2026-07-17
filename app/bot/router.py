@@ -1685,6 +1685,7 @@ class MaxWebhookRouter:
             "Ожидают согласования: {approvals}\n"
             "Активных случаев по твоим сотрудникам: {cases}"
         ).format(approvals=approvals, cases=cases)
+        back_action = BotAction.TOP_SUMMARY if role == Role.TOP_MANAGER.value else BotAction.MANAGER_MANAGEMENT
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1694,7 +1695,8 @@ class MaxWebhookRouter:
                 buttons=[
                     MaxOutboundButton(title="Просроченные", action=BotAction.MENU_OVERDUE_APPROVALS),
                     MaxOutboundButton(title="По отделам", action=BotAction.MENU_DIVISION_REPORTS),
-                    MaxOutboundButton(title="Назад", action=BotAction.MANAGER_MANAGEMENT),
+                    MaxOutboundButton(title="Устройства", action=BotAction.REPORT_DEVICES),
+                    MaxOutboundButton(title="Назад", action=back_action),
                 ],
             ),
             active_flow=None,

@@ -50,6 +50,25 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
+cat > "$SYSTEMD_USER_DIR/skud-public-url-tunnel.service" <<EOF
+[Unit]
+Description=SKUD public URL tunnel for web pages
+After=network-online.target skud-backend.service
+Wants=network-online.target
+Requires=skud-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT_DIR
+ExecStart=$ROOT_DIR/scripts/run_public_url_tunnel.sh
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
+EOF
+
 cat > "$SYSTEMD_USER_DIR/skud-polling.service" <<EOF
 [Unit]
 Description=SKUD MAX bot polling
@@ -133,7 +152,7 @@ WantedBy=timers.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable skud-backend.service skud-polling.service
+systemctl --user enable skud-backend.service skud-polling.service skud-public-url-tunnel.service
 systemctl --user disable skud-tunnel.service || true
 systemctl --user enable --now skud-office-seal-reminder-female.timer skud-office-seal-reminder-male.timer
 systemctl --user enable --now skud-directory-sync.timer

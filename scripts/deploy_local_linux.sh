@@ -44,11 +44,12 @@ bash scripts/install_systemd_user_linux.sh
 
 systemctl --user restart skud-backend.service
 systemctl --user stop skud-tunnel.service || true
+systemctl --user restart skud-public-url-tunnel.service
 systemctl --user restart skud-polling.service
 
 sleep 3
 if ! systemctl --user is-active --quiet skud-polling.service; then
-  systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service || true
+  systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service skud-public-url-tunnel.service || true
   journalctl --user --no-pager -u skud-polling.service -n 100 || true
   exit 1
 fi
@@ -67,4 +68,4 @@ PY
     echo "::warning title=Google service account missing::$GOOGLE_SERVICE_ACCOUNT_FILE"
   fi
 fi
-systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service || true
+systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service skud-public-url-tunnel.service || true

@@ -25,14 +25,16 @@ def test_linux_installer_uses_polling_not_tunnel_for_bot_events() -> None:
 
     assert "skud-polling.service" in script
     assert "ExecStart=$ROOT_DIR/scripts/run_polling.sh" in script
-    assert "systemctl --user enable skud-backend.service skud-polling.service" in script
+    assert "systemctl --user enable skud-backend.service skud-polling.service skud-public-url-tunnel.service" in script
     assert "systemctl --user disable skud-tunnel.service || true" in script
+    assert "ExecStart=$ROOT_DIR/scripts/run_public_url_tunnel.sh" in script
 
 
-def test_linux_deploy_restarts_polling_and_stops_tunnel() -> None:
+def test_linux_deploy_restarts_polling_and_public_url_tunnel_and_stops_webhook_tunnel() -> None:
     script = Path("scripts/deploy_local_linux.sh").read_text()
 
     assert "systemctl --user stop skud-tunnel.service || true" in script
+    assert "systemctl --user restart skud-public-url-tunnel.service" in script
     assert "systemctl --user restart skud-polling.service" in script
     assert "is-active --quiet skud-polling.service" in script
     assert "/api/health" not in script

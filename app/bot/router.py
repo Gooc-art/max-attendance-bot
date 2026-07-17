@@ -1051,16 +1051,20 @@ class MaxWebhookRouter:
         insert_at = 1 if shifted and shifted[0].title == "Обо мне" else 0
         shifted.insert(
             insert_at,
-            MaxOutboundButton(
-                title="Определить устройство",
-                action=device_link,
-                emoji="📱",
-                row=1,
-                button_type="link",
-                url=device_link,
-            ),
+            self._device_detection_button(user_id, row=1),
         )
         return shifted
+
+    def _device_detection_button(self, user_id: str, row: int = 0) -> MaxOutboundButton:
+        device_link = self._device_detection_url(user_id)
+        return MaxOutboundButton(
+            title="Определить устройство",
+            action=device_link,
+            emoji="📱",
+            row=row,
+            button_type="link",
+            url=device_link,
+        )
 
     def _forbidden_action_response(self, role: str, action: str) -> MaxWebhookResponse | None:
         allowed_roles = ACTION_ALLOWED_ROLES.get(action)
@@ -2587,6 +2591,7 @@ class MaxWebhookRouter:
         device_platform = self._display_device_platform(getattr(activity_record, "device_platform", ""))
         device_text = f"Устройство: {device_platform}"
         buttons = [
+            self._device_detection_button(user_id),
             MaxOutboundButton(title="Обновить", action=BotAction.WHOAMI),
             MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
         ]

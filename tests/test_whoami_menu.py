@@ -71,9 +71,10 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("ФИО: Кутлуев Родион Романович\nПодразделение: 0.1. Зам_руководителя\nКабинет: 314", response.outbound.text)
         self.assertIn("Нужный ID для таблицы: 203302812", response.outbound.text)
         self.assertEqual(response.outbound.buttons[0].action, BotAction.MENU_ADMIN_PANEL)
-        self.assertEqual(response.outbound.buttons[1].action, BotAction.WHOAMI)
+        self.assertEqual(response.outbound.buttons[1].button_type, "link")
+        self.assertEqual(response.outbound.buttons[2].action, BotAction.WHOAMI)
 
-    def test_whoami_shows_device_status_without_detection_link(self) -> None:
+    def test_whoami_shows_device_status_and_detection_button(self) -> None:
         router = MaxWebhookRouter()
         router.employee_directory_repository.get_by_user_id = lambda user_id: None
         router.google_directory_service = _FakeGoogleDirectoryService(record=None, configured=True)
@@ -88,7 +89,10 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Устройство: Android", response.outbound.text)
         self.assertNotIn("https://demo.lhr.life/device?user_id=203302812", response.outbound.text)
         self.assertLess(response.outbound.text.index("Устройство: Android"), response.outbound.text.index("Твой ID в MAX"))
-        self.assertNotIn("Определить устройство", [button.title for button in response.outbound.buttons])
+        button = response.outbound.buttons[0]
+        self.assertEqual(button.title, "Определить устройство")
+        self.assertEqual(button.button_type, "link")
+        self.assertEqual(button.url, "https://demo.lhr.life/device?user_id=203302812")
 
     def test_whoami_normalizes_manager_role_from_sheet_label(self) -> None:
         router = MaxWebhookRouter()

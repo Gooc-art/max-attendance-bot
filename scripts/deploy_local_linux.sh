@@ -48,6 +48,20 @@ systemctl --user restart skud-public-url-tunnel.service
 systemctl --user restart skud-polling.service
 
 sleep 3
+for _ in $(seq 1 12); do
+  if [ -s run/public_url_tunnel.url ]; then
+    break
+  fi
+  sleep 2
+done
+if [ -s run/public_url_tunnel.url ]; then
+  PUBLIC_URL="$(cat run/public_url_tunnel.url)"
+  echo "::notice title=Public URL::$PUBLIC_URL"
+  curl -fsS "$PUBLIC_URL/api/health" >/dev/null || echo "::warning title=Public URL health failed::$PUBLIC_URL/api/health"
+else
+  echo "::warning title=Public URL missing::run/public_url_tunnel.url is empty"
+fi
+tail -40 logs/public-url-tunnel.log || true
 if ! systemctl --user is-active --quiet skud-polling.service; then
   systemctl --user --no-pager --full status skud-backend.service skud-polling.service skud-tunnel.service skud-public-url-tunnel.service || true
   journalctl --user --no-pager -u skud-polling.service -n 100 || true

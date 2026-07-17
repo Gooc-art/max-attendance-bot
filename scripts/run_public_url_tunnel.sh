@@ -36,7 +36,8 @@ while true; do
     public_url="$(printf '%s\n' "$line" | grep -Eo 'https://[[:alnum:].-]+\.lhr\.life' | head -n 1 || true)"
     if [ -n "$public_url" ]; then
       current_url="$(cat "$PUBLIC_URL_FILE" 2>/dev/null || true)"
-      if [ "$current_url" != "$public_url" ]; then
+      current_env_url="$(grep -E '^PUBLIC_BASE_URL=' "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+      if [ "$current_url" != "$public_url" ] || [ "$current_env_url" != "$public_url" ]; then
         printf '%s\n' "$public_url" > "$PUBLIC_URL_FILE"
         "$ROOT_DIR/.venv/bin/python3" "$ENV_HELPER" "$ENV_FILE" "PUBLIC_BASE_URL" "$public_url"
         log_line "detected public url $public_url"

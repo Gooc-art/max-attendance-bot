@@ -37,5 +37,5 @@ def test_linux_deploy_restarts_polling_and_public_url_tunnel_and_stops_webhook_t
     assert "systemctl --user restart skud-public-url-tunnel.service" in script
     assert "systemctl --user restart skud-polling.service" in script
     assert "is-active --quiet skud-polling.service" in script
-    assert "/api/health" not in script
+    assert "$PUBLIC_URL/api/health" in script
     assert "SKUD_PUBLIC_URL" not in script

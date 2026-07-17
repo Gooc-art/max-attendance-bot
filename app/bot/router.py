@@ -631,7 +631,7 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.MENU_IMPORT_HISTORY or user_text in {"История импортов", "История"}:
+        if action == BotAction.MENU_IMPORT_HISTORY or user_text == "История импортов":
             response = self._security_import_history(role)
             self._send_outbound(payload, response.outbound)
             return response
@@ -691,7 +691,7 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SUBSTITUTION_CREATE or user_text == "Назначить замещение":
+        if action == BotAction.SUBSTITUTION_CREATE or user_text in {"На период", "Назначить замещение"}:
             if role not in {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}:
                 response = MaxWebhookResponse(
                     ok=True,
@@ -745,18 +745,23 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SUBSTITUTION_LIST:
+        if action == BotAction.SUBSTITUTION_LIST or user_text == "Мои замещения":
             response = self._substitution_list(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SUBSTITUTION_CANCEL:
+        if action == BotAction.SUBSTITUTION_CANCEL or user_text == "Снять замещение":
             response = self._substitution_cancel(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.SUBSTITUTION_EXTEND:
+        if action == BotAction.SUBSTITUTION_EXTEND or user_text == "Продлить":
             response = self._substitution_extend(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if user_text == "История согласований":
+            response = self._approvals_list(role, event["user_id"], action=BotAction.APPROVALS_HISTORY)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1447,7 +1452,7 @@ class MaxWebhookRouter:
 
     def _security_import_help(self, role: str, user_id: str) -> MaxWebhookResponse:
         text = "Отправь файл с проходами прямо сюда, и я сам его разберу.\n\nПодойдут файлы в формате CSV или Excel."
-        back_action = BotAction.MANAGER_REPORTS if role == Role.MANAGER.value else BotAction.SECURITY_SKUD
+        back_action = self._skud_back_action(role)
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1455,7 +1460,7 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=text,
                 buttons=[
-                    MaxOutboundButton(title="История", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
                     MaxOutboundButton(title="Назад", action=back_action),
                 ],
             ),
@@ -1481,7 +1486,7 @@ class MaxWebhookRouter:
                 for row in rows
             )
 
-        back_action = BotAction.MANAGER_REPORTS if role == Role.MANAGER.value else BotAction.SECURITY_SKUD
+        back_action = self._skud_back_action(role)
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1886,6 +1891,20 @@ class MaxWebhookRouter:
             return BotAction.HR_REPORTS
         return BotAction.MENU_REPORTS
 
+    @staticmethod
+    def _skud_back_action(role: str) -> str:
+        if role == Role.MANAGER.value:
+            return BotAction.MANAGER_REPORTS
+        if role == Role.ADMIN.value:
+            return BotAction.ADMIN_SKUD
+        return BotAction.SECURITY_SKUD
+
+    @staticmethod
+    def _structure_back_action(role: str) -> str:
+        if role == Role.ADMIN.value:
+            return BotAction.ADMIN_STRUCTURE
+        return BotAction.HR_REFERENCE
+
     def _start_report_period_flow(self, role: str, user_id: str, report_kind: str, chat_id: str = "") -> MaxWebhookResponse:
         dialog_state_store.set(
             user_id,
@@ -2186,8 +2205,8 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=text,
                 buttons=[
-                    MaxOutboundButton(title="История", action=BotAction.MENU_IMPORT_HISTORY),
-                    MaxOutboundButton(title="Назад", action=BotAction.SECURITY_AUDIT),
+                    MaxOutboundButton(title="Подразделения", action=BotAction.MENU_DEPARTMENTS),
+                    MaxOutboundButton(title="Назад", action=self._structure_back_action(role)),
                 ],
             ),
             active_flow=None,
@@ -2442,8 +2461,7 @@ class MaxWebhookRouter:
                 text=text,
                 buttons=[
                     MaxOutboundButton(title="Сотрудники", action=BotAction.MENU_STAFF),
-                    MaxOutboundButton(title="История", action=BotAction.MENU_IMPORT_HISTORY),
-                    MaxOutboundButton(title="Настройки", action=BotAction.MENU_SETTINGS),
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
                     MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
                 ],
             ),
@@ -2766,8 +2784,8 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text=text,
                 buttons=[
-                    MaxOutboundButton(title="История", action=BotAction.MENU_IMPORT_HISTORY),
-                    MaxOutboundButton(title="Назад", action=BotAction.SECURITY_SKUD),
+                    MaxOutboundButton(title="История импортов", action=BotAction.MENU_IMPORT_HISTORY),
+                    MaxOutboundButton(title="Назад", action=self._skud_back_action(role)),
                 ],
             ),
             active_flow=None,
@@ -2909,16 +2927,16 @@ class MaxWebhookRouter:
         )
 
     def _stub_section(self, role: str, text: str) -> MaxWebhookResponse:
+        buttons = [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)]
+        if role in WORKFLOW_ROLES:
+            buttons.append(MaxOutboundButton(title="Замещения", action=BotAction.MENU_SUBSTITUTIONS))
         return MaxWebhookResponse(
             ok=True,
             role=role,
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
                 text=text,
-                buttons=[
-                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
-                    MaxOutboundButton(title="Замещения", action=BotAction.MENU_SUBSTITUTIONS),
-                ],
+                buttons=buttons,
             ),
             active_flow=None,
         )

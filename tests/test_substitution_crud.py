@@ -8,6 +8,7 @@ from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
 from app.domain.enums import DialogFlow
+from app.schemas.max import MaxMessage, MaxMessageBody, MaxOutboundMessage, MaxRecipient, MaxUpdate, MaxUser
 
 
 class _FakeDraft:
@@ -133,6 +134,26 @@ class _FakeCaseRepository:
 
 
 class SubstitutionCrudTests(unittest.TestCase):
+    def _router_for_role(self, role: str) -> MaxWebhookRouter:
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value=role)
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+        return router
+
+    def _message(self, text: str) -> MaxUpdate:
+        return MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=203302812),
+                timestamp=1,
+                body=MaxMessageBody(mid="m-substitution", seq=1, text=text),
+                sender=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
     def test_substitution_list_shows_actions_for_each_draft(self) -> None:
         router = MaxWebhookRouter()
         router.substitution_repository = _FakeSubstitutionRepository()
@@ -142,6 +163,32 @@ class SubstitutionCrudTests(unittest.TestCase):
         actions = [button.action for button in response.outbound.buttons]
         self.assertIn(f"{BotAction.SUBSTITUTION_CANCEL_PREFIX}1", actions)
         self.assertIn(f"{BotAction.SUBSTITUTION_EXTEND_PREFIX}1", actions)
+
+    def test_substitution_text_buttons_open_current_actions(self) -> None:
+        cases = [
+            ("Мои замещения", "Мои замещения"),
+            ("Снять замещение", "Выбери замещение для снятия"),
+            ("Продлить", "Выбери черновик для продления"),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                router = self._router_for_role("manager")
+                router.substitution_repository = _FakeSubstitutionRepository()
+
+                response = router.handle_event(self._message(text))
+
+                self.assertIn(expected, response.outbound.text)
+
+    def test_period_text_button_starts_substitution_flow(self) -> None:
+        router = self._router_for_role("manager")
+        router.substitution_flow.start = MagicMock(
+            return_value=SimpleNamespace(message=MaxOutboundMessage(text="Кого будет замещать?", buttons=[]))
+        )
+
+        response = router.handle_event(self._message("На период"))
+
+        self.assertEqual(response.active_flow, DialogFlow.SUBSTITUTION.value)
+        self.assertIn("Кого будет замещать", response.outbound.text)
 
     def test_substitution_cancel_changes_status(self) -> None:
         router = MaxWebhookRouter()

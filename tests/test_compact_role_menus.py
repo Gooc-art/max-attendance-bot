@@ -60,7 +60,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         titles = [button.title for button in approvals_menu_buttons()]
         self.assertIn("Ожидают", titles)
         self.assertIn("Просроченные", titles)
-        self.assertIn("История", titles)
+        self.assertIn("История согласований", titles)
         self.assertNotIn("В работе", titles)
 
     def test_security_menu_is_sectioned(self) -> None:
@@ -75,7 +75,7 @@ class CompactRoleMenuTests(unittest.TestCase):
     def test_security_skud_menu_contains_only_import_tools(self) -> None:
         titles = [button.title for button in security_skud_buttons()]
         self.assertIn("Импорт СКУД", titles)
-        self.assertIn("История", titles)
+        self.assertIn("История импортов", titles)
         self.assertNotIn("Ошибки", titles)
         self.assertNotIn("Необработанные", titles)
 

@@ -4,6 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from app.bot.actions import BotAction
 from app.bot.router import MaxWebhookRouter
 from app.domain.dialog_state import UserDialogState
 from app.schemas.max import MaxAttachment, MaxAttachmentPayload, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
@@ -75,8 +76,18 @@ class SkudImportAccessControlTests(unittest.TestCase):
         response = router._security_import_help("manager", "123")
 
         actions = [button.action for button in response.outbound.buttons]
-        self.assertIn("manager.reports_section", actions)
-        self.assertNotIn("security.skud_section", actions)
+        self.assertIn(BotAction.MANAGER_REPORTS, actions)
+        self.assertNotIn(BotAction.SECURITY_SKUD, actions)
+
+    def test_admin_upload_help_and_history_return_to_admin_skud(self) -> None:
+        router = MaxWebhookRouter()
+        router.skud_import_repository.list_recent = MagicMock(return_value=[])
+
+        help_response = router._security_import_help("admin", "123")
+        history_response = router._security_import_history("admin")
+
+        self.assertIn(BotAction.ADMIN_SKUD, [button.action for button in help_response.outbound.buttons])
+        self.assertIn(BotAction.ADMIN_SKUD, [button.action for button in history_response.outbound.buttons])
 
     def test_file_upload_passes_message_id_to_import_service(self) -> None:
         router = MaxWebhookRouter()
@@ -230,6 +241,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
         router.max_file_import_service.import_attachments.assert_called_once()
         self.assertIn("Спасибо, файл получен", response.outbound.text)
         self.assertIn("Импорт завершен", response.outbound.text)
+        self.assertIn(BotAction.SECURITY_SKUD, [button.action for button in response.outbound.buttons])
 
     def test_manager_file_upload_is_allowed(self) -> None:
         router = MaxWebhookRouter()
@@ -268,6 +280,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
         router.max_file_import_service.import_attachments.assert_called_once()
         self.assertIn("Спасибо, файл получен", response.outbound.text)
         self.assertIn("Импорт завершен", response.outbound.text)
+        self.assertIn(BotAction.MANAGER_REPORTS, [button.action for button in response.outbound.buttons])
 
     def test_admin_file_upload_is_allowed(self) -> None:
         router = MaxWebhookRouter()
@@ -306,6 +319,7 @@ class SkudImportAccessControlTests(unittest.TestCase):
         router.max_file_import_service.import_attachments.assert_called_once()
         self.assertIn("Спасибо, файл получен", response.outbound.text)
         self.assertIn("Импорт завершен", response.outbound.text)
+        self.assertIn(BotAction.ADMIN_SKUD, [button.action for button in response.outbound.buttons])
 
     def test_file_upload_interrupts_active_dialog_flow(self) -> None:
         router = MaxWebhookRouter()

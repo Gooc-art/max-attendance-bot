@@ -153,7 +153,7 @@ def approvals_menu_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Ожидают", BotAction.APPROVALS_NEW, "🆕", 0),
         btn("Просроченные", BotAction.APPROVALS_OVERDUE, "⛔", 1),
-        btn("История", BotAction.APPROVALS_HISTORY, "🕘", 2),
+        btn("История согласований", BotAction.APPROVALS_HISTORY, "🕘", 2),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 3),
     ])
 
@@ -306,7 +306,7 @@ def manager_workflow_buttons() -> List[MaxOutboundButton]:
 def security_skud_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Импорт СКУД", BotAction.MENU_SECURITY_IMPORT, "📥", 0),
-        btn("История", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
+        btn("История импортов", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])
 
@@ -435,7 +435,7 @@ def admin_structure_buttons() -> List[MaxOutboundButton]:
 def admin_skud_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Импорт СКУД", BotAction.MENU_SECURITY_IMPORT, "📥", 0),
-        btn("История", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
+        btn("История импортов", BotAction.MENU_IMPORT_HISTORY, "🕘", 0),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 1),
     ])
 

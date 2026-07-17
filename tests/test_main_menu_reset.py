@@ -303,6 +303,11 @@ class MainMenuResetTests(unittest.TestCase):
                 response = self._router_for_role(role).handle_event(self._message(text))
                 self.assertIn(expected, response.outbound.text)
 
+    def test_approval_history_text_opens_approval_history(self) -> None:
+        response = self._router_for_role("manager").handle_event(self._message("История согласований"))
+
+        self.assertIn("согласований", response.outbound.text)
+
     def test_unknown_callback_refreshes_stale_menu(self) -> None:
         router = self._router_for_role("employee")
         payload = MaxUpdate(

@@ -40,7 +40,8 @@ def device_page(user_id: str = "") -> str:
   <script>
     const userId = new URLSearchParams(location.search).get("user_id") || "";
     const ua = navigator.userAgent || "";
-    const platform = /Android/i.test(ua) ? "android" : /iPhone|iPad|iPod/i.test(ua) ? "ios" : "unknown";
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const platform = /Android/i.test(ua) ? "android" : isIOS ? "ios" : "unknown";
     const label = platform === "android" ? "Android" : platform === "ios" ? "iOS" : "неизвестно";
 
     fetch("/api/device", {

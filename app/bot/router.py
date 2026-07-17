@@ -1041,30 +1041,7 @@ class MaxWebhookRouter:
         )
 
     def _main_menu_buttons(self, role: str, user_id: str = "") -> list[MaxOutboundButton]:
-        buttons = list(main_menu_buttons(role))
-        device_link = self._device_detection_url(user_id) if user_id else ""
-        if not device_link:
-            return buttons
-        shifted: list[MaxOutboundButton] = []
-        for button in buttons:
-            shifted.append(button.model_copy(update={"row": button.row + 1 if button.row >= 1 else button.row}))
-        insert_at = 1 if shifted and shifted[0].title == "Обо мне" else 0
-        shifted.insert(
-            insert_at,
-            self._device_detection_button(user_id, row=1),
-        )
-        return shifted
-
-    def _device_detection_button(self, user_id: str, row: int = 0) -> MaxOutboundButton:
-        device_link = self._device_detection_url(user_id)
-        return MaxOutboundButton(
-            title="Определить устройство",
-            action=device_link,
-            emoji="📱",
-            row=row,
-            button_type="link",
-            url=device_link,
-        )
+        return list(main_menu_buttons(role))
 
     def _forbidden_action_response(self, role: str, action: str) -> MaxWebhookResponse | None:
         allowed_roles = ACTION_ALLOWED_ROLES.get(action)
@@ -2594,7 +2571,6 @@ class MaxWebhookRouter:
         if device_link:
             device_text += f"\nОпределить устройство: {device_link}"
         buttons = [
-            self._device_detection_button(user_id),
             MaxOutboundButton(title="Обновить", action=BotAction.WHOAMI),
             MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
         ]

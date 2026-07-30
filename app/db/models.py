@@ -148,6 +148,17 @@ class UserRoleOverrideModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
 
+class WeatherUserLocationModel(Base):
+    __tablename__ = "weather_user_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    latitude: Mapped[str] = mapped_column(String(50))
+    longitude: Mapped[str] = mapped_column(String(50))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 class UserBotActivityModel(Base):
     __tablename__ = "user_bot_activity"
 

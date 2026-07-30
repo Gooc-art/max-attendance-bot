@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import unittest
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -13,6 +14,21 @@ from app.domain.enums import DialogFlow
 from app.schemas.max import MaxAttachment, MaxCallback, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
 from app.services.dialog_state import dialog_state_store
 from app.services.weather import DailyWeather, WeatherService
+
+
+class _FakeWeatherLocationRepository:
+    def __init__(self) -> None:
+        self.rows = {}
+
+    def get(self, user_id: str):
+        return self.rows.get(str(user_id))
+
+    def save(self, user_id: str, latitude: str, longitude: str, ttl_seconds: int = 86400) -> None:
+        self.rows[str(user_id)] = (
+            latitude,
+            longitude,
+            datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=ttl_seconds),
+        )
 
 
 class WeatherTests(unittest.TestCase):
@@ -158,6 +174,39 @@ class WeatherTests(unittest.TestCase):
 
         self.assertIn("Погода на 7 дней", response.outbound.text)
         router.weather_service.save_user_location.assert_called_once_with("125", 55.75, 37.62)
+
+    def test_user_location_is_loaded_after_service_restart(self) -> None:
+        repository = _FakeWeatherLocationRepository()
+        first = WeatherService(location_repository=repository)
+        second = WeatherService(location_repository=repository)
+
+        with patch.object(WeatherService, "_load_forecast", return_value=[]):
+            first.save_user_location("128", 55.75, 37.62)
+            text = second.forecast_for_user("128")
+
+        self.assertEqual(text, "Погода временно недоступна. Попробуй позже.")
+
+    def test_forecast_for_same_location_is_cached(self) -> None:
+        service = WeatherService(location_repository=_FakeWeatherLocationRepository())
+        days = [
+            DailyWeather(
+                date="2026-07-30",
+                code=0,
+                temp_min=20,
+                temp_max=25,
+                feels_max=24,
+                precipitation=0,
+                wind_max=5,
+                uv_max=3,
+            )
+        ]
+
+        with patch.object(service, "_load_forecast", return_value=days) as load_forecast:
+            first = service.forecast_text("55.75", "37.62")
+            second = service.forecast_text("55.75", "37.62")
+
+        self.assertEqual(first, second)
+        load_forecast.assert_called_once()
 
     def test_weather_action_resets_other_active_flow(self) -> None:
         dialog_state_store.reset("126")

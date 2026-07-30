@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 from app.config import get_settings
+from app.repositories.weather_location_repository import WeatherLocationRepository
 
 
 @dataclass(frozen=True)
@@ -22,21 +23,23 @@ class DailyWeather:
 
 
 class WeatherService:
-    def __init__(self) -> None:
-        self._cache: tuple[float, str] | None = None
+    def __init__(self, location_repository: WeatherLocationRepository | None = None) -> None:
+        self.location_repository = location_repository or WeatherLocationRepository()
+        self._cache: dict[tuple[str, str], tuple[float, str]] = {}
         self._user_locations: dict[str, tuple[float, str, str]] = {}
 
     def forecast_text(self, latitude: str | None = None, longitude: str | None = None) -> str:
         settings = get_settings()
-        use_default_location = latitude is None and longitude is None
         latitude = latitude or settings.weather_latitude
         longitude = longitude or settings.weather_longitude
         if not latitude or not longitude:
             return "Погода пока не настроена. Нужно один раз указать город или координаты офиса."
 
         now = monotonic()
-        if use_default_location and self._cache and self._cache[0] > now:
-            return self._cache[1]
+        cache_key = (str(latitude), str(longitude))
+        cached = self._cache.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[1]
 
         try:
             days = self._load_forecast(latitude, longitude)
@@ -44,8 +47,7 @@ class WeatherService:
             return "Погода временно недоступна. Попробуй позже."
 
         text = self._format_forecast(days)
-        if use_default_location:
-            self._cache = (now + settings.weather_cache_ttl_seconds, text)
+        self._cache[cache_key] = (now + settings.weather_cache_ttl_seconds, text)
         return text
 
     def forecast_for_user(self, user_id: str) -> str | None:
@@ -55,17 +57,25 @@ class WeatherService:
         return self.forecast_text(location[0], location[1])
 
     def save_user_location(self, user_id: str, latitude: float, longitude: float) -> str:
-        self._user_locations[str(user_id)] = (monotonic() + 86400, str(latitude), str(longitude))
-        return self.forecast_text(str(latitude), str(longitude))
+        latitude_text = str(latitude)
+        longitude_text = str(longitude)
+        self._user_locations[str(user_id)] = (monotonic() + 86400, latitude_text, longitude_text)
+        self.location_repository.save(user_id, latitude_text, longitude_text, ttl_seconds=86400)
+        return self.forecast_text(latitude_text, longitude_text)
 
     def _user_location(self, user_id: str) -> tuple[str, str] | None:
         location = self._user_locations.get(str(user_id))
-        if location is None:
-            return None
-        expires_at, latitude, longitude = location
-        if expires_at <= monotonic():
+        if location is not None:
+            expires_at, latitude, longitude = location
+            if expires_at > monotonic():
+                return latitude, longitude
             self._user_locations.pop(str(user_id), None)
+
+        stored = self.location_repository.get(user_id)
+        if stored is None:
             return None
+        latitude, longitude, _expires_at = stored
+        self._user_locations[str(user_id)] = (monotonic() + 86400, latitude, longitude)
         return latitude, longitude
 
     def _load_forecast(self, latitude: str, longitude: str) -> list[DailyWeather]:

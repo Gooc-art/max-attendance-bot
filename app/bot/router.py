@@ -68,6 +68,7 @@ from app.services.max_file_import import MaxFileImportService
 from app.services.office_sealing import OfficeSealingService
 from app.services.role_resolver import RoleResolver
 from app.services.substitution_flow import SubstitutionFlowService
+from app.services.weather import WeatherService
 
 
 MANAGER_ROLES = {Role.MANAGER.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
@@ -75,8 +76,10 @@ STRUCTURE_ROLES = {Role.HR.value, Role.ADMIN.value}
 SKUD_ROLES = {Role.MANAGER.value, Role.SECURITY.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
 WORKFLOW_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
 REPORT_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+ALL_ROLES = {Role.EMPLOYEE.value, Role.MANAGER.value, Role.SECURITY.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
 
 ACTION_ALLOWED_ROLES = {
+    BotAction.MENU_WEATHER: ALL_ROLES,
     BotAction.MANAGER_MANAGEMENT: MANAGER_ROLES,
     BotAction.MANAGER_REPORTS: {Role.MANAGER.value},
     BotAction.MANAGER_WORKFLOW: {Role.MANAGER.value},
@@ -152,6 +155,7 @@ class MaxWebhookRouter:
         self.delete_previous_message = get_settings().max_delete_previous_message
         self.bot_message_cursor_store = bot_message_cursor_store
         self.max_file_import_service = MaxFileImportService()
+        self.weather_service = WeatherService()
         self.office_sealing_service = OfficeSealingService(
             directory_service=self.google_directory_service,
             employee_repository=self.employee_directory_repository,
@@ -544,6 +548,11 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_MY_OFFICE or user_text in {"Мой кабинет", "🚪 Мой кабинет"}:
             response = self._my_office_status(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_WEATHER or user_text == "Погода":
+            response = self._weather(role)
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1141,6 +1150,18 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(
                 text="Раздел руководства.",
                 buttons=employee_manager_section_buttons(),
+            ),
+            active_flow=None,
+        )
+
+    def _weather(self, role: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=self.weather_service.forecast_text(),
+                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
             ),
             active_flow=None,
         )

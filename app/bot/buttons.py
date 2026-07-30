@@ -82,6 +82,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Опоздания", BotAction.EMPLOYEE_REASONS, "⏰", 2),
             btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 2),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 3),
         ])
     if role == Role.MANAGER.value:
         return readable_rows([
@@ -91,6 +92,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 4),
         ])
     if role == Role.SECURITY.value:
         return readable_rows([
@@ -98,6 +100,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 2),
         ])
     if role == Role.HR.value:
         return readable_rows([
@@ -107,6 +110,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
             btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
             btn("Отчеты", BotAction.HR_REPORTS, "📊", 1),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 2),
         ])
     if role == Role.ADMIN.value:
         return readable_rows([
@@ -118,6 +122,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("СКУД", BotAction.ADMIN_SKUD, "📥", 1),
             btn("Процессы", BotAction.ADMIN_WORKFLOW, "✅", 2),
             btn("Отчеты", BotAction.ADMIN_REPORTS, "📊", 2),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 3),
         ])
     if role == Role.TOP_MANAGER.value:
         return readable_rows([
@@ -127,6 +132,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
             btn("Отчеты", BotAction.TOP_REPORTS, "📊", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 2),
             btn("Замещения", BotAction.MENU_SUBSTITUTIONS, "🔄", 3),
+            btn("Погода", BotAction.MENU_WEATHER, "🌤️", 4),
         ])
     return readable_rows([
         btn("Старт", BotAction.START, "🏁", 0),

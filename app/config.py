@@ -48,6 +48,9 @@ class Settings:
     office_seal_window_end: str
     office_seal_photo_dir: str
     public_base_url: str
+    weather_latitude: str
+    weather_longitude: str
+    weather_cache_ttl_seconds: int
 
 
 @lru_cache(maxsize=1)
@@ -86,4 +89,7 @@ def get_settings() -> Settings:
         office_seal_window_end=os.getenv("OFFICE_SEAL_WINDOW_END", "22:00"),
         office_seal_photo_dir=os.getenv("OFFICE_SEAL_PHOTO_DIR", str(BASE_DIR / "data" / "office_seal_photos")),
         public_base_url=os.getenv("PUBLIC_BASE_URL", os.getenv("MAX_BOT_WEBHOOK_URL", "")).rstrip("/"),
+        weather_latitude=os.getenv("WEATHER_LATITUDE", ""),
+        weather_longitude=os.getenv("WEATHER_LONGITUDE", ""),
+        weather_cache_ttl_seconds=int(os.getenv("WEATHER_CACHE_TTL_SECONDS", "3600")),
     )

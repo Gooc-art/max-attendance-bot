@@ -57,6 +57,33 @@ class MaxApiClientTests(unittest.TestCase):
         self.assertIn("chat_id=123", request.full_url)
         self.assertNotIn("user_id=456", request.full_url)
 
+    def test_build_inline_keyboard_supports_geo_location_button(self) -> None:
+        client = MaxApiClient(
+            token="",
+            secret="",
+            base_url="https://platform-api.max.ru/",
+            version="1.2.5",
+        )
+
+        body = client.build_message_body(
+            text="share location",
+            buttons=[
+                MaxOutboundButton(
+                    title="Отправить геолокацию",
+                    action="weather.location",
+                    button_type="request_geo_location",
+                    quick=True,
+                )
+            ],
+        ).model_dump(exclude_none=True)
+
+        button = body["attachments"][0]["payload"]["buttons"][0][0]
+        self.assertEqual(button["type"], "request_geo_location")
+        self.assertEqual(button["text"], "Отправить геолокацию")
+        self.assertTrue(button["quick"])
+        self.assertNotIn("payload", button)
+        self.assertNotIn("intent", button)
+
     def test_answer_callback_uses_snake_case_query_name(self) -> None:
         client = MaxApiClient(
             token="token",

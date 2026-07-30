@@ -24,24 +24,49 @@ class DailyWeather:
 class WeatherService:
     def __init__(self) -> None:
         self._cache: tuple[float, str] | None = None
+        self._user_locations: dict[str, tuple[float, str, str]] = {}
 
-    def forecast_text(self) -> str:
+    def forecast_text(self, latitude: str | None = None, longitude: str | None = None) -> str:
         settings = get_settings()
-        if not settings.weather_latitude or not settings.weather_longitude:
+        use_default_location = latitude is None and longitude is None
+        latitude = latitude or settings.weather_latitude
+        longitude = longitude or settings.weather_longitude
+        if not latitude or not longitude:
             return "Погода пока не настроена. Нужно один раз указать город или координаты офиса."
 
         now = monotonic()
-        if self._cache and self._cache[0] > now:
+        if use_default_location and self._cache and self._cache[0] > now:
             return self._cache[1]
 
         try:
-            days = self._load_forecast(settings.weather_latitude, settings.weather_longitude)
+            days = self._load_forecast(latitude, longitude)
         except Exception:
             return "Погода временно недоступна. Попробуй позже."
 
         text = self._format_forecast(days)
-        self._cache = (now + settings.weather_cache_ttl_seconds, text)
+        if use_default_location:
+            self._cache = (now + settings.weather_cache_ttl_seconds, text)
         return text
+
+    def forecast_for_user(self, user_id: str) -> str | None:
+        location = self._user_location(user_id)
+        if location is None:
+            return None
+        return self.forecast_text(location[0], location[1])
+
+    def save_user_location(self, user_id: str, latitude: float, longitude: float) -> str:
+        self._user_locations[str(user_id)] = (monotonic() + 86400, str(latitude), str(longitude))
+        return self.forecast_text(str(latitude), str(longitude))
+
+    def _user_location(self, user_id: str) -> tuple[str, str] | None:
+        location = self._user_locations.get(str(user_id))
+        if location is None:
+            return None
+        expires_at, latitude, longitude = location
+        if expires_at <= monotonic():
+            self._user_locations.pop(str(user_id), None)
+            return None
+        return latitude, longitude
 
     def _load_forecast(self, latitude: str, longitude: str) -> list[DailyWeather]:
         query = urlencode(

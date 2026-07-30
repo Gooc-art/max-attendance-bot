@@ -24,6 +24,8 @@ class MaxRecipient(BaseModel):
 class MaxAttachmentPayload(BaseModel):
     url: Optional[str] = None
     token: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class MaxAttachment(BaseModel):
@@ -31,6 +33,8 @@ class MaxAttachment(BaseModel):
     payload: Optional[MaxAttachmentPayload] = None
     filename: Optional[str] = None
     size: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class MaxMessageBody(BaseModel):
@@ -70,16 +74,18 @@ class MaxOutboundButton(BaseModel):
     action: str
     emoji: Optional[str] = None
     row: int = 0
-    button_type: Literal["callback", "link"] = "callback"
+    button_type: Literal["callback", "link", "request_geo_location"] = "callback"
     url: Optional[str] = None
+    quick: Optional[bool] = None
 
 
 class MaxKeyboardButton(BaseModel):
-    type: Literal["callback", "link"] = "callback"
+    type: Literal["callback", "link", "request_geo_location"] = "callback"
     text: str
     payload: Optional[str] = None
     url: Optional[str] = None
-    intent: str = "default"
+    intent: Optional[str] = None
+    quick: Optional[bool] = None
 
 
 class MaxInlineKeyboardPayload(BaseModel):

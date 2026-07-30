@@ -21,6 +21,7 @@ class DialogFlow(str, Enum):
     REPORT_PERIOD = "report_period"
     OFFICE_SEAL_PHOTO = "office_seal_photo"
     APPROVAL_REJECTION = "approval_rejection"
+    WEATHER_LOCATION = "weather_location"
 
 
 class SubstitutionScope(str, Enum):

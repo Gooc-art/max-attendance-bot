@@ -68,8 +68,10 @@ class MaxApiClient:
                     text = f"{button.emoji} {text}"
                 if button.button_type == "link":
                     row_buttons.append(MaxKeyboardButton(type="link", text=text, url=button.url or button.action))
+                elif button.button_type == "request_geo_location":
+                    row_buttons.append(MaxKeyboardButton(type="request_geo_location", text=text, quick=button.quick))
                 else:
-                    row_buttons.append(MaxKeyboardButton(text=text, payload=button.action))
+                    row_buttons.append(MaxKeyboardButton(text=text, payload=button.action, intent="default"))
             keyboard_buttons.append(row_buttons)
         return [
             MaxInlineKeyboardAttachment(

@@ -8,7 +8,8 @@ from app.bot.actions import BotAction
 from app.bot.buttons import main_menu_buttons
 from app.bot.router import MaxWebhookRouter
 from app.config import Settings
-from app.schemas.max import MaxCallback, MaxUpdate, MaxUser
+from app.schemas.max import MaxAttachment, MaxCallback, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
+from app.services.dialog_state import dialog_state_store
 from app.services.weather import DailyWeather, WeatherService
 
 
@@ -63,7 +64,7 @@ class WeatherTests(unittest.TestCase):
         router = MaxWebhookRouter()
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
         router.weather_service = MagicMock()
-        router.weather_service.forecast_text.return_value = "Погода на 7 дней:\nСегодня: ясно."
+        router.weather_service.forecast_for_user.return_value = "Погода на 7 дней:\nСегодня: ясно."
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = False
         router._touch_user_activity = MagicMock()
@@ -84,6 +85,77 @@ class WeatherTests(unittest.TestCase):
 
         self.assertIn("Погода на 7 дней", response.outbound.text)
         self.assertEqual(response.outbound.buttons[0].action, BotAction.MAIN_MENU)
+
+    def test_weather_action_asks_for_location_without_cached_location(self) -> None:
+        dialog_state_store.reset("124")
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value="employee")
+        router.weather_service = MagicMock()
+        router.weather_service.forecast_for_user.return_value = None
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+
+        response = router.handle_event(
+            MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                chat_id=987,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id="cb-weather",
+                    payload=BotAction.MENU_WEATHER,
+                    user=MaxUser(user_id=124, first_name="Test"),
+                ),
+            )
+        )
+
+        self.assertIn("Отправь свою геолокацию", response.outbound.text)
+        self.assertEqual(response.outbound.buttons[0].button_type, "request_geo_location")
+
+    def test_weather_location_is_saved_and_used(self) -> None:
+        dialog_state_store.reset("125")
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value="employee")
+        router.weather_service = MagicMock()
+        router.weather_service.forecast_for_user.return_value = None
+        router.weather_service.save_user_location.return_value = "Погода на 7 дней"
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+
+        router.handle_event(
+            MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                chat_id=987,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id="cb-weather",
+                    payload=BotAction.MENU_WEATHER,
+                    user=MaxUser(user_id=125, first_name="Test"),
+                ),
+            )
+        )
+        response = router.handle_event(
+            MaxUpdate(
+                update_type="message_created",
+                timestamp=2,
+                message=MaxMessage(
+                    recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=125),
+                    timestamp=2,
+                    body=MaxMessageBody(
+                        mid="m-weather",
+                        seq=2,
+                        attachments=[MaxAttachment(type="location", latitude=55.75, longitude=37.62)],
+                    ),
+                    sender=MaxUser(user_id=125, first_name="Test"),
+                ),
+            )
+        )
+
+        self.assertIn("Погода на 7 дней", response.outbound.text)
+        router.weather_service.save_user_location.assert_called_once_with("125", 55.75, 37.62)
 
     def test_clothes_advice_mentions_rain_and_wind(self) -> None:
         text = WeatherService._format_forecast(

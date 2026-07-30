@@ -405,6 +405,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if active_state and active_state.flow == DialogFlow.WEATHER_LOCATION.value:
+            response = self._handle_weather_location(role, event["user_id"], payload)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if action in {"/manager", "/employee", "/security", "/hr", "/admin", "/top"}:
             target_role = {
                 "/manager": Role.MANAGER.value,
@@ -552,7 +557,7 @@ class MaxWebhookRouter:
             return response
 
         if action == BotAction.MENU_WEATHER or user_text == "Погода":
-            response = self._weather(role)
+            response = self._weather(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1154,17 +1159,91 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _weather(self, role: str) -> MaxWebhookResponse:
+    def _weather(self, role: str, user_id: str) -> MaxWebhookResponse:
+        text = self.weather_service.forecast_for_user(user_id)
+        if text is None:
+            dialog_state_store.set(
+                user_id,
+                UserDialogState(flow=DialogFlow.WEATHER_LOCATION.value, step="await_location", data={}),
+            )
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Отправь свою геолокацию, покажу погоду и сохраню место на сутки.",
+                    buttons=[
+                        MaxOutboundButton(
+                            title="Отправить геолокацию",
+                            action="weather.location",
+                            button_type="request_geo_location",
+                            quick=True,
+                        ),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                    ],
+                ),
+                active_flow=DialogFlow.WEATHER_LOCATION.value,
+            )
         return MaxWebhookResponse(
             ok=True,
             role=role,
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
-                text=self.weather_service.forecast_text(),
+                text=text,
                 buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
             ),
             active_flow=None,
         )
+
+    def _handle_weather_location(self, role: str, user_id: str, payload: MaxUpdate) -> MaxWebhookResponse:
+        location = self._extract_location(payload)
+        if location is None:
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Нужна геолокация. Нажми кнопку ниже и подтверди отправку места.",
+                    buttons=[
+                        MaxOutboundButton(
+                            title="Отправить геолокацию",
+                            action="weather.location",
+                            button_type="request_geo_location",
+                            quick=True,
+                        ),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                    ],
+                ),
+                active_flow=DialogFlow.WEATHER_LOCATION.value,
+            )
+        dialog_state_store.reset(user_id)
+        text = self.weather_service.save_user_location(user_id, location[0], location[1])
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=text,
+                buttons=[MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU)],
+            ),
+            active_flow=None,
+        )
+
+    @staticmethod
+    def _extract_location(payload: MaxUpdate) -> tuple[float, float] | None:
+        if not payload.message:
+            return None
+        for attachment in payload.message.body.attachments:
+            if str(attachment.type or "").lower() != "location":
+                continue
+            latitude = attachment.latitude
+            longitude = attachment.longitude
+            if attachment.payload is not None:
+                latitude = latitude if latitude is not None else attachment.payload.latitude
+                longitude = longitude if longitude is not None else attachment.payload.longitude
+            if latitude is not None and longitude is not None:
+                return float(latitude), float(longitude)
+        return None
 
     def _start_office_seal_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
         return self._acknowledge_office_seal_reminder(role)

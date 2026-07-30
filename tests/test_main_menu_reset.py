@@ -35,6 +35,19 @@ class MainMenuResetTests(unittest.TestCase):
             ),
         )
 
+    def _callback(self, action: str) -> MaxUpdate:
+        return MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-menu",
+                payload=action,
+                user=MaxUser(user_id=203302812, first_name="Test"),
+            ),
+        )
+
     def test_main_menu_resets_active_flow_before_any_dialog_handler(self) -> None:
         router = MaxWebhookRouter()
         router.max_client = MagicMock()
@@ -302,6 +315,19 @@ class MainMenuResetTests(unittest.TestCase):
             with self.subTest(role=role, text=text):
                 response = self._router_for_role(role).handle_event(self._message(text))
                 self.assertIn(expected, response.outbound.text)
+
+    def test_menu_callback_resets_weather_location_flow(self) -> None:
+        router = self._router_for_role("manager")
+        dialog_state_store.set(
+            "203302812",
+            UserDialogState(flow=DialogFlow.WEATHER_LOCATION.value, step="await_location", data={}),
+        )
+
+        response = router.handle_event(self._callback(BotAction.MANAGER_MANAGEMENT))
+
+        self.assertIn("Раздел команды", response.outbound.text)
+        self.assertIsNone(dialog_state_store.get("203302812"))
+        self.assertNotIn("Нужна геолокация", response.outbound.text)
 
     def test_approval_history_text_opens_approval_history(self) -> None:
         response = self._router_for_role("manager").handle_event(self._message("История согласований"))

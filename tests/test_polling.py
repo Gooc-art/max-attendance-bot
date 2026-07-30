@@ -92,6 +92,6 @@ def test_run_polling_uses_fast_callback_router(monkeypatch) -> None:
     with pytest.raises(KeyboardInterrupt):
         polling.run_polling()
 
-    router_cls.assert_called_once_with(async_callback_outbound=False, async_user_activity=True)
+    router_cls.assert_called_once_with(async_callback_outbound=True, async_user_activity=True)
     client.unsubscribe_all_webhooks.assert_called_once()
     assert client.request_timeout_seconds == 6

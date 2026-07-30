@@ -8,6 +8,8 @@ from app.bot.actions import BotAction
 from app.bot.buttons import main_menu_buttons
 from app.bot.router import MaxWebhookRouter
 from app.config import Settings
+from app.domain.dialog_state import UserDialogState
+from app.domain.enums import DialogFlow
 from app.schemas.max import MaxAttachment, MaxCallback, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
 from app.services.dialog_state import dialog_state_store
 from app.services.weather import DailyWeather, WeatherService
@@ -156,6 +158,68 @@ class WeatherTests(unittest.TestCase):
 
         self.assertIn("Погода на 7 дней", response.outbound.text)
         router.weather_service.save_user_location.assert_called_once_with("125", 55.75, 37.62)
+
+    def test_weather_action_resets_other_active_flow(self) -> None:
+        dialog_state_store.reset("126")
+        dialog_state_store.set(
+            "126",
+            UserDialogState(flow=DialogFlow.SUBSTITUTION.value, step="reason", data={}),
+        )
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value="employee")
+        router.weather_service = MagicMock()
+        router.weather_service.forecast_for_user.return_value = "Погода на 7 дней:\nСегодня: ясно."
+        router.substitution_flow.handle_input = MagicMock()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+
+        response = router.handle_event(
+            MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                chat_id=987,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id="cb-weather-active",
+                    payload=BotAction.MENU_WEATHER,
+                    user=MaxUser(user_id=126, first_name="Test"),
+                ),
+            )
+        )
+
+        self.assertIn("Погода на 7 дней", response.outbound.text)
+        router.substitution_flow.handle_input.assert_not_called()
+        self.assertIsNone(dialog_state_store.get("126"))
+
+    def test_main_menu_resets_weather_location_flow(self) -> None:
+        dialog_state_store.reset("127")
+        dialog_state_store.set(
+            "127",
+            UserDialogState(flow=DialogFlow.WEATHER_LOCATION.value, step="await_location", data={}),
+        )
+        router = MaxWebhookRouter()
+        router.role_resolver.resolve_role = MagicMock(return_value="employee")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+
+        response = router.handle_event(
+            MaxUpdate(
+                update_type="message_callback",
+                timestamp=1,
+                chat_id=987,
+                callback=MaxCallback(
+                    timestamp=1,
+                    callback_id="cb-main-active-weather",
+                    payload=BotAction.MAIN_MENU,
+                    user=MaxUser(user_id=127, first_name="Test"),
+                ),
+            )
+        )
+
+        self.assertIn("Главное меню", response.outbound.text)
+        self.assertIsNone(dialog_state_store.get("127"))
 
     def test_clothes_advice_mentions_rain_and_wind(self) -> None:
         text = WeatherService._format_forecast(

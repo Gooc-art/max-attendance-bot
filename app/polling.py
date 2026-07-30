@@ -107,7 +107,7 @@ def run_polling() -> None:
     client.request_timeout_seconds = settings.polling_timeout_seconds + 5
     delete_stale_webhooks(client)
     next_webhook_cleanup_at = monotonic() + WEBHOOK_CLEANUP_INTERVAL_SECONDS
-    router = MaxWebhookRouter(async_callback_outbound=False, async_user_activity=True)
+    router = MaxWebhookRouter(async_callback_outbound=True, async_user_activity=True)
     markers = RuntimeMarkerRepository()
     marker_path = Path(settings.polling_marker_file)
     marker = load_marker(marker_path)

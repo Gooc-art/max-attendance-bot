@@ -315,6 +315,12 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if action == BotAction.MENU_WEATHER or user_text == "Погода":
+            dialog_state_store.reset(event["user_id"])
+            response = self._weather(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if active_state and payload.update_type == "message_created" and payload.message and payload.message.body.attachments:
             file_attachments = [
                 attachment
@@ -347,6 +353,10 @@ class MaxWebhookRouter:
             response = self._employee_cases(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
+
+        if active_state and active_state.flow == DialogFlow.WEATHER_LOCATION.value and action and action != "weather.location":
+            dialog_state_store.reset(event["user_id"])
+            active_state = None
 
         if active_state and active_state.flow == DialogFlow.SUBSTITUTION.value:
             result = self.substitution_flow.handle_input(event["user_id"], role, user_text, action, active_state)
@@ -553,11 +563,6 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_MY_OFFICE or user_text in {"Мой кабинет", "🚪 Мой кабинет"}:
             response = self._my_office_status(role, event["user_id"])
-            self._send_outbound(payload, response.outbound)
-            return response
-
-        if action == BotAction.MENU_WEATHER or user_text == "Погода":
-            response = self._weather(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 

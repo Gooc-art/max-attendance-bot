@@ -28,7 +28,7 @@ class WeatherService:
     def forecast_text(self) -> str:
         settings = get_settings()
         if not settings.weather_latitude or not settings.weather_longitude:
-            return "Погода не настроена: нужны WEATHER_LATITUDE и WEATHER_LONGITUDE в .env."
+            return "Погода пока не настроена. Нужно один раз указать город или координаты офиса."
 
         now = monotonic()
         if self._cache and self._cache[0] > now:

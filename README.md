@@ -33,7 +33,7 @@ MAX_BOT_SECRET=
 MAX_BOT_WEBHOOK_URL=
 MAX_API_TIMEOUT_SECONDS=3
 MAX_DELETE_PREVIOUS_MESSAGE=true
-APP_HOST=0.0.0.0
+APP_HOST=127.0.0.1
 APP_PORT=8000
 APP_DEBUG=true
 DATABASE_URL=sqlite:///./data/attendance_bot.db
@@ -82,7 +82,7 @@ cd ~/skud
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8001
+uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
 ## Прод-режим на Mac mini

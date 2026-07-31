@@ -12,7 +12,7 @@ if [ -f "$ROOT_DIR/.env" ]; then
   set +a
 fi
 
-APP_HOST="${APP_HOST:-0.0.0.0}"
+APP_HOST="${APP_HOST:-127.0.0.1}"
 APP_PORT="${APP_PORT:-8001}"
 
 cd "$ROOT_DIR"

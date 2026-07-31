@@ -1,0 +1,15 @@
+[Unit]
+Description=SKUD MAX bot polling
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/Gooc/skud
+EnvironmentFile=/home/Gooc/skud/.env
+ExecStart=/home/Gooc/skud/scripts/run_polling.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

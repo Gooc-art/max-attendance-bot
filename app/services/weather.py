@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from time import monotonic
 from urllib.parse import urlencode
@@ -8,6 +9,8 @@ from urllib.request import urlopen
 
 from app.config import get_settings
 from app.repositories.weather_location_repository import WeatherLocationRepository
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,7 @@ class WeatherService:
         try:
             days = self._load_forecast(latitude, longitude)
         except Exception:
+            logger.exception("Weather forecast load failed latitude=%s longitude=%s", latitude, longitude)
             return "Погода временно недоступна. Попробуй позже."
 
         text = self._format_forecast(days)

@@ -66,7 +66,8 @@ class WeatherService:
         forecast = self.forecast_for_user(user_id)
         if not forecast or not forecast.startswith("Погода на 7 дней:\n"):
             return None
-        return forecast.splitlines()[1]
+        today = forecast.splitlines()[1].replace(". ", ". Рекомендую надеть: ", 1)
+        return f"Погода сегодня: {today.removeprefix('Сегодня: ')}"
 
     def save_user_location(self, user_id: str, latitude: float, longitude: float) -> str:
         settings = get_settings()

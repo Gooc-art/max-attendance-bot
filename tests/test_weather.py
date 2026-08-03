@@ -236,7 +236,17 @@ class WeatherTests(unittest.TestCase):
             "forecast_for_user",
             return_value="Погода на 7 дней:\nСегодня: ясно, 1..2C.\n2026-08-04: облачно",
         ):
-            self.assertEqual(service.today_for_user("129"), "Сегодня: ясно, 1..2C.")
+            self.assertEqual(service.today_for_user("129"), "Погода сегодня: ясно, 1..2C.")
+
+    def test_today_for_user_mentions_clothes_recommendation(self) -> None:
+        service = WeatherService(location_repository=_FakeWeatherLocationRepository())
+
+        with patch.object(
+            service,
+            "forecast_for_user",
+            return_value="Погода на 7 дней:\nСегодня: ясно, 1..2C. Теплая куртка.",
+        ):
+            self.assertIn("Рекомендую надеть: Теплая куртка", service.today_for_user("129"))
 
     def test_forecast_for_same_location_is_cached(self) -> None:
         service = WeatherService(location_repository=_FakeWeatherLocationRepository())

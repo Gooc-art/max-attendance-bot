@@ -95,5 +95,5 @@ def get_settings() -> Settings:
         weather_latitude=os.getenv("WEATHER_LATITUDE", ""),
         weather_longitude=os.getenv("WEATHER_LONGITUDE", ""),
         weather_cache_ttl_seconds=int(os.getenv("WEATHER_CACHE_TTL_SECONDS", "3600")),
-        weather_location_ttl_seconds=int(os.getenv("WEATHER_LOCATION_TTL_SECONDS", "2592000")),
+        weather_location_ttl_seconds=int(os.getenv("WEATHER_LOCATION_TTL_SECONDS", "315360000")),
     )

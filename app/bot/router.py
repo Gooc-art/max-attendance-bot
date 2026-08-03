@@ -1080,6 +1080,7 @@ class MaxWebhookRouter:
         prefix = ""
         if role == Role.ADMIN.value:
             prefix = "Администратор. Источник прав: Google Sheets.\n\n"
+        text = self._with_main_menu_weather(text, user_id)
         return MaxWebhookResponse(
             ok=True,
             role=role,
@@ -1087,6 +1088,14 @@ class MaxWebhookRouter:
             outbound=MaxOutboundMessage(text=prefix + text, buttons=self._main_menu_buttons(role, user_id)),
             active_flow=None,
         )
+
+    def _with_main_menu_weather(self, text: str, user_id: str) -> str:
+        if not user_id or not text.startswith("Главное меню"):
+            return text
+        today = self.weather_service.today_for_user(user_id)
+        if not isinstance(today, str) or not today:
+            return text
+        return f"{text}\n\n{today}"
 
     def _main_menu_buttons(self, role: str, user_id: str = "") -> list[MaxOutboundButton]:
         return list(main_menu_buttons(role))

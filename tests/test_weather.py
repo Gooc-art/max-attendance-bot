@@ -74,7 +74,7 @@ class WeatherTests(unittest.TestCase):
             weather_latitude="",
             weather_longitude="",
             weather_cache_ttl_seconds=3600,
-            weather_location_ttl_seconds=2592000,
+            weather_location_ttl_seconds=315360000,
         )
 
         with patch("app.services.weather.get_settings", return_value=settings):
@@ -94,6 +94,7 @@ class WeatherTests(unittest.TestCase):
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
         router.weather_service = MagicMock()
         router.weather_service.forecast_for_user.return_value = "Погода на 7 дней:\nСегодня: ясно."
+        router.weather_service.today_for_user.return_value = None
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = False
         router._touch_user_activity = MagicMock()
@@ -121,6 +122,7 @@ class WeatherTests(unittest.TestCase):
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
         router.weather_service = MagicMock()
         router.weather_service.forecast_for_user.return_value = None
+        router.weather_service.today_for_user.return_value = None
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = False
         router._touch_user_activity = MagicMock()
@@ -226,6 +228,16 @@ class WeatherTests(unittest.TestCase):
 
         repository.save.assert_called_once_with("129", "55.75", "37.62", ttl_seconds=42)
 
+    def test_today_for_user_returns_current_day_line(self) -> None:
+        service = WeatherService(location_repository=_FakeWeatherLocationRepository())
+
+        with patch.object(
+            service,
+            "forecast_for_user",
+            return_value="Погода на 7 дней:\nСегодня: ясно, 1..2C.\n2026-08-04: облачно",
+        ):
+            self.assertEqual(service.today_for_user("129"), "Сегодня: ясно, 1..2C.")
+
     def test_forecast_for_same_location_is_cached(self) -> None:
         service = WeatherService(location_repository=_FakeWeatherLocationRepository())
         days = [
@@ -265,6 +277,7 @@ class WeatherTests(unittest.TestCase):
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
         router.weather_service = MagicMock()
         router.weather_service.forecast_for_user.return_value = "Погода на 7 дней:\nСегодня: ясно."
+        router.weather_service.today_for_user.return_value = None
         router.substitution_flow.handle_input = MagicMock()
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = False
@@ -296,6 +309,8 @@ class WeatherTests(unittest.TestCase):
         )
         router = MaxWebhookRouter()
         router.role_resolver.resolve_role = MagicMock(return_value="employee")
+        router.weather_service = MagicMock()
+        router.weather_service.today_for_user.return_value = "Сегодня: ясно, 1..2C."
         router.max_client = MagicMock()
         router.max_client.is_configured.return_value = False
         router._touch_user_activity = MagicMock()
@@ -315,6 +330,7 @@ class WeatherTests(unittest.TestCase):
         )
 
         self.assertIn("Главное меню", response.outbound.text)
+        self.assertIn("Сегодня: ясно", response.outbound.text)
         self.assertIsNone(dialog_state_store.get("127"))
 
     def test_clothes_advice_mentions_rain_and_wind(self) -> None:

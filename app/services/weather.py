@@ -62,6 +62,12 @@ class WeatherService:
             return None
         return self.forecast_text(location[0], location[1])
 
+    def today_for_user(self, user_id: str) -> str | None:
+        forecast = self.forecast_for_user(user_id)
+        if not forecast or not forecast.startswith("Погода на 7 дней:\n"):
+            return None
+        return forecast.splitlines()[1]
+
     def save_user_location(self, user_id: str, latitude: float, longitude: float) -> str:
         settings = get_settings()
         latitude_text = str(latitude)

@@ -11,7 +11,16 @@ from app.bot.router import MaxWebhookRouter
 from app.config import Settings
 from app.domain.dialog_state import UserDialogState
 from app.domain.enums import DialogFlow
-from app.schemas.max import MaxAttachment, MaxCallback, MaxMessage, MaxMessageBody, MaxRecipient, MaxUpdate, MaxUser
+from app.schemas.max import (
+    MaxAttachment,
+    MaxAttachmentPayload,
+    MaxCallback,
+    MaxMessage,
+    MaxMessageBody,
+    MaxRecipient,
+    MaxUpdate,
+    MaxUser,
+)
 from app.services.dialog_state import dialog_state_store
 from app.services.weather import DailyWeather, WeatherService
 
@@ -65,6 +74,7 @@ class WeatherTests(unittest.TestCase):
             weather_latitude="",
             weather_longitude="",
             weather_cache_ttl_seconds=3600,
+            weather_location_ttl_seconds=2592000,
         )
 
         with patch("app.services.weather.get_settings", return_value=settings):
@@ -176,6 +186,24 @@ class WeatherTests(unittest.TestCase):
         self.assertIn("Погода на 7 дней", response.outbound.text)
         router.weather_service.save_user_location.assert_called_once_with("125", 55.75, 37.62)
 
+    def test_weather_location_accepts_short_payload_keys(self) -> None:
+        payload = MaxUpdate(
+            update_type="message_created",
+            timestamp=2,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=125),
+                timestamp=2,
+                body=MaxMessageBody(
+                    mid="m-weather",
+                    seq=2,
+                    attachments=[MaxAttachment(type="location", payload=MaxAttachmentPayload(lat=55.75, lon=37.62))],
+                ),
+                sender=MaxUser(user_id=125, first_name="Test"),
+            ),
+        )
+
+        self.assertEqual(MaxWebhookRouter._extract_location(payload), (55.75, 37.62))
+
     def test_user_location_is_loaded_after_service_restart(self) -> None:
         repository = _FakeWeatherLocationRepository()
         first = WeatherService(location_repository=repository)
@@ -186,6 +214,17 @@ class WeatherTests(unittest.TestCase):
             text = second.forecast_for_user("128")
 
         self.assertEqual(text, "Погода временно недоступна. Попробуй позже.")
+
+    def test_user_location_ttl_uses_settings(self) -> None:
+        repository = MagicMock()
+        service = WeatherService(location_repository=repository)
+
+        with patch("app.services.weather.get_settings") as get_settings:
+            get_settings.return_value = MagicMock(weather_location_ttl_seconds=42)
+            with patch.object(service, "forecast_text", return_value="Погода на 7 дней"):
+                service.save_user_location("129", 55.75, 37.62)
+
+        repository.save.assert_called_once_with("129", "55.75", "37.62", ttl_seconds=42)
 
     def test_forecast_for_same_location_is_cached(self) -> None:
         service = WeatherService(location_repository=_FakeWeatherLocationRepository())
@@ -208,6 +247,13 @@ class WeatherTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         load_forecast.assert_called_once()
+
+    def test_forecast_uses_stale_cache_after_load_failure(self) -> None:
+        service = WeatherService(location_repository=_FakeWeatherLocationRepository())
+        service._cache[("55.75", "37.62")] = (0, "old forecast")
+
+        with patch.object(service, "_load_forecast", side_effect=TimeoutError):
+            self.assertEqual(service.forecast_text("55.75", "37.62"), "old forecast")
 
     def test_weather_action_resets_other_active_flow(self) -> None:
         dialog_state_store.reset("126")

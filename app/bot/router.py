@@ -1240,7 +1240,7 @@ class MaxWebhookRouter:
                 role=role,
                 menu=get_menu_for_role(role),
                 outbound=MaxOutboundMessage(
-                    text="Отправь свою геолокацию, покажу погоду и сохраню место на сутки.",
+                    text="Отправь свою геолокацию, покажу погоду и сохраню место.",
                     buttons=[
                         MaxOutboundButton(
                             title="Отправить геолокацию",
@@ -1308,8 +1308,12 @@ class MaxWebhookRouter:
             latitude = attachment.latitude
             longitude = attachment.longitude
             if attachment.payload is not None:
-                latitude = latitude if latitude is not None else attachment.payload.latitude
-                longitude = longitude if longitude is not None else attachment.payload.longitude
+                latitude = latitude if latitude is not None else attachment.payload.latitude or attachment.payload.lat
+                longitude = (
+                    longitude
+                    if longitude is not None
+                    else attachment.payload.longitude or attachment.payload.lon or attachment.payload.lng
+                )
             if latitude is not None and longitude is not None:
                 return float(latitude), float(longitude)
         return None

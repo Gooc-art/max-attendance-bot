@@ -26,6 +26,9 @@ class MaxAttachmentPayload(BaseModel):
     token: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class MaxAttachment(BaseModel):

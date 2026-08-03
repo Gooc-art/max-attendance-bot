@@ -48,6 +48,8 @@ class WeatherService:
             days = self._load_forecast(latitude, longitude)
         except Exception:
             logger.exception("Weather forecast load failed latitude=%s longitude=%s", latitude, longitude)
+            if cached:
+                return cached[1]
             return "Погода временно недоступна. Попробуй позже."
 
         text = self._format_forecast(days)
@@ -61,10 +63,12 @@ class WeatherService:
         return self.forecast_text(location[0], location[1])
 
     def save_user_location(self, user_id: str, latitude: float, longitude: float) -> str:
+        settings = get_settings()
         latitude_text = str(latitude)
         longitude_text = str(longitude)
-        self._user_locations[str(user_id)] = (monotonic() + 86400, latitude_text, longitude_text)
-        self.location_repository.save(user_id, latitude_text, longitude_text, ttl_seconds=86400)
+        ttl_seconds = max(int(settings.weather_location_ttl_seconds), 1)
+        self._user_locations[str(user_id)] = (monotonic() + ttl_seconds, latitude_text, longitude_text)
+        self.location_repository.save(user_id, latitude_text, longitude_text, ttl_seconds=ttl_seconds)
         return self.forecast_text(latitude_text, longitude_text)
 
     def _user_location(self, user_id: str) -> tuple[str, str] | None:
@@ -79,7 +83,8 @@ class WeatherService:
         if stored is None:
             return None
         latitude, longitude, _expires_at = stored
-        self._user_locations[str(user_id)] = (monotonic() + 86400, latitude, longitude)
+        ttl_seconds = max(int(get_settings().weather_location_ttl_seconds), 1)
+        self._user_locations[str(user_id)] = (monotonic() + ttl_seconds, latitude, longitude)
         return latitude, longitude
 
     def _load_forecast(self, latitude: str, longitude: str) -> list[DailyWeather]:

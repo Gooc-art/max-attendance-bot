@@ -114,6 +114,32 @@ class RoleActionAccessTests(unittest.TestCase):
         self.assertIn("Не понял команду", response.outbound.text)
         self.assertIn("Команда", {button.title for button in response.outbound.buttons})
 
+    def test_cached_role_static_menu_callback_skips_role_resolver(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+        router.role_resolver._remember_role("123", "manager")
+        router.role_resolver.resolve_role = MagicMock(side_effect=AssertionError("slow role lookup"))
+
+        response = router.handle_event(self._callback(BotAction.MANAGER_MANAGEMENT))
+
+        router.role_resolver.resolve_role.assert_not_called()
+        self.assertIn("Раздел команды", response.outbound.text)
+
+    def test_cached_role_fast_menu_keeps_access_control(self) -> None:
+        router = MaxWebhookRouter()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = False
+        router._touch_user_activity = MagicMock()
+        router.role_resolver._remember_role("123", "employee")
+        router.role_resolver.resolve_role = MagicMock(side_effect=AssertionError("slow role lookup"))
+
+        response = router.handle_event(self._callback(BotAction.MANAGER_MANAGEMENT))
+
+        router.role_resolver.resolve_role.assert_not_called()
+        self.assertIn("недоступен", response.outbound.text)
+
 
 if __name__ == "__main__":
     unittest.main()

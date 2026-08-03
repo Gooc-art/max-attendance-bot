@@ -10,6 +10,7 @@ from app.polling import (
     extract_update_marker,
     extract_update_payload,
     extract_updates,
+    handle_polled_updates,
     handle_polled_update,
 )
 
@@ -67,6 +68,42 @@ def test_handle_polled_update_keeps_marker_on_router_failure() -> None:
     markers.complete.assert_not_called()
 
 
+def test_handle_polled_updates_returns_last_contiguous_marker() -> None:
+    router = MagicMock()
+    markers = MagicMock()
+    raw_updates = [{"marker": "m1"}, {"marker": "m2"}, {"marker": "m3"}]
+
+    def fake_handle(_router, _markers, raw_update):
+        return raw_update["marker"] != "m2"
+
+    import app.polling as polling
+
+    original = polling.handle_polled_update
+    polling.handle_polled_update = fake_handle
+    try:
+        assert handle_polled_updates(router, markers, raw_updates, concurrency=3) == (False, "m1")
+    finally:
+        polling.handle_polled_update = original
+
+
+def test_handle_polled_updates_uses_response_marker_only_when_batch_succeeds() -> None:
+    router = MagicMock()
+    markers = MagicMock()
+    raw_updates = [{"marker": "m1"}, {"marker": "m2"}]
+
+    def fake_handle(_router, _markers, _raw_update):
+        return True
+
+    import app.polling as polling
+
+    original = polling.handle_polled_update
+    polling.handle_polled_update = fake_handle
+    try:
+        assert handle_polled_updates(router, markers, raw_updates, concurrency=2) == (True, "m2")
+    finally:
+        polling.handle_polled_update = original
+
+
 def test_run_polling_uses_fast_callback_router(monkeypatch) -> None:
     from app import polling
 
@@ -78,6 +115,7 @@ def test_run_polling_uses_fast_callback_router(monkeypatch) -> None:
         polling_marker_file="run/test.marker",
         polling_timeout_seconds=1,
         polling_limit=100,
+        polling_concurrency=4,
         polling_idle_sleep_seconds=1,
         polling_error_sleep_seconds=1,
     )
@@ -94,4 +132,34 @@ def test_run_polling_uses_fast_callback_router(monkeypatch) -> None:
 
     router_cls.assert_called_once_with(async_callback_outbound=True, async_user_activity=True)
     client.unsubscribe_all_webhooks.assert_called_once()
-    assert client.request_timeout_seconds == 6
+    assert client.request_timeout_seconds == 2
+
+
+def test_run_polling_treats_get_updates_timeout_as_idle_cycle(monkeypatch) -> None:
+    from app import polling
+
+    client = MagicMock()
+    client.get_updates.side_effect = [TimeoutError("slow"), KeyboardInterrupt]
+    settings = SimpleNamespace(
+        app_debug=False,
+        polling_marker_file="run/test.marker",
+        polling_timeout_seconds=1,
+        polling_limit=100,
+        polling_concurrency=1,
+        polling_idle_sleep_seconds=7,
+        polling_error_sleep_seconds=9,
+    )
+    sleeps = []
+
+    monkeypatch.setattr(polling, "get_settings", lambda: settings)
+    monkeypatch.setattr(polling, "init_db", lambda: None)
+    monkeypatch.setattr(polling.MaxApiClient, "from_settings", lambda: client)
+    monkeypatch.setattr(polling, "MaxWebhookRouter", MagicMock)
+    monkeypatch.setattr(polling, "RuntimeMarkerRepository", MagicMock)
+    monkeypatch.setattr(polling, "load_marker", lambda path: "")
+    monkeypatch.setattr(polling.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    with pytest.raises(KeyboardInterrupt):
+        polling.run_polling()
+
+    assert sleeps == [settings.polling_idle_sleep_seconds]

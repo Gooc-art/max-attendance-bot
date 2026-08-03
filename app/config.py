@@ -36,6 +36,7 @@ class Settings:
     polling_marker_file: str
     polling_timeout_seconds: int
     polling_limit: int
+    polling_concurrency: int
     polling_idle_sleep_seconds: int
     polling_error_sleep_seconds: int
     google_service_account_file: str
@@ -71,6 +72,7 @@ def get_settings() -> Settings:
         polling_marker_file=os.getenv("POLLING_MARKER_FILE", str(BASE_DIR / "run" / "max_polling.marker")),
         polling_timeout_seconds=int(os.getenv("POLLING_TIMEOUT_SECONDS", "1")),
         polling_limit=int(os.getenv("POLLING_LIMIT", "100")),
+        polling_concurrency=int(os.getenv("POLLING_CONCURRENCY", "2")),
         polling_idle_sleep_seconds=int(os.getenv("POLLING_IDLE_SLEEP_SECONDS", "1")),
         polling_error_sleep_seconds=int(os.getenv("POLLING_ERROR_SLEEP_SECONDS", "5")),
         google_service_account_file=os.getenv(

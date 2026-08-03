@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -86,6 +87,34 @@ def handle_polled_update(router: MaxWebhookRouter, markers: RuntimeMarkerReposit
     return True
 
 
+def handle_polled_updates(
+    router: MaxWebhookRouter,
+    markers: RuntimeMarkerRepository,
+    updates: list[dict[str, Any]],
+    concurrency: int = 1,
+) -> tuple[bool, str]:
+    if not updates:
+        return True, ""
+
+    workers = max(int(concurrency or 1), 1)
+    if workers == 1 or len(updates) == 1:
+        results = [handle_polled_update(router, markers, raw_update) for raw_update in updates]
+    else:
+        with ThreadPoolExecutor(max_workers=min(workers, len(updates))) as executor:
+            results = list(executor.map(lambda raw_update: handle_polled_update(router, markers, raw_update), updates))
+
+    all_succeeded = True
+    last_marker = ""
+    for raw_update, ok in zip(updates, results):
+        if not ok:
+            all_succeeded = False
+            break
+        update_marker = extract_update_marker(raw_update)
+        if update_marker:
+            last_marker = update_marker
+    return all_succeeded, last_marker
+
+
 def delete_stale_webhooks(client: MaxApiClient) -> None:
     try:
         deleted_webhooks = client.unsubscribe_all_webhooks()
@@ -104,38 +133,54 @@ def run_polling() -> None:
     init_db()
 
     client = MaxApiClient.from_settings()
-    client.request_timeout_seconds = settings.polling_timeout_seconds + 5
+    client.request_timeout_seconds = max(settings.polling_timeout_seconds + 1, 2)
     delete_stale_webhooks(client)
     next_webhook_cleanup_at = monotonic() + WEBHOOK_CLEANUP_INTERVAL_SECONDS
     router = MaxWebhookRouter(async_callback_outbound=True, async_user_activity=True)
     markers = RuntimeMarkerRepository()
     marker_path = Path(settings.polling_marker_file)
     marker = load_marker(marker_path)
+    polling_concurrency = max(int(getattr(settings, "polling_concurrency", 1) or 1), 1)
 
-    logger.info("MAX polling started marker=%s", marker or "<empty>")
+    logger.info("MAX polling started marker=%s concurrency=%s", marker or "<empty>", polling_concurrency)
     while True:
+        if monotonic() >= next_webhook_cleanup_at:
+            delete_stale_webhooks(client)
+            next_webhook_cleanup_at = monotonic() + WEBHOOK_CLEANUP_INTERVAL_SECONDS
         try:
-            if monotonic() >= next_webhook_cleanup_at:
-                delete_stale_webhooks(client)
-                next_webhook_cleanup_at = monotonic() + WEBHOOK_CLEANUP_INTERVAL_SECONDS
             response = client.get_updates(
                 marker=marker or None,
                 timeout_seconds=settings.polling_timeout_seconds,
                 limit=settings.polling_limit,
             )
+        except KeyboardInterrupt:
+            raise
+        except TimeoutError:
+            logger.warning("MAX polling get_updates timed out")
+            time.sleep(settings.polling_idle_sleep_seconds)
+            continue
+        except Exception:
+            logger.exception("MAX polling loop failed")
+            time.sleep(settings.polling_error_sleep_seconds)
+            continue
+
+        try:
             updates = extract_updates(response)
             response_marker = extract_response_marker(response)
             if not updates and response_marker and response_marker != marker:
                 marker = response_marker
                 save_marker(marker_path, marker)
 
-            for raw_update in updates:
-                ok = handle_polled_update(router, markers, raw_update)
-                update_marker = extract_update_marker(raw_update)
-                if ok and update_marker:
-                    marker = update_marker
-                    save_marker(marker_path, marker)
-            if response_marker and response_marker != marker:
+            all_succeeded, batch_marker = handle_polled_updates(
+                router,
+                markers,
+                updates,
+                concurrency=polling_concurrency,
+            )
+            if batch_marker and batch_marker != marker:
+                marker = batch_marker
+                save_marker(marker_path, marker)
+            if all_succeeded and response_marker and response_marker != marker:
                 marker = response_marker
                 save_marker(marker_path, marker)
 

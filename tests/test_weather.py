@@ -49,6 +49,7 @@ class WeatherTests(unittest.TestCase):
             polling_marker_file="",
             polling_timeout_seconds=1,
             polling_limit=100,
+            polling_concurrency=2,
             polling_idle_sleep_seconds=1,
             polling_error_sleep_seconds=5,
             google_service_account_file="",

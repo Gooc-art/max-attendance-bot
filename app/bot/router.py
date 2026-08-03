@@ -268,6 +268,9 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             self._touch_user_activity(payload, event, role="", started=False)
             return response
+        fast_response = self._fast_cached_menu_response(payload, event, action, user_text)
+        if fast_response is not None:
+            return fast_response
         role_started_at = perf_counter()
         role = self.role_resolver.resolve_role(
             user_id=event["user_id"],
@@ -1087,6 +1090,67 @@ class MaxWebhookRouter:
 
     def _main_menu_buttons(self, role: str, user_id: str = "") -> list[MaxOutboundButton]:
         return list(main_menu_buttons(role))
+
+    def _fast_cached_menu_response(
+        self,
+        payload: MaxUpdate,
+        event: dict[str, str],
+        action: str,
+        user_text: str,
+    ) -> MaxWebhookResponse | None:
+        if payload.update_type != "message_callback" or not action:
+            return None
+
+        cached_role_getter = getattr(self.role_resolver, "_cached_role", None)
+        role = cached_role_getter(event["user_id"]) if callable(cached_role_getter) else ""
+        if not role:
+            return None
+
+        if self._is_main_menu_action(action, user_text):
+            dialog_state_store.reset(event["user_id"])
+            response = self._menu_response(role, "Главное меню готово.", event["user_id"])
+        else:
+            active_state = dialog_state_store.get(event["user_id"])
+            if active_state is not None:
+                return None
+            handlers = self._fast_menu_handlers(role)
+            handler = handlers.get(action)
+            if handler is None:
+                return None
+            response = self._forbidden_action_response(role, action) or handler()
+
+        self.logger.info(
+            "Router fast cached menu update_type=%s user_id=%s chat_id=%s role=%s action=%s",
+            payload.update_type,
+            event["user_id"],
+            event["chat_id"],
+            role,
+            action,
+        )
+        self._touch_user_activity(payload, event, role=role, started=self._is_start_event(payload, action, user_text))
+        self._send_outbound(payload, response.outbound)
+        return response
+
+    def _fast_menu_handlers(self, role: str):
+        return {
+            BotAction.EMPLOYEE_REASONS: lambda: self._employee_reason_menu(role),
+            BotAction.EMPLOYEE_MANAGER: lambda: self._employee_manager_menu(role),
+            BotAction.MANAGER_MANAGEMENT: lambda: self._manager_management_menu(role),
+            BotAction.MANAGER_REPORTS: lambda: self._manager_reports_menu(role),
+            BotAction.MANAGER_WORKFLOW: lambda: self._manager_workflow_menu(role),
+            BotAction.SECURITY_SKUD: lambda: self._security_skud_menu(role),
+            BotAction.HR_REFERENCE: lambda: self._hr_reference_menu(role),
+            BotAction.HR_WORKFLOW: lambda: self._hr_workflow_menu(role),
+            BotAction.HR_REPORTS: lambda: self._hr_reports_menu(role),
+            BotAction.TOP_SUMMARY: lambda: self._top_summary_menu(role),
+            BotAction.TOP_REPORTS: lambda: self._top_reports_menu(role),
+            BotAction.TOP_WORKFLOW: lambda: self._top_workflow_menu(role),
+            BotAction.ADMIN_PERSONAL: lambda: self._admin_personal_menu(role),
+            BotAction.ADMIN_STRUCTURE: lambda: self._admin_structure_menu(role),
+            BotAction.ADMIN_SKUD: lambda: self._admin_skud_menu(role),
+            BotAction.ADMIN_WORKFLOW: lambda: self._admin_workflow_menu(role),
+            BotAction.ADMIN_REPORTS: lambda: self._admin_reports_menu(role),
+        }
 
     def _forbidden_action_response(self, role: str, action: str) -> MaxWebhookResponse | None:
         allowed_roles = ACTION_ALLOWED_ROLES.get(action)

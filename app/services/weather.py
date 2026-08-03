@@ -178,9 +178,9 @@ class WeatherService:
         elif feels < 16:
             parts.append("Легкая куртка или худи")
         elif feels < 24:
-            parts.append("Легкий слой")
+            parts.append("Футболка и легкая рубашка или кофта")
         else:
-            parts.append("Легкая одежда")
+            parts.append("Футболка, легкие брюки или шорты")
 
         if cls._is_wet(day):
             parts.append("зонт")

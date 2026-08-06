@@ -1323,9 +1323,22 @@ class MaxWebhookRouter:
                     if longitude is not None
                     else attachment.payload.longitude or attachment.payload.lon or attachment.payload.lng
                 )
+                if latitude is None or longitude is None:
+                    latitude, longitude = MaxWebhookRouter._extract_location_pair(attachment.payload.model_extra or {})
             if latitude is not None and longitude is not None:
                 return float(latitude), float(longitude)
         return None
+
+    @staticmethod
+    def _extract_location_pair(payload: dict) -> tuple[object | None, object | None]:
+        for key in ("coordinates", "location", "geo", "point"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                latitude = value.get("latitude") or value.get("lat")
+                longitude = value.get("longitude") or value.get("lon") or value.get("lng")
+                if latitude is not None and longitude is not None:
+                    return latitude, longitude
+        return None, None
 
     def _start_office_seal_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
         return self._acknowledge_office_seal_reminder(role)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MaxUser(BaseModel):
@@ -22,6 +22,8 @@ class MaxRecipient(BaseModel):
 
 
 class MaxAttachmentPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     url: Optional[str] = None
     token: Optional[str] = None
     latitude: Optional[float] = None

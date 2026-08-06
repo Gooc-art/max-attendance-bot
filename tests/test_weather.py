@@ -206,6 +206,31 @@ class WeatherTests(unittest.TestCase):
 
         self.assertEqual(MaxWebhookRouter._extract_location(payload), (55.75, 37.62))
 
+    def test_weather_location_accepts_nested_payload_coordinates(self) -> None:
+        payload = MaxUpdate.model_validate(
+            {
+                "update_type": "message_created",
+                "timestamp": 2,
+                "message": {
+                    "recipient": {"chat_id": 987, "chat_type": "dialog", "user_id": 125},
+                    "timestamp": 2,
+                    "body": {
+                        "mid": "m-weather",
+                        "seq": 2,
+                        "attachments": [
+                            {
+                                "type": "location",
+                                "payload": {"coordinates": {"latitude": 55.75, "longitude": 37.62}},
+                            }
+                        ],
+                    },
+                    "sender": {"user_id": 125, "first_name": "Test"},
+                },
+            }
+        )
+
+        self.assertEqual(MaxWebhookRouter._extract_location(payload), (55.75, 37.62))
+
     def test_user_location_is_loaded_after_service_restart(self) -> None:
         repository = _FakeWeatherLocationRepository()
         first = WeatherService(location_repository=repository)

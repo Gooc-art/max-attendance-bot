@@ -42,7 +42,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -106,6 +106,32 @@ class SendOutboundTests(unittest.TestCase):
 
         router.max_client.send_message.assert_called_once()
 
+    def test_start_updates_previous_menu_instead_of_sending_new_one(self) -> None:
+        router = self._build_router()
+        router.bot_message_cursor_store.get.return_value = "bot-prev"
+
+        inbound = MaxUpdate(
+            update_type="bot_started",
+            timestamp=1,
+            chat_id=987,
+            user=MaxUser(user_id=123, first_name="Test"),
+        )
+
+        router._send_outbound(inbound, MaxOutboundMessage(text="Главное меню готово."))
+
+        router.max_client.edit_message.assert_called_once_with(
+            "bot-prev",
+            text="Главное меню готово.",
+            buttons=[],
+        )
+        router.max_client.send_message.assert_not_called()
+        router.bot_message_cursor_store.set.assert_any_call(
+            conversation_key="chat:987",
+            chat_id="987",
+            user_id="123",
+            message_id="bot-prev",
+        )
+
     def test_async_callback_outbound_returns_before_max_send(self) -> None:
         router = self._build_router()
         router.async_callback_outbound = True
@@ -143,7 +169,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -189,7 +215,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -225,7 +251,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -258,7 +284,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -603,7 +629,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )
@@ -689,6 +715,66 @@ class SendOutboundTests(unittest.TestCase):
         )
 
         self.assertEqual(router.incoming_dedup_key(bot_started), router.incoming_dedup_key(start_message))
+
+    def test_same_callback_action_shares_short_dedup_key(self) -> None:
+        router = MaxWebhookRouter()
+
+        first = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1000,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1000,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1000,
+                callback_id="cb-1",
+                payload="menu.approvals",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+        duplicate = first.model_copy(
+            update={
+                "timestamp": 1001,
+                "callback": MaxCallback(
+                    timestamp=1001,
+                    callback_id="cb-2",
+                    payload="menu.approvals",
+                    user=MaxUser(user_id=123, first_name="Test"),
+                ),
+            },
+        )
+        later = duplicate.model_copy(update={"timestamp": 1003})
+
+        self.assertEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(duplicate))
+        self.assertNotEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(later))
+
+        other_user = duplicate.model_copy(
+            update={
+                "callback": MaxCallback(
+                    timestamp=1001,
+                    callback_id="cb-3",
+                    payload="menu.approvals",
+                    user=MaxUser(user_id=456, first_name="Other"),
+                ),
+            },
+        )
+        other_message = duplicate.model_copy(
+            update={
+                "message": MaxMessage(
+                    recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                    timestamp=1001,
+                    body=MaxMessageBody(mid="other-card", seq=1, text="old"),
+                    sender=MaxUser(user_id=123, first_name="Test"),
+                ),
+            },
+        )
+
+        self.assertNotEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(other_user))
+        self.assertNotEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(other_message))
 
     def test_callback_without_chat_id_uses_embedded_callback_message(self) -> None:
         router = self._build_router()

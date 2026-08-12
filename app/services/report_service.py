@@ -106,6 +106,10 @@ class ReportService:
             return "Замещение"
         if source == "forgot_chip":
             return "Забыл карточку СКУД"
+        if source == "short_leave_notice_matched":
+            return "Согласованная отлучка"
+        if source == "short_leave_notice":
+            return "Отпроситься"
         if source.startswith("late_notice"):
             return "Опаздываю"
         if case_type == "late":
@@ -1071,7 +1075,7 @@ class ReportService:
                 source = str(getattr(case, "source", "") or "").strip()
                 if source.startswith("late_notice"):
                     warned = True
-                if source == "late_notice_matched":
+                if source in {"late_notice_matched", "short_leave_notice_matched"}:
                     matched = True
                 reason_text = str(getattr(case, "employee_reason", "") or "").strip()
                 if reason_text:
@@ -1131,7 +1135,7 @@ class ReportService:
                 source = str(getattr(case, "source", "") or "").strip()
                 if source.startswith("late_notice"):
                     warned = True
-                if source == "late_notice_matched":
+                if source in {"late_notice_matched", "short_leave_notice_matched"}:
                     matched = True
                 reason_text = str(getattr(case, "employee_reason", "") or "").strip()
                 if reason_text:

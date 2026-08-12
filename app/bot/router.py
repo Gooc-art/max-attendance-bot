@@ -77,9 +77,11 @@ SKUD_ROLES = {Role.MANAGER.value, Role.SECURITY.value, Role.ADMIN.value, Role.TO
 WORKFLOW_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
 REPORT_ROLES = {Role.MANAGER.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
 ALL_ROLES = {Role.EMPLOYEE.value, Role.MANAGER.value, Role.SECURITY.value, Role.HR.value, Role.ADMIN.value, Role.TOP_MANAGER.value}
+SHORT_LEAVE_ROLES = ALL_ROLES - {Role.TOP_MANAGER.value}
 
 ACTION_ALLOWED_ROLES = {
     BotAction.MENU_WEATHER: ALL_ROLES,
+    BotAction.MENU_SHORT_LEAVE: SHORT_LEAVE_ROLES,
     BotAction.MANAGER_MANAGEMENT: MANAGER_ROLES,
     BotAction.MANAGER_REPORTS: {Role.MANAGER.value},
     BotAction.MANAGER_WORKFLOW: {Role.MANAGER.value},
@@ -177,8 +179,12 @@ class MaxWebhookRouter:
             return "Забыл карточку СКУД"
         if str(source or "").strip().startswith("late_notice"):
             return "Опаздываю"
+        if str(source or "").strip().startswith("short_leave_notice"):
+            return "Отпроситься"
         if case_type == AttendanceCaseType.LATE.value:
             return "Опоздание"
+        if case_type == AttendanceCaseType.SHORT_LEAVE.value:
+            return "Отпроситься"
         if case_type == AttendanceCaseType.ABSENT.value:
             return "Неявка"
         return case_type or "Случай"
@@ -398,6 +404,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
+        if active_state and active_state.flow == DialogFlow.SHORT_LEAVE.value:
+            response = self._handle_short_leave_flow(role, event["user_id"], user_text, action, active_state)
+            self._send_outbound(payload, response.outbound)
+            return response
+
         if active_state and active_state.flow == DialogFlow.APPROVAL_REJECTION.value:
             response = self._handle_approval_rejection_flow(role, event["user_id"], user_text, action, active_state)
             self._send_outbound(payload, response.outbound)
@@ -526,6 +537,16 @@ class MaxWebhookRouter:
 
         if action == BotAction.MENU_RUNNING_LATE or user_text == "Опаздываю":
             response = self._start_running_late_flow(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.MENU_SHORT_LEAVE or user_text == "Отпроситься":
+            response = self._start_short_leave_flow(role, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action.startswith(BotAction.SHORT_LEAVE_MANAGER_PREFIX):
+            response = self._start_short_leave_flow(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -3389,7 +3410,7 @@ class MaxWebhookRouter:
     @staticmethod
     def _approval_rejection_requires_comment(case) -> bool:
         source = str(getattr(case, "source", "") or "").strip()
-        return source == "forgot_chip" or source.startswith("late_notice")
+        return source == "forgot_chip" or source.startswith("late_notice") or source.startswith("short_leave_notice")
 
     def _start_absence_period_edit_flow(self, role: str, user_id: str, case_id: int) -> MaxWebhookResponse:
         case = self.case_repository.get(case_id)
@@ -3531,6 +3552,57 @@ class MaxWebhookRouter:
                 buttons=buttons,
             ),
             active_flow=DialogFlow.RUNNING_LATE.value,
+        )
+
+    def _start_short_leave_flow(self, role: str, user_id: str) -> MaxWebhookResponse:
+        if role == Role.TOP_MANAGER.value:
+            return self._stub_section(role, "Этот раздел недоступен для твоей роли.")
+
+        employee_record = self._resolve_directory_record_by_user_id(user_id, refresh_on_miss=True)
+        if employee_record is None:
+            return self._stub_section(role, "Не нашел твою строку в справочнике сотрудников. Сначала проверь привязку ID.")
+
+        candidates = self._build_late_notice_manager_options(employee_record, role)
+        if not candidates:
+            if role == Role.MANAGER.value:
+                return self._stub_section(role, "Не удалось подобрать топ-руководителя для согласования.")
+            return self._stub_section(role, "Не удалось подобрать руководителя для согласования.")
+
+        buttons = [
+            MaxOutboundButton(
+                title=name,
+                action=f"{BotAction.SHORT_LEAVE_MANAGER_PREFIX}{manager_user_id}",
+                emoji="👔",
+                row=index // 2,
+            )
+            for index, (manager_user_id, name) in enumerate(candidates[:6])
+        ]
+        buttons.append(MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=len(buttons) // 2 + 1))
+        buttons.append(MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=len(buttons) // 2 + 1))
+
+        dialog_state_store.set(
+            user_id,
+            UserDialogState(
+                flow=DialogFlow.SHORT_LEAVE.value,
+                step="choose_manager",
+                data={
+                    "employee_name": employee_record.employee_name,
+                    "department_name": employee_record.department_name,
+                    "schedule_name": getattr(employee_record, "schedule_name", ""),
+                    "schedule_id": getattr(employee_record, "schedule_id", ""),
+                    "manager_options": {manager_user_id: name for manager_user_id, name in candidates[:6]},
+                },
+            ),
+        )
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Отпроситься.\n\nВыбери руководителя, которому уйдет согласование.",
+                buttons=buttons,
+            ),
+            active_flow=DialogFlow.SHORT_LEAVE.value,
         )
 
     def _start_attendance_reason_flow(self, role: str, user_id: str, case_id: int) -> MaxWebhookResponse:
@@ -4563,6 +4635,253 @@ class MaxWebhookRouter:
             active_flow=DialogFlow.RUNNING_LATE.value,
         )
 
+    def _handle_short_leave_flow(
+        self,
+        role: str,
+        user_id: str,
+        user_text: str,
+        action: str,
+        state,
+    ) -> MaxWebhookResponse:
+        if action == BotAction.BACK or user_text == "Назад":
+            if state.step == "choose_manager":
+                dialog_state_store.reset(user_id)
+                return self._running_late_back_response(role, user_id)
+            if state.step == "enter_leave_from":
+                return self._start_short_leave_flow(role, user_id)
+            if state.step == "enter_expected_return":
+                state.step = "enter_leave_from"
+                dialog_state_store.set(user_id, state)
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Напиши, во сколько уходишь, в формате ЧЧ:ММ.",
+                        buttons=[
+                            MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                        ],
+                    ),
+                    active_flow=DialogFlow.SHORT_LEAVE.value,
+                )
+            if state.step == "enter_reason":
+                state.step = "enter_expected_return"
+                dialog_state_store.set(user_id, state)
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Когда планируешь вернуться? Напиши ЧЧ:ММ или `не знаю`.",
+                        buttons=[
+                            MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                        ],
+                    ),
+                    active_flow=DialogFlow.SHORT_LEAVE.value,
+                )
+
+        if state.step == "choose_manager" and action.startswith(BotAction.SHORT_LEAVE_MANAGER_PREFIX):
+            manager_user_id = action.split(BotAction.SHORT_LEAVE_MANAGER_PREFIX, 1)[1]
+            manager_name = state.data.get("manager_options", {}).get(manager_user_id)
+            if not manager_name:
+                manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
+                manager_name = manager_record.employee_name if manager_record is not None else "Руководитель"
+            state.step = "enter_leave_from"
+            state.data["manager_user_id"] = manager_user_id
+            state.data["manager_name"] = manager_name
+            dialog_state_store.set(user_id, state)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Руководитель выбран: {manager}\n\nНапиши, во сколько уходишь, в формате ЧЧ:ММ.".format(
+                        manager=manager_name
+                    ),
+                    buttons=[
+                        MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                    ],
+                ),
+                active_flow=DialogFlow.SHORT_LEAVE.value,
+            )
+
+        if state.step == "enter_leave_from":
+            leave_from = self._normalize_hhmm(user_text)
+            if leave_from is None:
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Нужен формат времени ЧЧ:ММ. Пример: `13:20`.",
+                        buttons=[
+                            MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                        ],
+                    ),
+                    active_flow=DialogFlow.SHORT_LEAVE.value,
+                )
+            state.step = "enter_expected_return"
+            state.data["leave_from"] = leave_from
+            dialog_state_store.set(user_id, state)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Когда планируешь вернуться? Напиши ЧЧ:ММ или `не знаю`.",
+                    buttons=[
+                        MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                    ],
+                ),
+                active_flow=DialogFlow.SHORT_LEAVE.value,
+            )
+
+        if state.step == "enter_expected_return":
+            raw_return = str(user_text or "").strip().lower()
+            if raw_return in {"не знаю", "неизвестно", "пока не знаю", "-"}:
+                expected_return = "не знаю"
+            else:
+                expected_return = self._normalize_hhmm(user_text)
+                if expected_return is None:
+                    return MaxWebhookResponse(
+                        ok=True,
+                        role=role,
+                        menu=get_menu_for_role(role),
+                        outbound=MaxOutboundMessage(
+                            text="Напиши время возврата в формате ЧЧ:ММ или `не знаю`.",
+                            buttons=[
+                                MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                            ],
+                        ),
+                        active_flow=DialogFlow.SHORT_LEAVE.value,
+                    )
+                if expected_return <= state.data.get("leave_from", ""):
+                    return MaxWebhookResponse(
+                        ok=True,
+                        role=role,
+                        menu=get_menu_for_role(role),
+                        outbound=MaxOutboundMessage(
+                            text="Время возврата должно быть позже времени ухода.",
+                            buttons=[
+                                MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                                MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                            ],
+                        ),
+                        active_flow=DialogFlow.SHORT_LEAVE.value,
+                    )
+            state.step = "enter_reason"
+            state.data["expected_return"] = expected_return
+            dialog_state_store.set(user_id, state)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text="Напиши причину, почему нужно отпроситься.",
+                    buttons=[
+                        MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                    ],
+                ),
+                active_flow=DialogFlow.SHORT_LEAVE.value,
+            )
+
+        if state.step == "enter_reason":
+            reason = str(user_text or "").strip()
+            if not reason:
+                return MaxWebhookResponse(
+                    ok=True,
+                    role=role,
+                    menu=get_menu_for_role(role),
+                    outbound=MaxOutboundMessage(
+                        text="Напиши причину текстом.",
+                        buttons=[
+                            MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                            MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                        ],
+                    ),
+                    active_flow=DialogFlow.SHORT_LEAVE.value,
+                )
+            event_day = datetime.now().date()
+            leave_from = state.data.get("leave_from", "")
+            expected_return = state.data.get("expected_return", "не знаю")
+            reason_text = "Отпроситься с {leave_from} до {expected_return}. Причина: {reason}".format(
+                leave_from=leave_from,
+                expected_return=expected_return,
+                reason=reason,
+            )
+            case_id = self.case_repository.create_case(
+                employee_user_id=user_id,
+                employee_name=state.data.get("employee_name", ""),
+                department_name=state.data.get("department_name", ""),
+                manager_user_id=state.data.get("manager_user_id", ""),
+                manager_name=state.data.get("manager_name", "Руководитель"),
+                case_type=AttendanceCaseType.SHORT_LEAVE.value,
+                status=AttendanceCaseStatus.AWAITING_MANAGER_APPROVAL.value,
+                event_date=event_day.isoformat(),
+                planned_start=leave_from,
+                actual_start="-",
+                delay_minutes=0,
+                employee_reason=reason_text,
+                source="short_leave_notice",
+            )
+            approval_id = self.approval_repository.create_if_missing(
+                case_id=case_id,
+                manager_user_id=state.data.get("manager_user_id", ""),
+                manager_name=state.data.get("manager_name", "Руководитель"),
+                status=ApprovalStatus.PENDING.value,
+            )
+            case = self.case_repository.get(case_id)
+            if case is not None:
+                self._notify_manager_about_short_leave(case, leave_from, expected_return, reason, approval_id, background=True)
+            dialog_state_store.reset(user_id)
+            return MaxWebhookResponse(
+                ok=True,
+                role=role,
+                menu=get_menu_for_role(role),
+                outbound=MaxOutboundMessage(
+                    text=(
+                        "Заявка `Отпроситься` отправлена на согласование.\n\n"
+                        "Дата: {date}\n"
+                        "Уйти с: {leave_from}\n"
+                        "Плановый возврат: {expected_return}\n"
+                        "Причина: {reason}\n"
+                        "Руководитель: {manager}"
+                    ).format(
+                        date=event_day.isoformat(),
+                        leave_from=leave_from,
+                        expected_return=expected_return,
+                        reason=reason,
+                        manager=state.data.get("manager_name", "Руководитель"),
+                    ),
+                    buttons=[
+                        MaxOutboundButton(title="Назад", action=self._running_late_back_action(role)),
+                        MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU),
+                    ],
+                ),
+                active_flow=None,
+            )
+
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text="Сначала выбери руководителя, потом укажи время ухода, возврата и причину.",
+                buttons=[
+                    MaxOutboundButton(title="Назад", action=BotAction.BACK, emoji="↩️", row=0),
+                    MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0),
+                ],
+            ),
+            active_flow=DialogFlow.SHORT_LEAVE.value,
+        )
+
     def _handle_absence_period_edit_flow(
         self,
         role: str,
@@ -4799,6 +5118,43 @@ class MaxWebhookRouter:
             kind=self._case_kind_label(case.case_type, getattr(case, "source", "")),
             late_from=late_from_time,
             reason=reason_label,
+        )
+        buttons = approval_notification_buttons(approval_id) if approval_id else [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)]
+        self._send_max_message(
+            background=background,
+            user_id=case.manager_user_id,
+            text=notice_text,
+            buttons=buttons,
+        )
+
+    def _notify_manager_about_short_leave(
+        self,
+        case,
+        leave_from: str,
+        expected_return: str,
+        reason: str,
+        approval_id: int | None,
+        *,
+        background: bool = False,
+    ) -> None:
+        if not self.max_client.is_configured() or not case.manager_user_id:
+            return
+
+        notice_text = (
+            "Сотрудник просит отпроситься\n\n"
+            "Сотрудник: {employee}\n"
+            "Подразделение: {department}\n"
+            "Дата: {date}\n"
+            "Уйти с: {leave_from}\n"
+            "Плановый возврат: {expected_return}\n"
+            "Причина: {reason}"
+        ).format(
+            employee=case.employee_name,
+            department=case.department_name,
+            date=case.event_date,
+            leave_from=leave_from,
+            expected_return=expected_return,
+            reason=reason,
         )
         buttons = approval_notification_buttons(approval_id) if approval_id else [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)]
         self._send_max_message(

@@ -74,6 +74,15 @@ class RoleActionAccessTests(unittest.TestCase):
 
                 self.assertIn("Погода на 7 дней", response.outbound.text)
 
+    def test_short_leave_is_available_except_top_manager(self) -> None:
+        for role in ["employee", "manager", "security", "hr", "admin"]:
+            with self.subTest(role=role):
+                response = self._router_for_role(role).handle_event(self._callback(BotAction.MENU_SHORT_LEAVE))
+                self.assertNotIn("недоступен", response.outbound.text)
+
+        response = self._router_for_role("top_manager").handle_event(self._callback(BotAction.MENU_SHORT_LEAVE))
+        self.assertIn("недоступен", response.outbound.text)
+
     def test_unknown_callback_is_not_reported_as_stub_button(self) -> None:
         response = self._router_for_role("employee").handle_event(self._callback("unknown.action"))
 

@@ -538,6 +538,53 @@ class ReportServiceTests(unittest.TestCase):
         self.assertEqual(entries[0].kinds_text, "Замещение")
         self.assertEqual(entries[0].reason_text, "Согласованное замещение")
 
+    def test_visit_entries_label_short_leave_sources(self) -> None:
+        service = ReportService()
+        rows = [
+            SimpleNamespace(
+                id=100,
+                employee_user_id="emp-100",
+                employee_name="Иванова Ирина",
+                department_name="Отдел продаж",
+                manager_name="Петров Петр",
+                event_date="2026-05-04",
+                planned_start="08:30",
+                planned_end="17:15",
+                first_entry_time="08:20",
+                arrival_status="on_time",
+                arrival_delta_minutes=0,
+                last_exit_time="17:20",
+                departure_status="on_time",
+                departure_delta_minutes=0,
+                total_passes=6,
+            )
+        ]
+        cases = [
+            SimpleNamespace(
+                id=1001,
+                employee_user_id="emp-100",
+                employee_name="Иванова Ирина",
+                event_date="2026-05-04",
+                case_type="absent",
+                employee_reason="К врачу",
+                source="short_leave_notice",
+            ),
+            SimpleNamespace(
+                id=1002,
+                employee_user_id="emp-100",
+                employee_name="Иванова Ирина",
+                event_date="2026-05-04",
+                case_type="absent",
+                employee_reason="Вернулась в 14:10",
+                source="short_leave_notice_matched",
+            ),
+        ]
+
+        entries = service._build_visit_entries(rows, cases, [])
+
+        self.assertEqual(entries[0].kinds_text, "Отпроситься; Согласованная отлучка")
+        self.assertEqual(entries[0].matched_text, "Да")
+
     def test_workhours_rows_include_weekly_compensation_columns(self) -> None:
         service = ReportService()
         rows = _FakeVisitRepository().list_for_manager_user("mgr-1")

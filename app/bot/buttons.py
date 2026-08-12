@@ -79,6 +79,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 1),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Опоздания", BotAction.EMPLOYEE_REASONS, "⏰", 2),
             btn("Руководство", BotAction.EMPLOYEE_MANAGER, "👔", 2),
@@ -88,6 +89,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 1),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Команда", BotAction.MANAGER_MANAGEMENT, "👥", 1),
             btn("Согласования", BotAction.MENU_APPROVALS, "✅", 1),
@@ -98,6 +100,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 1),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("СКУД", BotAction.SECURITY_SKUD, "📥", 1),
             btn("Погода", BotAction.MENU_WEATHER, "🌤️", 2),
@@ -106,6 +109,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 1),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Справочники", BotAction.HR_REFERENCE, "👥", 1),
             btn("Процессы", BotAction.HR_WORKFLOW, "✅", 1),
@@ -116,6 +120,7 @@ def main_menu_buttons(role: str) -> List[MaxOutboundButton]:
         return readable_rows([
             btn("Обо мне", BotAction.WHOAMI, "👤", 0),
             btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+            btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 1),
             btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 1),
             btn("Личное", BotAction.ADMIN_PERSONAL, "👤", 1),
             btn("Структура", BotAction.ADMIN_STRUCTURE, "🏢", 1),
@@ -262,6 +267,7 @@ def employee_reason_section_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Объяснить", BotAction.MENU_SUBMIT_REASON, "✍️", 0),
         btn("Опаздываю", BotAction.MENU_RUNNING_LATE, "🚕", 0),
+        btn("Отпроситься", BotAction.MENU_SHORT_LEAVE, "🚪", 0),
         btn("Забыл карточку СКУД", BotAction.MENU_FORGOT_CHIP, "🪪", 0),
         btn("Мои опоздания", BotAction.MENU_MY_LATES, "⏰", 0),
         btn("Назад", BotAction.MAIN_MENU, "↩️", 2),

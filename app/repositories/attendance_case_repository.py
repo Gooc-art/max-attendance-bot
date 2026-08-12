@@ -293,6 +293,24 @@ class AttendanceCaseRepository:
                     best_row = row
             return best_row or (rows[0] if rows else None)
 
+    def find_matching_short_leave_notice(
+        self,
+        *,
+        employee_user_id: str,
+        event_date: str,
+    ) -> Optional[AttendanceCaseModel]:
+        if not employee_user_id or not event_date:
+            return None
+        with SessionLocal() as session:
+            return session.execute(
+                select(AttendanceCaseModel)
+                .where(AttendanceCaseModel.employee_user_id == employee_user_id)
+                .where(AttendanceCaseModel.event_date == event_date)
+                .where(AttendanceCaseModel.source == "short_leave_notice")
+                .order_by(AttendanceCaseModel.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
     def update_skud_match(
         self,
         case_id: int,
@@ -310,6 +328,23 @@ class AttendanceCaseRepository:
             case.delay_minutes = delay_minutes
             if case.source == "late_notice":
                 case.source = "late_notice_matched"
+            session.commit()
+            session.refresh(case)
+            return case
+
+    def update_short_leave_skud_match(
+        self,
+        case_id: int,
+        *,
+        return_time: str,
+    ) -> Optional[AttendanceCaseModel]:
+        with SessionLocal() as session:
+            case = session.get(AttendanceCaseModel, case_id)
+            if case is None:
+                return None
+            case.actual_start = return_time
+            if case.source == "short_leave_notice":
+                case.source = "short_leave_notice_matched"
             session.commit()
             session.refresh(case)
             return case

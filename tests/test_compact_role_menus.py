@@ -25,6 +25,7 @@ class CompactRoleMenuTests(unittest.TestCase):
     def test_employee_menu_is_sectioned(self) -> None:
         titles = [button.title for button in main_menu_buttons("employee")]
         self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
+        self.assertIn("Отпроситься", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertIn("Опоздания", titles)
         self.assertIn("Руководство", titles)
@@ -35,6 +36,7 @@ class CompactRoleMenuTests(unittest.TestCase):
     def test_manager_menu_is_sectioned(self) -> None:
         titles = [button.title for button in main_menu_buttons("manager")]
         self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
+        self.assertIn("Отпроситься", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertIn("Команда", titles)
         self.assertIn("Согласования", titles)
@@ -68,6 +70,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
         self.assertNotIn("Старт", titles)
         self.assertIn("Опаздываю", titles)
+        self.assertIn("Отпроситься", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertIn("СКУД", titles)
         self.assertNotIn("Разбор", titles)
@@ -86,6 +89,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
         self.assertNotIn("Старт", titles)
         self.assertIn("Опаздываю", titles)
+        self.assertIn("Отпроситься", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertIn("Справочники", titles)
         self.assertIn("Процессы", titles)
@@ -98,6 +102,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         titles = [button.title for button in buttons]
         self.assertEqual(titles[:2], ["Обо мне", "Аналитика"])
         self.assertNotIn("Старт", titles)
+        self.assertNotIn("Отпроситься", titles)
         self.assertIn("Аналитика", titles)
         self.assertNotIn("Забыл карточку СКУД", titles)
         self.assertIn("Согласования", titles)
@@ -145,6 +150,7 @@ class CompactRoleMenuTests(unittest.TestCase):
         titles = [button.title for button in main_menu_buttons("admin")]
 
         self.assertEqual(titles[:2], ["Обо мне", "Опаздываю"])
+        self.assertIn("Отпроситься", titles)
         self.assertIn("Забыл карточку СКУД", titles)
         self.assertNotIn("Старт", titles)
         self.assertNotIn("Админ-панель", titles)

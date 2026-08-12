@@ -760,6 +760,49 @@ class SkudImportService:
             return None
         return int(getattr(updated, "id", 0) or 0)
 
+    def _match_existing_short_leave_notice(
+        self,
+        *,
+        employee_user_id: str,
+        event_date: str,
+        raw_events: List[Dict[str, object]],
+    ) -> int | None:
+        finder = getattr(self.case_repository, "find_matching_short_leave_notice", None)
+        updater = getattr(self.case_repository, "update_short_leave_skud_match", None)
+        if not callable(finder) or not callable(updater):
+            return None
+        matched = finder(employee_user_id=employee_user_id, event_date=event_date)
+        if matched is None:
+            return None
+
+        leave_from = str(getattr(matched, "planned_start", "") or "").strip()
+        event_day = self._parse_event_date(event_date)
+        if event_day is None:
+            return None
+        leave_dt = self._combine_date_and_time(event_day.date(), leave_from)
+        if leave_dt is None:
+            return None
+
+        return_dt: datetime | None = None
+        for item in raw_events:
+            if str(item.get("kind", "")) != "entry":
+                continue
+            entry_dt = self._parse_iso_datetime(str(item.get("dt", "")))
+            if entry_dt is None or entry_dt <= leave_dt:
+                continue
+            if return_dt is None or entry_dt < return_dt:
+                return_dt = entry_dt
+        if return_dt is None:
+            return None
+
+        updated = updater(
+            int(getattr(matched, "id", 0) or 0),
+            return_time=return_dt.strftime("%H:%M"),
+        )
+        if updated is None:
+            return None
+        return int(getattr(updated, "id", 0) or 0)
+
     def _resolve_lunch_deduction(
         self,
         employee_directory: Dict[str, str],
@@ -1008,6 +1051,13 @@ class SkudImportService:
                 departures_on_time += 1
             elif departure_status == "late":
                 departures_late += 1
+
+            if create_cases:
+                self._match_existing_short_leave_notice(
+                    employee_user_id=str(item.get("employee_user_id", "")),
+                    event_date=event_date_str,
+                    raw_events=raw_events,
+                )
 
             if create_cases and bool(item.get("absence_case")):
                 employee_reason = str(item.get("employee_reason", "")).strip()

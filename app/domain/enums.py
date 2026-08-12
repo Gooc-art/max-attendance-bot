@@ -17,6 +17,7 @@ class DialogFlow(str, Enum):
     ATTENDANCE_REASON = "attendance_reason"
     FORGOT_CHIP = "forgot_chip"
     RUNNING_LATE = "running_late"
+    SHORT_LEAVE = "short_leave"
     ABSENCE_PERIOD_EDIT = "absence_period_edit"
     REPORT_PERIOD = "report_period"
     OFFICE_SEAL_PHOTO = "office_seal_photo"
@@ -40,6 +41,7 @@ class SubstitutionReason(str, Enum):
 class AttendanceCaseType(str, Enum):
     LATE = "late"
     ABSENT = "absent"
+    SHORT_LEAVE = "short_leave"
 
 
 class AttendanceCaseStatus(str, Enum):

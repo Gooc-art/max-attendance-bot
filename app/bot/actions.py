@@ -12,6 +12,7 @@ class BotAction:
     MENU_SUBMIT_REASON = "menu.submit_reason"
     MENU_FORGOT_CHIP = "menu.forgot_chip"
     MENU_RUNNING_LATE = "menu.running_late"
+    MENU_SHORT_LEAVE = "menu.short_leave"
     MENU_MY_STATUSES = "menu.my_statuses"
     MENU_MY_MANAGER = "menu.my_manager"
     MENU_OFFICE_SEAL = "menu.office_seal"
@@ -101,6 +102,7 @@ class BotAction:
     LATE_NOTICE_MANAGER_PREFIX = "late_notice.manager:"
     LATE_NOTICE_DATE_PREFIX = "late_notice.date:"
     LATE_NOTICE_REASON_PREFIX = "late_notice.reason:"
+    SHORT_LEAVE_MANAGER_PREFIX = "short_leave.manager:"
 
     CANCEL = "common.cancel"
     CONFIRM = "common.confirm"

@@ -5691,31 +5691,6 @@ class MaxWebhookRouter:
         previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
         delete_ms = (perf_counter() - delete_started_at) * 1000
 
-        if previous_message_ids and self._is_start_payload(inbound):
-            current_message_id = previous_message_ids[0]
-            try:
-                self.max_client.edit_message(
-                    current_message_id,
-                    text=outbound.text,
-                    buttons=outbound.buttons,
-                )
-                chat_id, user_id = self._conversation_participants(inbound)
-                self._cursor_set_many(self._conversation_keys(inbound), chat_id, user_id, current_message_id)
-                if len(previous_message_ids) > 1:
-                    self._queue_delete_message_ids(previous_message_ids[1:])
-                return {
-                    "delete_ms": round(delete_ms, 1),
-                    "deleted_messages": max(len(previous_message_ids) - 1, 0),
-                    "send_ms": 0.0,
-                    "recipient": "edit_message",
-                }
-            except Exception:
-                self.logger.warning(
-                    "MAX start menu edit failed mid=%s; falling back to visible send",
-                    current_message_id,
-                    exc_info=True,
-                )
-
         recipients = self._outbound_recipients(inbound)
         last_error: Exception | None = None
         response: dict[str, object] | None = None

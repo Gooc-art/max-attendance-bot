@@ -106,9 +106,11 @@ class SendOutboundTests(unittest.TestCase):
 
         router.max_client.send_message.assert_called_once()
 
-    def test_start_updates_previous_menu_instead_of_sending_new_one(self) -> None:
+    def test_start_sends_fresh_menu_when_previous_menu_exists(self) -> None:
         router = self._build_router()
         router.bot_message_cursor_store.get.return_value = "bot-prev"
+        router.max_client.send_message.return_value = {"mid": "bot-next"}
+        router._queue_delete_message_ids = MagicMock()
 
         inbound = MaxUpdate(
             update_type="bot_started",
@@ -119,17 +121,18 @@ class SendOutboundTests(unittest.TestCase):
 
         router._send_outbound(inbound, MaxOutboundMessage(text="Главное меню готово."))
 
-        router.max_client.edit_message.assert_called_once_with(
-            "bot-prev",
+        router.max_client.edit_message.assert_not_called()
+        router.max_client.send_message.assert_called_once_with(
+            chat_id=987,
             text="Главное меню готово.",
             buttons=[],
         )
-        router.max_client.send_message.assert_not_called()
+        router._queue_delete_message_ids.assert_called_once_with(["bot-prev"])
         router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="chat:987",
             chat_id="987",
             user_id="123",
-            message_id="bot-prev",
+            message_id="bot-next",
         )
 
     def test_async_callback_outbound_returns_before_max_send(self) -> None:

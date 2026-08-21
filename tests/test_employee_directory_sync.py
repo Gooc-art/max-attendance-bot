@@ -7,9 +7,10 @@ from app.services.employee_directory_sync import EmployeeDirectorySyncService
 
 
 class _DirectoryService:
-    def __init__(self, records, configured: bool = True) -> None:
+    def __init__(self, records, configured: bool = True, last_error=None) -> None:
         self.records = records
         self.configured = configured
+        self.last_error = last_error
         self.refresh_calls = []
 
     def is_configured(self) -> bool:
@@ -23,10 +24,16 @@ class _DirectoryService:
 class _Repository:
     def __init__(self) -> None:
         self.rows = []
+        self.active_user_ids = set()
+        self.deactivated_count = 0
 
     def upsert_many(self, rows):
         self.rows = list(rows)
         return len(self.rows)
+
+    def deactivate_missing(self, active_user_ids):
+        self.active_user_ids = set(active_user_ids)
+        return self.deactivated_count
 
 
 class EmployeeDirectorySyncTests(unittest.TestCase):
@@ -54,6 +61,7 @@ class EmployeeDirectorySyncTests(unittest.TestCase):
         self.assertTrue(result.configured)
         self.assertEqual(result.fetched_rows, 1)
         self.assertEqual(result.upserted_rows, 1)
+        self.assertEqual(result.deactivated_rows, 0)
         self.assertEqual(repository.rows[0]["schedule_id"], "ГР004")
         self.assertEqual(repository.rows[0]["office"], "314")
         self.assertEqual(directory.refresh_calls, [True])
@@ -94,6 +102,48 @@ class EmployeeDirectorySyncTests(unittest.TestCase):
         ).sync()
 
         self.assertFalse(result.configured)
+        self.assertEqual(repository.rows, [])
+
+    def test_sync_deactivates_local_rows_missing_from_successful_google_fetch(self) -> None:
+        repository = _Repository()
+        repository.deactivated_count = 2
+        directory = _DirectoryService(
+            [
+                GoogleSheetsEmployeeRecord(
+                    employee_name="Иванов Иван Иванович",
+                    employee_user_id="max-1",
+                    role="employee",
+                    is_active=True,
+                )
+            ]
+        )
+
+        result = EmployeeDirectorySyncService(directory_service=directory, repository=repository).sync()
+
+        self.assertEqual(repository.active_user_ids, {"max-1"})
+        self.assertEqual(result.deactivated_rows, 2)
+
+    def test_sync_rejects_duplicate_employee_user_id_without_writing(self) -> None:
+        repository = _Repository()
+        directory = _DirectoryService(
+            [
+                GoogleSheetsEmployeeRecord(employee_name="Первый", employee_user_id="max-1"),
+                GoogleSheetsEmployeeRecord(employee_name="Второй", employee_user_id="max-1"),
+            ]
+        )
+
+        with self.assertRaises(ValueError):
+            EmployeeDirectorySyncService(directory_service=directory, repository=repository).sync()
+
+        self.assertEqual(repository.rows, [])
+
+    def test_sync_fails_when_google_fetch_failed(self) -> None:
+        repository = _Repository()
+        directory = _DirectoryService([], last_error=RuntimeError("google down"))
+
+        with self.assertRaises(RuntimeError):
+            EmployeeDirectorySyncService(directory_service=directory, repository=repository).sync()
+
         self.assertEqual(repository.rows, [])
 
 

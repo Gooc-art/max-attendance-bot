@@ -39,6 +39,27 @@ class AdminRowAndBindingTests(unittest.TestCase):
         self.assertIn("Роль: Администратор", response.outbound.text)
         self.assertIn("ИТ", response.outbound.text)
 
+    def test_my_row_uses_manager_name_from_manager_user_id(self) -> None:
+        self.router.google_directory_service = _FakeGoogleDirectoryService(
+            GoogleSheetsEmployeeRecord(
+                employee_name="Кутлуев Родион Романович",
+                employee_user_id="203302812",
+                manager_name="Старое Имя",
+                manager_user_id="101",
+                department_name="ИТ",
+                role="admin",
+                is_active=True,
+            )
+        )
+        self.router.employee_directory_repository.get_by_user_id = lambda user_id: (
+            GoogleSheetsEmployeeRecord(employee_name="Новое Имя", employee_user_id="101") if user_id == "101" else None
+        )
+
+        response = self.router._my_row("admin", "203302812")
+
+        self.assertIn("Руководитель: Новое Имя", response.outbound.text)
+        self.assertNotIn("Старое Имя", response.outbound.text)
+
     def test_binding_check_shows_match_status(self) -> None:
         self.router.google_directory_service = _FakeGoogleDirectoryService(
             GoogleSheetsEmployeeRecord(

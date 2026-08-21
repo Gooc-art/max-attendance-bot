@@ -19,9 +19,10 @@ def main() -> None:
         print("employee directory sync skipped: Google Sheets is not configured")
         return
     print(
-        "employee directory synced: fetched={fetched} upserted={upserted}".format(
+        "employee directory synced: fetched={fetched} upserted={upserted} deactivated={deactivated}".format(
             fetched=result.fetched_rows,
             upserted=result.upserted_rows,
+            deactivated=result.deactivated_rows,
         )
     )
 

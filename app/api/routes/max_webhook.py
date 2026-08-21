@@ -38,10 +38,8 @@ def receive_max_webhook(
 ) -> MaxWebhookResponse:
     started_at = perf_counter()
     settings = get_settings()
-    if settings.max_bot_secret and x_max_bot_api_secret and x_max_bot_api_secret != settings.max_bot_secret:
+    if settings.max_bot_secret and x_max_bot_api_secret != settings.max_bot_secret:
         raise HTTPException(status_code=403, detail="Invalid MAX secret header")
-    if settings.max_bot_secret and not x_max_bot_api_secret:
-        logger.warning("MAX webhook secret header is missing; accepting request for compatibility")
     logger.info(
         "MAX webhook received update_type=%s chat_id=%s user_id=%s has_message=%s has_callback=%s",
         payload.update_type,

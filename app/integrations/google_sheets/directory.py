@@ -76,6 +76,7 @@ class GoogleSheetsDirectoryService:
         self._cached_by_normalized_name: dict[str, GoogleSheetsEmployeeRecord] = {}
         self._cached_by_prefix_name: dict[tuple[str, str, str], GoogleSheetsEmployeeRecord] = {}
         self._cached_by_manager_user_id: dict[str, List[GoogleSheetsEmployeeRecord]] = {}
+        self.last_error: Exception | None = None
         self.logger = logging.getLogger(__name__)
 
     @classmethod
@@ -100,6 +101,7 @@ class GoogleSheetsDirectoryService:
         try:
             values = self._fetch_values()
             records = self._parse_values(values)
+            self.last_error = None
             self._cached_records = records
             self._rebuild_indexes(records)
             self._cached_at = datetime.now(timezone.utc)
@@ -111,6 +113,7 @@ class GoogleSheetsDirectoryService:
             )
             return list(records)
         except Exception as exc:
+            self.last_error = exc
             if self._cached_records:
                 self.logger.warning(
                     "Google Sheets directory fetch failed, using cached records=%s refresh=%s elapsed_ms=%.1f error=%s",

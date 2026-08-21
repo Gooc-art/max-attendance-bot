@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy import select
 
 from app.db.base import SessionLocal
-from app.db.models import DialogStateModel
+from app.db.models import DialogStateModel, utc_now
 from app.domain.dialog_state import UserDialogState
+
+STALE_STATE_TTL = timedelta(hours=24)
 
 
 class DialogStateRepository:
@@ -17,6 +20,10 @@ class DialogStateRepository:
                 select(DialogStateModel).where(DialogStateModel.user_id == user_id)
             ).scalar_one_or_none()
             if not model:
+                return None
+            if model.updated_at and utc_now() - model.updated_at > STALE_STATE_TTL:
+                session.delete(model)
+                session.commit()
                 return None
             return UserDialogState(
                 flow=model.flow,

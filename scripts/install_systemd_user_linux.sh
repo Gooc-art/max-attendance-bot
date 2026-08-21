@@ -132,6 +132,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=$ROOT_DIR
 ExecStart=$ROOT_DIR/.venv/bin/python3 $ROOT_DIR/scripts/sync_employee_directory.py
+ExecStartPost=/usr/bin/systemctl --user restart skud-backend.service skud-polling.service
 Environment=PYTHONUNBUFFERED=1
 Environment=RES_OPTIONS=single-request
 EOF

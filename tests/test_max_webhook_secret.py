@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -10,7 +11,18 @@ from app.schemas.max import MaxOutboundMessage, MaxUpdate, MaxUser
 
 
 class MaxWebhookSecretTests(unittest.TestCase):
-    def test_missing_secret_header_is_accepted(self) -> None:
+    def test_missing_secret_header_is_rejected_when_secret_is_configured(self) -> None:
+        payload = MaxUpdate(update_type="bot_started", timestamp=1, user=MaxUser(user_id=123, first_name="Test"))
+
+        with patch.object(max_webhook, "get_settings", return_value=SimpleNamespace(max_bot_secret="expected")), \
+            patch.object(max_webhook.webhook_router, "handle_event") as handle_event:
+            with self.assertRaises(HTTPException) as ctx:
+                max_webhook.receive_max_webhook(payload, x_max_bot_api_secret="")
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        handle_event.assert_not_called()
+
+    def test_missing_secret_header_is_accepted_when_secret_is_not_configured(self) -> None:
         payload = MaxUpdate(update_type="bot_started", timestamp=1, user=MaxUser(user_id=123, first_name="Test"))
         response_model = max_webhook.MaxWebhookResponse(
             ok=True,
@@ -20,7 +32,8 @@ class MaxWebhookSecretTests(unittest.TestCase):
             active_flow=None,
         )
 
-        with patch.object(max_webhook.webhook_router, "handle_event", return_value=response_model) as handle_event, \
+        with patch.object(max_webhook, "get_settings", return_value=SimpleNamespace(max_bot_secret="")), \
+            patch.object(max_webhook.webhook_router, "handle_event", return_value=response_model) as handle_event, \
             patch.object(max_webhook.runtime_markers, "claim", return_value=True), \
             patch.object(max_webhook.runtime_markers, "complete"):
             response = max_webhook.receive_max_webhook(payload, x_max_bot_api_secret="")
@@ -31,15 +44,17 @@ class MaxWebhookSecretTests(unittest.TestCase):
     def test_explicit_wrong_secret_header_is_rejected(self) -> None:
         payload = MaxUpdate(update_type="bot_started", timestamp=1)
 
-        with self.assertRaises(HTTPException) as ctx:
-            max_webhook.receive_max_webhook(payload, x_max_bot_api_secret="wrong-secret")
+        with patch.object(max_webhook, "get_settings", return_value=SimpleNamespace(max_bot_secret="expected")):
+            with self.assertRaises(HTTPException) as ctx:
+                max_webhook.receive_max_webhook(payload, x_max_bot_api_secret="wrong-secret")
 
         self.assertEqual(ctx.exception.status_code, 403)
 
     def test_duplicate_webhook_is_suppressed_before_router(self) -> None:
         payload = MaxUpdate(update_type="bot_started", timestamp=1, user=MaxUser(user_id=123, first_name="Test"))
 
-        with patch.object(max_webhook.runtime_markers, "claim", return_value=False), \
+        with patch.object(max_webhook, "get_settings", return_value=SimpleNamespace(max_bot_secret="")), \
+            patch.object(max_webhook.runtime_markers, "claim", return_value=False), \
             patch.object(max_webhook.webhook_router, "handle_event") as handle_event:
             response = max_webhook.receive_max_webhook(payload, x_max_bot_api_secret="")
 

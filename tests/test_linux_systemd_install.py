@@ -17,6 +17,7 @@ def test_linux_installer_enables_directory_sync_timer() -> None:
     assert "skud-directory-sync.timer" in script
     assert "OnUnitActiveSec=6h" in script
     assert "scripts/sync_employee_directory.py" in script
+    assert "ExecStartPost=/usr/bin/systemctl --user restart skud-backend.service skud-polling.service" in script
     assert "enable --now skud-directory-sync.timer" in script
 
 

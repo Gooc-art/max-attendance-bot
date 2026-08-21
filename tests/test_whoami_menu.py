@@ -111,6 +111,32 @@ class WhoAmITests(unittest.TestCase):
         self.assertIn("Роль в таблице: Начальник отдела", response.outbound.text)
         self.assertNotIn("Роль в таблице: Руководитель", response.outbound.text)
 
+    def test_whoami_uses_manager_name_from_manager_user_id(self) -> None:
+        router = MaxWebhookRouter()
+        router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)
+
+        def get_by_user_id(user_id):
+            if user_id == "emp-1":
+                return GoogleSheetsEmployeeRecord(
+                    employee_name="Иванов Иван Иванович",
+                    employee_user_id="emp-1",
+                    manager_name="Старое Имя",
+                    manager_user_id="mgr-1",
+                    department_name="ИТ",
+                    role="employee",
+                    is_active=True,
+                )
+            if user_id == "mgr-1":
+                return GoogleSheetsEmployeeRecord(employee_name="Новое Имя", employee_user_id="mgr-1")
+            return None
+
+        router.employee_directory_repository.get_by_user_id = get_by_user_id
+
+        response = router._whoami("employee", "emp-1", "123")
+
+        self.assertIn("Руководитель: Новое Имя", response.outbound.text)
+        self.assertNotIn("Старое Имя", response.outbound.text)
+
     def test_whoami_reports_unconfigured_google_sheets_runtime(self) -> None:
         router = MaxWebhookRouter()
         router.user_bot_activity_repository.get_by_user_id = MagicMock(return_value=None)

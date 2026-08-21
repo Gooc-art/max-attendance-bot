@@ -2829,7 +2829,7 @@ class MaxWebhookRouter:
                 office=directory_record.office or "-",
                 sheet_role=display_role_name(sheet_role),
                 active="Да" if directory_record.is_active else "Нет",
-                manager=directory_record.manager_name or "-",
+                manager=self._canonical_manager_name(directory_record.manager_user_id, directory_record.manager_name) or "-",
             )
             needed_id = directory_record.employee_user_id or user_id
         elif not self._google_directory_is_configured():
@@ -2931,7 +2931,7 @@ class MaxWebhookRouter:
                 role=display_role_name(sheet_record.role or "-"),
                 department=sheet_record.department_name or "-",
                 office=sheet_record.office or "-",
-                manager=sheet_record.manager_name or "-",
+                manager=self._canonical_manager_name(sheet_record.manager_user_id, sheet_record.manager_name) or "-",
                 active="Да" if sheet_record.is_active else "Нет",
             )
         return MaxWebhookResponse(
@@ -3405,6 +3405,10 @@ class MaxWebhookRouter:
                 ),
                 active_flow=DialogFlow.APPROVAL_REJECTION.value,
             )
+
+        if self._pending_approval_for_manager(user_id, approval_id) is None:
+            dialog_state_store.reset(user_id)
+            return self._stub_section(role, "Согласование #{0} не найдено или уже обработано.".format(approval_id))
 
         approval = self.approval_repository.update_status(approval_id, ApprovalStatus.REJECTED.value, comment=comment)
         dialog_state_store.reset(user_id)

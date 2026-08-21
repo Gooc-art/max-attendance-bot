@@ -225,6 +225,24 @@ class ManagerNotificationTests(unittest.TestCase):
         kwargs = router.max_client.send_message.call_args.kwargs
         self.assertIn("Причина отказа: Нет подтверждения времени", kwargs["text"])
 
+    def test_late_notice_rejection_rechecks_pending_manager_before_update(self) -> None:
+        router = MaxWebhookRouter()
+        router.case_repository = _FakeCaseRepository()
+        router.approval_repository = _FakeApprovalRepository()
+        router.approval_repository.approval.status = ApprovalStatus.APPROVED.value
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        state = UserDialogState(
+            flow=DialogFlow.APPROVAL_REJECTION.value,
+            step="enter_reason",
+            data={"approval_id": "77"},
+        )
+
+        result = router._handle_approval_rejection_flow("manager", "mgr-1", "Поздно", "", state)
+
+        self.assertIn("Согласование #77 не найдено или уже обработано", result.outbound.text)
+        self.assertEqual(router.approval_repository.updated, [])
+
     def test_approval_button_cannot_approve_another_manager_case(self) -> None:
         router = MaxWebhookRouter()
         router.case_repository = _FakeCaseRepository()

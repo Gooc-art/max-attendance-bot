@@ -36,6 +36,21 @@ class EmployeeDirectoryRepository:
             session.commit()
         return count
 
+    def deactivate_missing(self, active_user_ids: set[str]) -> int:
+        if not active_user_ids:
+            return 0
+        count = 0
+        with SessionLocal() as session:
+            rows = session.execute(
+                select(EmployeeDirectoryModel).where(EmployeeDirectoryModel.is_active.is_(True))
+            ).scalars().all()
+            for row in rows:
+                if row.employee_user_id not in active_user_ids:
+                    row.is_active = False
+                    count += 1
+            session.commit()
+        return count
+
     def list_recent(self, limit: int = 50) -> List[EmployeeDirectoryModel]:
         with SessionLocal() as session:
             rows = session.execute(

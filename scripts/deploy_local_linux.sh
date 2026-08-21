@@ -31,6 +31,9 @@ if [ -f .env ]; then
   . .env
   set +a
 fi
+if [ -f "$DEPLOY_DIR/secure/google-service-account.json" ]; then
+  export GOOGLE_SERVICE_ACCOUNT_FILE="$DEPLOY_DIR/secure/google-service-account.json"
+fi
 export HOME="$ORIGINAL_HOME"
 export SKUD_DEPLOY_DIR="$DEPLOY_DIR"
 mkdir -p "$HOME/.cache/pip" || true

@@ -36,6 +36,7 @@ def test_linux_deploy_restarts_polling_and_public_url_tunnel_and_stops_webhook_t
     assert "systemctl --user stop skud-tunnel.service || true" in script
     assert "systemctl --user restart skud-public-url-tunnel.service" in script
     assert "systemctl --user restart skud-polling.service" in script
+    assert 'export GOOGLE_SERVICE_ACCOUNT_FILE="$DEPLOY_DIR/secure/google-service-account.json"' in script
     assert "scripts/sync_employee_directory.py" in script
     assert "is-active --quiet skud-polling.service" in script
     assert "$PUBLIC_URL/api/health" in script

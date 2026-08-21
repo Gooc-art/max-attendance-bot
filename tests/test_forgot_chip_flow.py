@@ -204,6 +204,7 @@ class ForgotChipFlowTests(unittest.TestCase):
                 "department_name": "Отдел продаж",
                 "schedule_name": "Пятидневка",
                 "schedule_id": "GR003",
+                "manager_options": {"mgr-alt": "Старое Имя Руководителя"},
             },
         )
 

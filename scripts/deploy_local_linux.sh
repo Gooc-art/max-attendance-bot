@@ -41,6 +41,7 @@ pip install -r requirements.txt
 
 chmod +x scripts/*.sh
 bash scripts/install_systemd_user_linux.sh
+"$DEPLOY_DIR/.venv/bin/python3" scripts/sync_employee_directory.py
 
 systemctl --user restart skud-backend.service
 systemctl --user stop skud-tunnel.service || true

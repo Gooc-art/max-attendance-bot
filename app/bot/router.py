@@ -1763,19 +1763,25 @@ class MaxWebhookRouter:
     def _my_manager(self, role: str, user_id: str) -> MaxWebhookResponse:
         record = self._resolve_directory_record_by_user_id(user_id)
         if record is not None and record.manager_name:
+            manager_name = self._canonical_manager_name(record.manager_user_id, record.manager_name)
             text = (
                 "Твой руководитель:\n\n"
                 "ФИО: {manager}\n"
                 "Подразделение: {department}\n"
                 "Роль: {role}"
             ).format(
-                manager=record.manager_name,
+                manager=manager_name,
                 department=record.department_name or "-",
                 role=display_role_name(record.role or "employee"),
             )
         else:
             cases = self.case_repository.list_for_employee_user(user_id)
-            manager_name = cases[0].manager_name if cases and cases[0].manager_name else ""
+            manager_name = ""
+            if cases:
+                manager_name = self._canonical_manager_name(
+                    getattr(cases[0], "manager_user_id", ""),
+                    getattr(cases[0], "manager_name", ""),
+                )
             if manager_name:
                 text = "Твой руководитель: {0}".format(manager_name)
             else:
@@ -2503,6 +2509,16 @@ class MaxWebhookRouter:
         if local_rows:
             return local_rows
         return self.google_directory_service.get_by_manager_user_id(manager_user_id)
+
+    def _canonical_manager_name(self, manager_user_id: str, fallback_name: str = "") -> str:
+        manager_record = self._resolve_directory_record_by_user_id(manager_user_id) if manager_user_id else None
+        if (
+            manager_record is not None
+            and str(getattr(manager_record, "employee_user_id", "") or "").strip() == str(manager_user_id or "").strip()
+            and getattr(manager_record, "employee_name", "")
+        ):
+            return str(manager_record.employee_name).strip()
+        return str(fallback_name or "").strip()
 
     def _resolve_directory_rows_by_curated_departments(self, user_id: str):
         departments = self._active_curated_departments(user_id)
@@ -3681,6 +3697,10 @@ class MaxWebhookRouter:
 
         resolved_manager_user_id = str(current_manager_user_id or "").strip()
         resolved_manager_name = str(current_manager_name or "").strip()
+        if resolved_manager_user_id:
+            manager_record = self._resolve_directory_record_by_user_id(resolved_manager_user_id)
+            if manager_record is not None and getattr(manager_record, "is_active", True):
+                resolved_manager_name = str(getattr(manager_record, "employee_name", "") or resolved_manager_name).strip()
         if resolved_manager_name:
             named_manager_row = None
             for row in directory_rows:
@@ -3770,7 +3790,9 @@ class MaxWebhookRouter:
     def _build_late_notice_manager_options(self, employee_record, role: str) -> List[Tuple[str, str]]:
         manager_user_id = str(getattr(employee_record, "manager_user_id", "") or "").strip()
         manager_name = str(getattr(employee_record, "manager_name", "") or "").strip()
-        if manager_name:
+        if manager_user_id:
+            manager_name = self._canonical_manager_name(manager_user_id, manager_name)
+        elif manager_name:
             manager_record = self._resolve_directory_record_by_employee_name(manager_name)
             if manager_record is not None:
                 manager_user_id = str(getattr(manager_record, "employee_user_id", "") or manager_user_id).strip()
@@ -3875,12 +3897,7 @@ class MaxWebhookRouter:
             case_part, manager_user_id = remainder.split(":", 1)
             if int(case_part) != case_id:
                 return self._stub_section(role, "Случай #{0} не найден.".format(case_id))
-            manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
-            manager_name = ""
-            if manager_record is not None:
-                manager_name = manager_record.employee_name or manager_record.manager_name
-            if not manager_name:
-                manager_name = "Руководитель"
+            manager_name = self._canonical_manager_name(manager_user_id, "Руководитель") or "Руководитель"
 
             self.case_repository.update_manager(case_id, manager_user_id, manager_name)
             state.step = "choose_reason"
@@ -3954,9 +3971,7 @@ class MaxWebhookRouter:
         if state.step == "choose_manager" and action.startswith(BotAction.FORGOT_CHIP_MANAGER_PREFIX):
             manager_user_id = action.split(BotAction.FORGOT_CHIP_MANAGER_PREFIX, 1)[1]
             manager_name = state.data.get("manager_options", {}).get(manager_user_id)
-            if not manager_name:
-                manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
-                manager_name = manager_record.employee_name if manager_record is not None else "Руководитель"
+            manager_name = self._canonical_manager_name(manager_user_id, manager_name) or "Руководитель"
             state.step = "enter_time"
             state.data["manager_user_id"] = manager_user_id
             state.data["manager_name"] = manager_name
@@ -4176,9 +4191,7 @@ class MaxWebhookRouter:
         if state.step == "choose_manager" and action.startswith(BotAction.LATE_NOTICE_MANAGER_PREFIX):
             manager_user_id = action.split(BotAction.LATE_NOTICE_MANAGER_PREFIX, 1)[1]
             manager_name = state.data.get("manager_options", {}).get(manager_user_id)
-            if not manager_name:
-                manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
-                manager_name = manager_record.employee_name if manager_record is not None else "Руководитель"
+            manager_name = self._canonical_manager_name(manager_user_id, manager_name) or "Руководитель"
             state.step = "choose_date"
             state.data["manager_user_id"] = manager_user_id
             state.data["manager_name"] = manager_name
@@ -4685,9 +4698,7 @@ class MaxWebhookRouter:
         if state.step == "choose_manager" and action.startswith(BotAction.SHORT_LEAVE_MANAGER_PREFIX):
             manager_user_id = action.split(BotAction.SHORT_LEAVE_MANAGER_PREFIX, 1)[1]
             manager_name = state.data.get("manager_options", {}).get(manager_user_id)
-            if not manager_name:
-                manager_record = self._resolve_directory_record_by_user_id(manager_user_id)
-                manager_name = manager_record.employee_name if manager_record is not None else "Руководитель"
+            manager_name = self._canonical_manager_name(manager_user_id, manager_name) or "Руководитель"
             state.step = "enter_leave_from"
             state.data["manager_user_id"] = manager_user_id
             state.data["manager_name"] = manager_name
@@ -5011,6 +5022,7 @@ class MaxWebhookRouter:
         reason_label = ATTENDANCE_REASON_LABELS.get(reason_code, reason_code)
         manager_user_id = manager_override or case.manager_user_id
         manager_name = manager_name_override or case.manager_name or "Руководитель"
+        manager_name = self._canonical_manager_name(manager_user_id, manager_name) or "Руководитель"
         if manager_user_id:
             update_manager = getattr(self.case_repository, "update_manager", None)
             if callable(update_manager):

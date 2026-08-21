@@ -255,7 +255,7 @@ class RunningLateFlowTests(unittest.TestCase):
         router._start_running_late_flow("employee", "emp-1")
 
         self.assertEqual(local_repository.list_recent_calls, 0)
-        self.assertEqual(local_repository.get_by_employee_name_calls, 1)
+        self.assertEqual(local_repository.get_by_employee_name_calls, 0)
 
     def test_start_flow_uses_active_substitution_for_current_manager(self) -> None:
         router = self._build_router()

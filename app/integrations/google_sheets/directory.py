@@ -41,6 +41,7 @@ class GoogleSheetsDirectoryService:
         "начальник_отдела": "manager",
         "зам руководителя": "manager",
         "зам_руководителя": "manager",
+        "зам.руководителя": "manager",
         "зам. руководителя": "manager",
         "security": "security",
         "безопасность": "security",

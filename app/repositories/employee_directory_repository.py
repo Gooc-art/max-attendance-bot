@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.db.base import SessionLocal
 from app.db.models import EmployeeDirectoryModel
+from app.integrations.google_sheets.directory import GoogleSheetsDirectoryService
 
 
 class EmployeeDirectoryRepository:
@@ -29,7 +30,7 @@ class EmployeeDirectoryRepository:
                 row.office = data.get("office", "").strip()
                 row.schedule_name = data.get("schedule_name", "").strip()
                 row.schedule_id = data.get("schedule_id", "").strip()
-                row.role = data.get("role", "employee").strip() or "employee"
+                row.role = GoogleSheetsDirectoryService.normalize_role_value(data.get("role", "employee"))
                 row.is_active = data.get("is_active", "1").strip().lower() in {"1", "true", "yes", "on", "да"}
                 count += 1
             session.commit()

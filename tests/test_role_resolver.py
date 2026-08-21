@@ -116,6 +116,15 @@ class RoleResolverTests(unittest.TestCase):
 
         self.assertEqual(resolver.resolve_role("max_005", "private"), "manager")
 
+    def test_local_directory_raw_deputy_role_resolves_to_manager(self) -> None:
+        resolver = RoleResolver(
+            google_directory_service=_FakeGoogleDirectoryService(None),
+            role_override_repository=_FakeRoleOverrideRepository(None),
+            employee_directory_repository=_FakeEmployeeDirectoryRepository("зам.руководителя"),
+        )
+
+        self.assertEqual(resolver.resolve_role("max_006", "private"), "manager")
+
 
 if __name__ == "__main__":
     unittest.main()

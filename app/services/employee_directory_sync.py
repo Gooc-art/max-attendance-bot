@@ -28,17 +28,22 @@ class EmployeeDirectorySyncService:
             return EmployeeDirectorySyncResult(configured=False, fetched_rows=0, upserted_rows=0)
 
         records = self.directory_service.list_employees(refresh=refresh)
+        names_by_user_id = {
+            record.employee_user_id: record.employee_name
+            for record in records
+            if record.employee_user_id and record.employee_name
+        }
         rows = [
             {
                 "employee_name": record.employee_name,
                 "employee_user_id": record.employee_user_id,
-                "manager_name": record.manager_name,
+                "manager_name": names_by_user_id.get(record.manager_user_id, record.manager_name),
                 "manager_user_id": record.manager_user_id,
                 "department_name": record.department_name,
                 "office": record.office,
                 "schedule_name": record.schedule_name,
                 "schedule_id": record.schedule_id,
-                "role": record.role,
+                "role": GoogleSheetsDirectoryService.normalize_role_value(record.role),
                 "is_active": "1" if record.is_active else "0",
             }
             for record in records

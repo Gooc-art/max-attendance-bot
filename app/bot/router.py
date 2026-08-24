@@ -5619,6 +5619,29 @@ class MaxWebhookRouter:
                             self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
                         return
                     if inbound.message and inbound.message.body.mid:
+                        if self._is_main_menu_action(callback_action, callback_action) and self._outbound_recipients(inbound):
+                            self.max_client.answer_callback(
+                                callback_id=inbound.callback.callback_id,
+                                notification=INVISIBLE_MESSAGE_TEXT,
+                            )
+                            visible_stats = self._send_visible_outbound(
+                                inbound,
+                                outbound,
+                                extra_previous_message_ids=[inbound.message.body.mid],
+                            )
+                            if marker_key:
+                                self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
+                            self.logger.info(
+                                "MAX outbound sent update_type=%s action=%s callback_visible_main_menu=true delete_ms=%.1f deleted_messages=%s send_ms=%.1f recipient=%s total_ms=%.1f",
+                                inbound.update_type,
+                                callback_action,
+                                visible_stats["delete_ms"],
+                                visible_stats["deleted_messages"],
+                                visible_stats["send_ms"],
+                                visible_stats["recipient"],
+                                (perf_counter() - started_at) * 1000,
+                            )
+                            return
                         previous_message_ids = [
                             message_id
                             for message_id in self._previous_bot_message_ids(inbound)
@@ -5702,9 +5725,17 @@ class MaxWebhookRouter:
             )
             return
 
-    def _send_visible_outbound(self, inbound: MaxUpdate, outbound: MaxOutboundMessage) -> dict[str, float | int | str]:
+    def _send_visible_outbound(
+        self,
+        inbound: MaxUpdate,
+        outbound: MaxOutboundMessage,
+        extra_previous_message_ids: list[str] | None = None,
+    ) -> dict[str, float | int | str]:
         delete_started_at = perf_counter()
         previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
+        for message_id in extra_previous_message_ids or []:
+            if message_id and message_id not in previous_message_ids:
+                previous_message_ids.append(message_id)
         delete_ms = (perf_counter() - delete_started_at) * 1000
 
         recipients = self._outbound_recipients(inbound)

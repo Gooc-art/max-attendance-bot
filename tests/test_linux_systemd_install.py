@@ -7,6 +7,7 @@ def test_linux_installer_enables_office_seal_reminder_timers() -> None:
     assert "skud-office-seal-reminder-female.timer" in script
     assert "skud-office-seal-reminder-male.timer" in script
     assert "OnCalendar=Mon..Fri *-*-* $hour:$minute:00" in script
+    assert "Timezone=Asia/Yekaterinburg" in script
     assert "scripts/send_office_seal_reminders.py $gender" in script
     assert "enable --now skud-office-seal-reminder-female.timer skud-office-seal-reminder-male.timer" in script
 

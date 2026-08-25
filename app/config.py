@@ -87,7 +87,7 @@ def get_settings() -> Settings:
         google_sheets_employee_range=os.getenv("GOOGLE_SHEETS_EMPLOYEE_RANGE", "Сотрудники!A:R"),
         google_sheets_schedule_range=os.getenv("GOOGLE_SHEETS_SCHEDULE_RANGE", "Графики!A:X"),
         google_sheets_cache_ttl_seconds=int(os.getenv("GOOGLE_SHEETS_CACHE_TTL_SECONDS", "300")),
-        office_seal_company_timezone=os.getenv("OFFICE_SEAL_COMPANY_TIMEZONE", "Europe/Amsterdam"),
+        office_seal_company_timezone=os.getenv("OFFICE_SEAL_COMPANY_TIMEZONE", "Asia/Yekaterinburg"),
         office_seal_window_start=os.getenv("OFFICE_SEAL_WINDOW_START", "18:00"),
         office_seal_window_end=os.getenv("OFFICE_SEAL_WINDOW_END", "22:00"),
         office_seal_photo_dir=os.getenv("OFFICE_SEAL_PHOTO_DIR", str(BASE_DIR / "data" / "office_seal_photos")),

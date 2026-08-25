@@ -111,6 +111,7 @@ Description=SKUD office seal reminder timer ($gender)
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* $hour:$minute:00
+Timezone=Asia/Yekaterinburg
 AccuracySec=1min
 Unit=$name.service
 

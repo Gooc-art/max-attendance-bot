@@ -5690,6 +5690,30 @@ class MaxWebhookRouter:
                             self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
                         return
                     if inbound.message and inbound.message.body.mid:
+                        if inbound.chat_id and self._is_main_menu_action(callback_action, callback_action) and self._outbound_recipients(inbound):
+                            self.max_client.answer_callback(
+                                callback_id=inbound.callback.callback_id,
+                                notification=INVISIBLE_MESSAGE_TEXT,
+                            )
+                            visible_stats = self._send_visible_outbound(
+                                inbound,
+                                outbound,
+                                extra_previous_message_ids=[inbound.message.body.mid],
+                                delete_before_send=True,
+                            )
+                            if marker_key:
+                                self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
+                            self.logger.info(
+                                "MAX outbound sent update_type=%s action=%s callback_fresh_main_menu=true delete_ms=%.1f deleted_messages=%s send_ms=%.1f recipient=%s total_ms=%.1f",
+                                inbound.update_type,
+                                callback_action,
+                                visible_stats["delete_ms"],
+                                visible_stats["deleted_messages"],
+                                visible_stats["send_ms"],
+                                visible_stats["recipient"],
+                                (perf_counter() - started_at) * 1000,
+                            )
+                            return
                         previous_message_ids = [
                             message_id
                             for message_id in self._previous_bot_message_ids(inbound)
@@ -5778,13 +5802,15 @@ class MaxWebhookRouter:
         inbound: MaxUpdate,
         outbound: MaxOutboundMessage,
         extra_previous_message_ids: list[str] | None = None,
+        delete_before_send: bool = False,
     ) -> dict[str, float | int | str]:
         delete_started_at = perf_counter()
         previous_message_ids = self._previous_bot_message_ids(inbound) if self.delete_previous_message else []
         for message_id in extra_previous_message_ids or []:
             if message_id and message_id not in previous_message_ids:
                 previous_message_ids.append(message_id)
-        delete_ms = (perf_counter() - delete_started_at) * 1000
+        delete_ms = 0.0
+        deleted_messages = 0
 
         recipients = self._outbound_recipients(inbound)
         last_error: Exception | None = None
@@ -5798,6 +5824,10 @@ class MaxWebhookRouter:
                 response = None
                 break
             try:
+                if delete_before_send and previous_message_ids:
+                    deleted_messages = self._delete_message_ids(previous_message_ids)
+                    delete_ms = (perf_counter() - delete_started_at) * 1000
+                    previous_message_ids = []
                 if recipient_type == "chat_id":
                     response = self.max_client.send_message(
                         chat_id=recipient_value,
@@ -5825,7 +5855,7 @@ class MaxWebhookRouter:
                 raise last_error
             return {
                 "delete_ms": round(delete_ms, 1),
-                "deleted_messages": len(previous_message_ids),
+                "deleted_messages": deleted_messages or len(previous_message_ids),
                 "send_ms": round((perf_counter() - send_started_at) * 1000, 1),
                 "recipient": recipient_used,
             }
@@ -5833,9 +5863,10 @@ class MaxWebhookRouter:
         self._remember_last_bot_message(inbound, response, outbound.text)
         if previous_message_ids:
             self._queue_delete_message_ids(previous_message_ids)
+            deleted_messages = len(previous_message_ids)
         return {
             "delete_ms": round(delete_ms, 1),
-            "deleted_messages": len(previous_message_ids),
+            "deleted_messages": deleted_messages,
             "send_ms": round((perf_counter() - send_started_at) * 1000, 1),
             "recipient": recipient_used,
         }

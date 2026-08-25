@@ -672,6 +672,51 @@ class SendOutboundTests(unittest.TestCase):
         )
         router._queue_delete_message_ids.assert_called_once_with(["bot-main-card"])
 
+    def test_duplicate_main_menu_callback_is_suppressed(self) -> None:
+        router = self._build_router()
+        router.runtime_marker_repository.claim.side_effect = [True, True, True, False]
+        router.max_client.send_message.return_value = {"mid": "bot-next"}
+        router._queue_delete_message_ids = MagicMock()
+        outbound = MaxOutboundMessage(
+            text="Главное меню готово.",
+            buttons=[MaxOutboundButton(title="Старт", action="/start")],
+        )
+        first = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="bot-main-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1,
+                callback_id="cb-main-1",
+                payload="menu.main",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+        second = first.model_copy(
+            update={
+                "timestamp": 2,
+                "callback": MaxCallback(
+                    timestamp=2,
+                    callback_id="cb-main-2",
+                    payload="menu.main",
+                    user=MaxUser(user_id=123, first_name="Test"),
+                ),
+            }
+        )
+
+        router._send_outbound(first, outbound)
+        router._send_outbound(second, outbound)
+
+        router.max_client.send_message.assert_called_once()
+        self.assertEqual(router.max_client.answer_callback.call_count, 2)
+        router._queue_delete_message_ids.assert_called_once_with(["bot-main-card"])
+
     def test_callback_without_chat_id_answers_with_embedded_message(self) -> None:
         router = self._build_router()
 

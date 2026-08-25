@@ -6235,8 +6235,8 @@ class MaxWebhookRouter:
     def _is_navigation_refresh(inbound: MaxUpdate) -> bool:
         action = ""
         if inbound.callback and inbound.callback.payload:
-            action = str(inbound.callback.payload).strip()
-        elif inbound.update_type == "bot_started":
+            return False
+        if inbound.update_type == "bot_started":
             action = str(inbound.payload or BotAction.START).strip()
         elif inbound.message and inbound.message.body:
             action = str(inbound.message.body.text or "").strip()

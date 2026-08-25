@@ -350,7 +350,7 @@ def hr_reports_buttons() -> List[MaxOutboundButton]:
 def top_summary_buttons() -> List[MaxOutboundButton]:
     return readable_rows([
         btn("Сводка", BotAction.MENU_SUMMARY, "📈", 0),
-        btn("Неявки отделов", BotAction.MENU_DEPARTMENT_ABSENCES, "🚫", 1),
+        btn("Статистика отделов", BotAction.MENU_DEPARTMENT_ABSENCES, "🏢", 1),
         btn("Просроченные", BotAction.MENU_OVERDUE_APPROVALS, "⛔", 1),
         btn("По отделам", BotAction.MENU_DIVISION_REPORTS, "🏢", 2),
         btn("Устройства", BotAction.REPORT_DEVICES, "📱", 2),

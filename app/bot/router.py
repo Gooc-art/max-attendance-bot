@@ -605,9 +605,9 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             return response
 
-        if action == BotAction.MENU_DEPARTMENT_ABSENCES or user_text in {"Неявки отдела", "Неявки отделов"}:
+        if action == BotAction.MENU_DEPARTMENT_ABSENCES or user_text in {"Неявки отдела", "Неявки отделов", "Статистика отделов"}:
             if role == Role.TOP_MANAGER.value:
-                response = self._top_department_absences(role)
+                response = self._top_department_stats(role)
                 self._send_outbound(payload, response.outbound)
                 return response
             response = self._department_cases(role, event["user_id"], AttendanceCaseStatus.NEW.value)
@@ -1590,7 +1590,7 @@ class MaxWebhookRouter:
             role=role,
             menu=get_menu_for_role(role),
             outbound=MaxOutboundMessage(
-                text="Аналитика верхнего уровня: сводка, просроченные согласования, отчет по подразделениям и входы в бот.",
+                text="Аналитика верхнего уровня: статистика отделов, сводка, просроченные согласования, отчет по подразделениям и входы в бот.",
                 buttons=top_summary_buttons(),
             ),
             active_flow=None,
@@ -1899,25 +1899,93 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
-    def _top_department_absences(self, role: str) -> MaxWebhookResponse:
-        rows = [
+    def _top_department_stats(self, role: str) -> MaxWebhookResponse:
+        day_rows = self.report_service.visit_repository.list_all(limit=5000)
+        absence_rows = [
             case
             for case in self.case_repository.list_all(limit=5000)
             if getattr(case, "case_type", "") == AttendanceCaseType.ABSENT.value
         ]
-        if not rows:
-            text = "Неявок по отделам за весь период пока нет."
+        stats: dict[str, dict[str, int]] = {}
+        dates: list[str] = []
+
+        def bucket(department_name: str) -> dict[str, int]:
+            department = department_name or "Не указано"
+            return stats.setdefault(
+                department,
+                {
+                    "days": 0,
+                    "late": 0,
+                    "late_minutes": 0,
+                    "no_passes": 0,
+                    "left_early": 0,
+                    "left_late": 0,
+                    "absent": 0,
+                },
+            )
+
+        for row in day_rows:
+            item = bucket(str(getattr(row, "department_name", "") or "").strip())
+            item["days"] += 1
+            event_date = str(getattr(row, "event_date", "") or "").strip()
+            if event_date:
+                dates.append(event_date)
+            if str(getattr(row, "arrival_status", "") or "") == "late":
+                item["late"] += 1
+                item["late_minutes"] += max(int(getattr(row, "arrival_delta_minutes", 0) or 0), 0)
+            if int(getattr(row, "total_passes", 0) or 0) == 0:
+                item["no_passes"] += 1
+            if str(getattr(row, "departure_status", "") or "") == "early":
+                item["left_early"] += 1
+            if str(getattr(row, "departure_status", "") or "") == "late":
+                item["left_late"] += 1
+
+        for case in absence_rows:
+            item = bucket(str(getattr(case, "department_name", "") or "").strip())
+            item["absent"] += 1
+            event_date = str(getattr(case, "event_date", "") or "").strip()
+            if event_date:
+                dates.append(event_date)
+
+        if not stats:
+            text = "Статистика отделов за весь период пока пустая."
         else:
-            counts: dict[str, int] = {}
-            for case in rows:
-                department = getattr(case, "department_name", "") or "Не указано"
-                counts[department] = counts.get(department, 0) + 1
+            total_days = sum(item["days"] for item in stats.values())
+            total_late = sum(item["late"] for item in stats.values())
+            total_late_minutes = sum(item["late_minutes"] for item in stats.values())
+            total_absent = sum(item["absent"] for item in stats.values())
+            total_no_passes = sum(item["no_passes"] for item in stats.values())
+            period = f"{min(dates)} - {max(dates)}" if dates else "весь период"
             lines = [
-                f"- {department}: {count}"
-                for department, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:20]
+                (
+                    "{department}: дней {days}, опозд. {late} ({late_minutes} мин), "
+                    "неявки {absent}, без проходов {no_passes}, ушли раньше {left_early}, позже {left_late}"
+                ).format(
+                    department=department,
+                    **item,
+                )
+                for department, item in sorted(
+                    stats.items(),
+                    key=lambda entry: (
+                        -(entry[1]["late"] + entry[1]["absent"] + entry[1]["no_passes"] + entry[1]["left_early"]),
+                        entry[0],
+                    ),
+                )[:20]
             ]
-            text = "Неявки отделов за весь период:\n\nВсего: {total}\n\n{lines}".format(
-                total=len(rows),
+            text = (
+                "Статистика отделов за весь период ({period}):\n\n"
+                "Всего дней учета: {days}\n"
+                "Опозданий: {late} ({late_minutes} мин)\n"
+                "Неявок: {absent}\n"
+                "Без проходов: {no_passes}\n\n"
+                "{lines}"
+            ).format(
+                period=period,
+                days=total_days,
+                late=total_late,
+                late_minutes=total_late_minutes,
+                absent=total_absent,
+                no_passes=total_no_passes,
                 lines="\n".join(lines),
             )
 

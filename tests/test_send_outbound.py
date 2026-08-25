@@ -1214,22 +1214,51 @@ class SendOutboundTests(unittest.TestCase):
         router._division_reports.assert_called_once_with("admin", "456", "777")
         self.assertEqual(response.outbound.text, "done")
 
-    def test_top_department_absences_groups_absent_cases_by_department(self) -> None:
+    def test_top_department_stats_groups_all_time_metrics_by_department(self) -> None:
         router = MaxWebhookRouter()
         router.case_repository = MagicMock()
+        router.report_service = MagicMock()
+        router.report_service.visit_repository.list_all.return_value = [
+            SimpleNamespace(
+                department_name="Отдел продаж",
+                event_date="2026-06-01",
+                arrival_status="late",
+                arrival_delta_minutes=12,
+                departure_status="late",
+                total_passes=4,
+            ),
+            SimpleNamespace(
+                department_name="Отдел продаж",
+                event_date="2026-06-02",
+                arrival_status="on_time",
+                arrival_delta_minutes=0,
+                departure_status="early",
+                total_passes=2,
+            ),
+            SimpleNamespace(
+                department_name="ИТ",
+                event_date="2026-06-03",
+                arrival_status="late",
+                arrival_delta_minutes=7,
+                departure_status="",
+                total_passes=0,
+            ),
+        ]
         router.case_repository.list_all.return_value = [
-            SimpleNamespace(case_type="absent", department_name="Отдел продаж"),
-            SimpleNamespace(case_type="absent", department_name="Отдел продаж"),
-            SimpleNamespace(case_type="late", department_name="Отдел продаж"),
-            SimpleNamespace(case_type="absent", department_name="ИТ"),
+            SimpleNamespace(case_type="absent", department_name="Отдел продаж", event_date="2026-06-04"),
+            SimpleNamespace(case_type="late", department_name="Отдел продаж", event_date="2026-06-05"),
+            SimpleNamespace(case_type="absent", department_name="ИТ", event_date="2026-06-06"),
         ]
 
-        response = router._top_department_absences("top_manager")
+        response = router._top_department_stats("top_manager")
 
-        self.assertIn("Неявки отделов за весь период", response.outbound.text)
-        self.assertIn("Всего: 3", response.outbound.text)
-        self.assertIn("- Отдел продаж: 2", response.outbound.text)
-        self.assertIn("- ИТ: 1", response.outbound.text)
+        self.assertIn("Статистика отделов за весь период (2026-06-01 - 2026-06-06)", response.outbound.text)
+        self.assertIn("Всего дней учета: 3", response.outbound.text)
+        self.assertIn("Опозданий: 2 (19 мин)", response.outbound.text)
+        self.assertIn("Неявок: 2", response.outbound.text)
+        self.assertIn("Без проходов: 1", response.outbound.text)
+        self.assertIn("Отдел продаж: дней 2, опозд. 1 (12 мин), неявки 1, без проходов 0, ушли раньше 1, позже 1", response.outbound.text)
+        self.assertIn("ИТ: дней 1, опозд. 1 (7 мин), неявки 1, без проходов 1, ушли раньше 0, позже 0", response.outbound.text)
         self.assertEqual(response.outbound.buttons[0].action, "top.summary")
 
     def test_office_seal_ack_skips_role_resolver(self) -> None:

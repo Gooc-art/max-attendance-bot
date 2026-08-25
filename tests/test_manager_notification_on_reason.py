@@ -146,6 +146,51 @@ class ManagerNotificationTests(unittest.TestCase):
         self.assertLess(perf_counter() - started, 0.1)
         self.assertTrue(sent.wait(1))
 
+    def test_manager_notification_falls_back_to_saved_chat_id_when_user_send_fails(self) -> None:
+        router = MaxWebhookRouter()
+        router.bot_message_cursor_store = _FakeCursorStore(chat_id="chat-1")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message.side_effect = [RuntimeError("forbidden"), {"status": "ok"}]
+
+        router._notify_manager_about_reason(
+            _FakeCaseRepository().case,
+            "Забыл карточку СКУД. Указанное время прихода: 08:44",
+            77,
+        )
+
+        self.assertEqual(router.max_client.send_message.call_count, 2)
+        first_call = router.max_client.send_message.call_args_list[0].kwargs
+        second_call = router.max_client.send_message.call_args_list[1].kwargs
+        self.assertEqual(first_call["user_id"], "mgr-1")
+        self.assertEqual(second_call["chat_id"], "chat-1")
+        self.assertIn("Новая причина по случаю #101", second_call["text"])
+
+    def test_manager_notification_logs_when_user_and_chat_send_fail(self) -> None:
+        router = MaxWebhookRouter()
+        router.bot_message_cursor_store = _FakeCursorStore()
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message.side_effect = RuntimeError("forbidden")
+
+        with self.assertLogs("app.bot.router", level="WARNING") as logs:
+            router._notify_manager_about_reason(_FakeCaseRepository().case, "Личная причина", 77)
+
+        self.assertIn("Failed to send manager MAX notification user_id=mgr-1", "\n".join(logs.output))
+
+    def test_absence_notice_manager_notification_uses_saved_chat_id_fallback(self) -> None:
+        router = MaxWebhookRouter()
+        router.bot_message_cursor_store = _FakeCursorStore(chat_id="chat-1")
+        router.max_client = MagicMock()
+        router.max_client.is_configured.return_value = True
+        router.max_client.send_message.side_effect = [RuntimeError("forbidden"), {"status": "ok"}]
+
+        router._notify_manager_about_absence_notice(_FakeCaseRepository().case, "Больничный", 77)
+
+        self.assertEqual(router.max_client.send_message.call_count, 2)
+        self.assertEqual(router.max_client.send_message.call_args_list[0].kwargs["user_id"], "mgr-1")
+        self.assertEqual(router.max_client.send_message.call_args_list[1].kwargs["chat_id"], "chat-1")
+
     def test_approval_decision_triggers_employee_push_notification(self) -> None:
         router = MaxWebhookRouter()
         router.case_repository = _FakeCaseRepository()

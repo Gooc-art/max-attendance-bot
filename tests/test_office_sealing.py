@@ -309,6 +309,73 @@ class OfficeSealingServiceTests(unittest.TestCase):
         self.assertEqual(sent, 1)
         self.assertEqual(len(self.sent_messages), 1)
 
+    def test_gender_reminders_fallback_to_saved_chat_id(self) -> None:
+        service, _journal = self._service()
+        sent_messages = []
+
+        def send_message(**kwargs):
+            sent_messages.append(kwargs)
+            if "user_id" in kwargs:
+                raise RuntimeError("MAX user_id rejected")
+            return {"mid": "fallback-mid"}
+
+        service.max_client.send_message = send_message
+        service.cursor_store = SimpleNamespace(
+            get_chat_id_for_user=lambda user_id: "423234460",
+            set=lambda **kwargs: None,
+        )
+
+        sent = service.send_reminders_for_gender(
+            "female",
+            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
+        )
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(sent_messages[0]["user_id"], 1001)
+        self.assertEqual(sent_messages[1]["chat_id"], 423234460)
+
+    def test_gender_reminders_log_and_skip_without_chat_id_fallback(self) -> None:
+        service, _journal = self._service()
+        service.max_client.send_message = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("MAX rejected"))
+        service.cursor_store = SimpleNamespace(get_chat_id_for_user=lambda user_id: "")
+
+        with self.assertLogs("app.services.office_sealing", level="WARNING") as logs:
+            sent = service.send_reminders_for_gender(
+                "female",
+                now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
+            )
+
+        self.assertEqual(sent, 0)
+        self.assertTrue(any("no chat_id fallback" in line for line in logs.output))
+
+    def test_auto_summaries_fallback_to_saved_chat_id(self) -> None:
+        service, journal = self._service()
+        journal.rows.append(
+            OfficeSealJournalRow(
+                date="2026-06-11",
+                time="18:05",
+                employee_id="EMP001",
+                office="314",
+                photo_url="",
+            )
+        )
+        sent_messages = []
+
+        def send_message(**kwargs):
+            sent_messages.append(kwargs)
+            if "user_id" in kwargs:
+                raise RuntimeError("MAX user_id rejected")
+            return {"mid": "summary-mid"}
+
+        service.max_client.send_message = send_message
+        service.cursor_store = SimpleNamespace(get_chat_id_for_user=lambda user_id: "423234460")
+
+        sent = service.send_auto_summaries(now=datetime(2026, 6, 11, 22, 0, tzinfo=ZoneInfo("Europe/Moscow")))
+
+        self.assertEqual(sent, 1)
+        self.assertEqual(sent_messages[0]["user_id"], 2001)
+        self.assertEqual(sent_messages[1]["chat_id"], 423234460)
+
 
 if __name__ == "__main__":
     unittest.main()

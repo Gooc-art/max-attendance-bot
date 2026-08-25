@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ from app.repositories.employee_directory_repository import EmployeeDirectoryRepo
 from app.services.bot_message_cursor import bot_message_cursor_store
 from app.schemas.max import MaxAttachment, MaxOutboundButton
 
+
+logger = logging.getLogger(__name__)
 
 OFFICE_SEAL_JOURNAL_HEADERS = ["Дата", "Время", "ID_сотрудника", "Кабинет", "Ссылка_на_фото"]
 OFFICE_SEAL_EXCEPTION_HEADERS = ["Кабинет", "Дата_начала", "Дата_окончания", "Причина", "Активно", "Комментарий"]
@@ -498,17 +501,8 @@ class OfficeSealingService:
             text = self.build_manager_summary(manager_user_id, now=now, only_if_missing=True)
             if not text:
                 continue
-            try:
-                self.max_client.send_message(user_id=int(manager_user_id), text=text, buttons=[])
+            if self._send_user_message(manager_user_id, text, [], context="office_seal_summary"):
                 sent += 1
-            except ValueError:
-                try:
-                    self.max_client.send_message(user_id=manager_user_id, text=text, buttons=[])
-                    sent += 1
-                except Exception:
-                    continue
-            except Exception:
-                continue
         return sent
 
     def _required_unsealed_offices(self, date: str) -> dict[str, List[OfficeSealEmployee]]:
@@ -538,20 +532,32 @@ class OfficeSealingService:
                 continue
             seen_user_ids.add(user_id)
             buttons = [MaxOutboundButton(title="Спасибо за напоминание", action="office_seal.reminder_ack")]
-            try:
-                response = self.max_client.send_message(user_id=int(user_id), text=text, buttons=buttons)
+            response = self._send_user_message(user_id, text, buttons, context="office_seal_reminder")
+            if response:
                 self._remember_user_message(user_id, response)
                 sent += 1
-            except ValueError:
-                try:
-                    response = self.max_client.send_message(user_id=user_id, text=text, buttons=buttons)
-                    self._remember_user_message(user_id, response)
-                    sent += 1
-                except Exception:
-                    continue
-            except Exception:
-                continue
         return sent
+
+    def _send_user_message(self, user_id: str, text: str, buttons: list[MaxOutboundButton], *, context: str) -> dict | None:
+        user_id = str(user_id or "").strip()
+        if not user_id:
+            return None
+        try:
+            recipient = int(user_id) if user_id.isdigit() else user_id
+            return self.max_client.send_message(user_id=recipient, text=text, buttons=buttons)
+        except Exception:
+            logger.warning("MAX send failed context=%s user_id=%s; trying chat_id fallback", context, user_id, exc_info=True)
+        getter = getattr(self.cursor_store, "get_chat_id_for_user", None)
+        chat_id = str(getter(user_id) or "").strip() if getter else ""
+        if not chat_id:
+            logger.warning("MAX send failed context=%s user_id=%s; no chat_id fallback", context, user_id)
+            return None
+        try:
+            recipient_chat_id = int(chat_id) if chat_id.isdigit() else chat_id
+            return self.max_client.send_message(chat_id=recipient_chat_id, text=text, buttons=buttons)
+        except Exception:
+            logger.warning("MAX send failed context=%s user_id=%s chat_id=%s", context, user_id, chat_id, exc_info=True)
+            return None
 
     def _remember_user_message(self, user_id: str, response: dict) -> None:
         message_id = self._extract_message_id(response)
@@ -680,15 +686,7 @@ class OfficeSealingService:
             )
             if photo_url:
                 text += "\nФото: {photo}".format(photo=photo_url)
-            try:
-                self.max_client.send_message(user_id=int(employee.user_id), text=text, buttons=[])
-            except ValueError:
-                try:
-                    self.max_client.send_message(user_id=employee.user_id, text=text, buttons=[])
-                except Exception:
-                    continue
-            except Exception:
-                continue
+            self._send_user_message(employee.user_id, text, [], context="office_seal_mate")
 
     def _office_journal_row(self, date: str, office: str) -> OfficeSealJournalRow | None:
         office_value = self._normalize_office(office)

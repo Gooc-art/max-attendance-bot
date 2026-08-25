@@ -85,12 +85,45 @@ class SendOutboundTests(unittest.TestCase):
             buttons=[MaxOutboundButton(title="Отчеты", action="menu.reports")],
         )
         first = MaxUpdate(
+            update_type="message_created",
+            timestamp=1,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1,
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+        second = MaxUpdate(
+            update_type="message_created",
+            timestamp=2,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=2,
+                body=MaxMessageBody(mid="m2", seq=2, text="hello again"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+
+        router._send_outbound(first, outbound)
+        router._send_outbound(second, outbound)
+
+        router.max_client.send_message.assert_called_once()
+
+    def test_start_navigation_refresh_is_not_suppressed_as_duplicate(self) -> None:
+        router = self._build_router()
+        router.max_client.send_message.side_effect = [{"mid": "bot-1"}, {"mid": "bot-2"}]
+        outbound = MaxOutboundMessage(
+            text="Главное меню готово.",
+            buttons=[MaxOutboundButton(title="Отчеты", action="menu.reports")],
+        )
+        bot_started = MaxUpdate(
             update_type="bot_started",
             timestamp=1,
             chat_id=987,
             user=MaxUser(user_id=123, first_name="Test"),
         )
-        second = MaxUpdate(
+        start_message = MaxUpdate(
             update_type="message_created",
             timestamp=2,
             message=MaxMessage(
@@ -101,10 +134,11 @@ class SendOutboundTests(unittest.TestCase):
             ),
         )
 
-        router._send_outbound(first, outbound)
-        router._send_outbound(second, outbound)
+        router._send_outbound(bot_started, outbound)
+        router._send_outbound(start_message, outbound)
 
-        router.max_client.send_message.assert_called_once()
+        self.assertEqual(router.max_client.send_message.call_count, 2)
+        router.runtime_marker_repository.claim.assert_not_called()
 
     def test_start_sends_fresh_menu_when_previous_menu_exists(self) -> None:
         router = self._build_router()
@@ -752,6 +786,7 @@ class SendOutboundTests(unittest.TestCase):
         bot_started = MaxUpdate(
             update_type="bot_started",
             timestamp=1000,
+            chat_id=987,
             user=MaxUser(user_id=123, first_name="Test"),
         )
         start_message = MaxUpdate(
@@ -767,7 +802,7 @@ class SendOutboundTests(unittest.TestCase):
 
         self.assertEqual(router.incoming_dedup_key(bot_started), router.incoming_dedup_key(start_message))
 
-    def test_same_callback_action_shares_short_dedup_key(self) -> None:
+    def test_callback_id_is_used_before_action_dedup(self) -> None:
         router = MaxWebhookRouter()
 
         first = MaxUpdate(
@@ -798,6 +833,39 @@ class SendOutboundTests(unittest.TestCase):
                 ),
             },
         )
+        self.assertNotEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(duplicate))
+
+    def test_callback_without_id_falls_back_to_action_dedup(self) -> None:
+        router = MaxWebhookRouter()
+
+        first = MaxUpdate(
+            update_type="message_callback",
+            timestamp=1000,
+            chat_id=987,
+            message=MaxMessage(
+                recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
+                timestamp=1000,
+                body=MaxMessageBody(mid="bot-card", seq=1, text="old"),
+                sender=MaxUser(user_id=123, first_name="Test"),
+            ),
+            callback=MaxCallback(
+                timestamp=1000,
+                callback_id="",
+                payload="menu.approvals",
+                user=MaxUser(user_id=123, first_name="Test"),
+            ),
+        )
+        duplicate = first.model_copy(
+            update={
+                "timestamp": 1001,
+                "callback": MaxCallback(
+                    timestamp=1001,
+                    callback_id="",
+                    payload="menu.approvals",
+                    user=MaxUser(user_id=123, first_name="Test"),
+                ),
+            },
+        )
         later = duplicate.model_copy(update={"timestamp": 1003})
 
         self.assertEqual(router.incoming_dedup_key(first), router.incoming_dedup_key(duplicate))
@@ -807,7 +875,7 @@ class SendOutboundTests(unittest.TestCase):
             update={
                 "callback": MaxCallback(
                     timestamp=1001,
-                    callback_id="cb-3",
+                    callback_id="",
                     payload="menu.approvals",
                     user=MaxUser(user_id=456, first_name="Other"),
                 ),
@@ -913,7 +981,7 @@ class SendOutboundTests(unittest.TestCase):
             message=MaxMessage(
                 recipient=MaxRecipient(chat_id=987, chat_type="dialog", user_id=123),
                 timestamp=1,
-                body=MaxMessageBody(mid="m1", seq=1, text="/start"),
+                body=MaxMessageBody(mid="m1", seq=1, text="hello"),
                 sender=MaxUser(user_id=123, first_name="Test"),
             ),
         )

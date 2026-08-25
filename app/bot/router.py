@@ -977,26 +977,36 @@ class MaxWebhookRouter:
 
     @classmethod
     def incoming_dedup_key(cls, payload: MaxUpdate) -> str:
+        if cls._is_start_payload(payload):
+            scope = cls._incoming_user_scope(payload) or cls._incoming_scope(payload)
+            if not scope:
+                return ""
+            return f"in:start:{scope}:{cls._timestamp_bucket(payload.timestamp, 60)}"
         scope = cls._incoming_scope(payload)
         event_id = cls._incoming_event_id(payload)
         if not scope or not event_id:
             return ""
-        if cls._is_start_payload(payload):
-            return f"in:start:{scope}:{cls._timestamp_bucket(payload.timestamp, 60)}"
         return f"in:{payload.update_type}:{scope}:{event_id}"
 
     @staticmethod
     def _incoming_scope(payload: MaxUpdate) -> str:
         if payload.chat_id:
             return f"chat:{payload.chat_id}"
+        user_scope = MaxWebhookRouter._incoming_user_scope(payload)
+        if user_scope:
+            return user_scope
+        if payload.message and payload.message.recipient and payload.message.recipient.user_id:
+            return f"recipient:{payload.message.recipient.user_id}"
+        return ""
+
+    @staticmethod
+    def _incoming_user_scope(payload: MaxUpdate) -> str:
         if payload.callback and payload.callback.user and payload.callback.user.user_id:
             return f"user:{payload.callback.user.user_id}"
         if payload.user and payload.user.user_id:
             return f"user:{payload.user.user_id}"
         if payload.message and payload.message.sender and payload.message.sender.user_id:
             return f"user:{payload.message.sender.user_id}"
-        if payload.message and payload.message.recipient and payload.message.recipient.user_id:
-            return f"recipient:{payload.message.recipient.user_id}"
         return ""
 
     @staticmethod
@@ -1005,11 +1015,11 @@ class MaxWebhookRouter:
             action = str(payload.callback.payload or "").strip()
             message_id = str(payload.message.body.mid or "").strip() if payload.message and payload.message.body else ""
             user_id = str(payload.callback.user.user_id or "").strip() if payload.callback.user else ""
+            if payload.callback.callback_id:
+                return f"callback:{payload.callback.callback_id}"
             if action:
                 digest = sha256(repr((user_id, action, message_id)).encode("utf-8")).hexdigest()[:24]
                 return f"callback_action:{digest}:{MaxWebhookRouter._timestamp_bucket(payload.timestamp, 2)}"
-            if payload.callback.callback_id:
-                return f"callback:{payload.callback.callback_id}"
         if payload.callback and payload.callback.callback_id:
             return f"callback:{payload.callback.callback_id}"
         if payload.message and payload.message.body and payload.message.body.mid:
@@ -5103,8 +5113,13 @@ class MaxWebhookRouter:
             thread.start()
             return
         try:
-            self.max_client.send_message(**kwargs)
+            self._send_proactive_user_message(**kwargs)
         except Exception:
+            self.logger.warning(
+                "Failed to send manager MAX notification user_id=%s",
+                kwargs.get("user_id", ""),
+                exc_info=True,
+            )
             return
 
     def _notify_manager_about_late_notice(
@@ -5204,14 +5219,11 @@ class MaxWebhookRouter:
             reason=reason_text,
         )
         buttons = approval_notification_buttons(approval_id) if approval_id else [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)]
-        try:
-            self.max_client.send_message(
-                user_id=case.manager_user_id,
-                text=notice_text,
-                buttons=buttons,
-            )
-        except Exception:
-            return
+        self._send_max_message(
+            user_id=case.manager_user_id,
+            text=notice_text,
+            buttons=buttons,
+        )
 
     def _notify_manager_about_absence_period_update(
         self,
@@ -5243,14 +5255,11 @@ class MaxWebhookRouter:
             reason=case.employee_reason or "-",
         )
         buttons = approval_notification_buttons(approval_id) if approval_id else [MaxOutboundButton(title="Главное меню", action=BotAction.MAIN_MENU, emoji="🏠", row=0)]
-        try:
-            self.max_client.send_message(
-                user_id=case.manager_user_id,
-                text=notice_text,
-                buttons=buttons,
-            )
-        except Exception:
-            return
+        self._send_max_message(
+            user_id=case.manager_user_id,
+            text=notice_text,
+            buttons=buttons,
+        )
 
     def _notify_replacement_about_substitution(
         self,
@@ -5283,14 +5292,11 @@ class MaxWebhookRouter:
             date_to=date_to or "-",
             departments=departments_label,
         )
-        try:
-            self.max_client.send_message(
-                user_id=replacement_user_id,
-                text=text,
-                buttons=substitution_notification_buttons(draft_id),
-            )
-        except Exception:
-            return
+        self._send_max_message(
+            user_id=replacement_user_id,
+            text=text,
+            buttons=substitution_notification_buttons(draft_id),
+        )
 
     def _notify_initiator_about_substitution_decision(self, draft, *, approved: bool) -> None:
         if not self.max_client.is_configured() or not getattr(draft, "created_by_user_id", ""):
@@ -5315,14 +5321,11 @@ class MaxWebhookRouter:
                 date_from=draft.date_from or "-",
                 date_to=draft.date_to or "-",
             )
-        try:
-            self.max_client.send_message(
-                user_id=draft.created_by_user_id,
-                text=text,
-                buttons=[MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST, emoji="📋", row=0)],
-            )
-        except Exception:
-            return
+        self._send_max_message(
+            user_id=draft.created_by_user_id,
+            text=text,
+            buttons=[MaxOutboundButton(title="Мои замещения", action=BotAction.SUBSTITUTION_LIST, emoji="📋", row=0)],
+        )
 
     def _notify_employee_about_approval_decision(self, approval, *, approved: bool) -> None:
         if approval is None or not self.max_client.is_configured():
@@ -5745,7 +5748,7 @@ class MaxWebhookRouter:
         send_started_at = perf_counter()
         for recipient_type, recipient_value in recipients:
             marker_key = self._outgoing_marker_key(inbound, recipient_type, str(recipient_value), outbound)
-            if marker_key and not self.runtime_marker_repository.claim(marker_key, "outgoing", lease_seconds=120):
+            if marker_key and not self._is_navigation_refresh(inbound) and not self.runtime_marker_repository.claim(marker_key, "outgoing", lease_seconds=120):
                 recipient_used = f"{recipient_type}:duplicate"
                 response = None
                 break
@@ -5763,7 +5766,7 @@ class MaxWebhookRouter:
                         buttons=outbound.buttons,
                     )
                 recipient_used = recipient_type
-                if marker_key:
+                if marker_key and not self._is_navigation_refresh(inbound):
                     self.runtime_marker_repository.complete(marker_key, ttl_seconds=600)
                 break
             except Exception as exc:
@@ -6227,6 +6230,17 @@ class MaxWebhookRouter:
         ]
         digest = sha256(repr((outbound.text, buttons)).encode("utf-8")).hexdigest()[:24]
         return f"out:{recipient_type}:{recipient_value}:{digest}"
+
+    @staticmethod
+    def _is_navigation_refresh(inbound: MaxUpdate) -> bool:
+        action = ""
+        if inbound.callback and inbound.callback.payload:
+            action = str(inbound.callback.payload).strip()
+        elif inbound.update_type == "bot_started":
+            action = str(inbound.payload or BotAction.START).strip()
+        elif inbound.message and inbound.message.body:
+            action = str(inbound.message.body.text or "").strip()
+        return action in {BotAction.START, BotAction.MAIN_MENU, "Начать", "Старт", "Главное меню"}
 
     def _conversation_participants(self, inbound: MaxUpdate) -> tuple[str, str]:
         chat_id = ""

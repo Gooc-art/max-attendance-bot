@@ -6,7 +6,12 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
-from app.services.office_sealing import OFFICE_SEAL_EXCEPTION_HEADERS, OFFICE_SEAL_JOURNAL_HEADERS, OfficeSealJournalService
+from app.services.office_sealing import (
+    OFFICE_SEAL_EXCEPTION_HEADERS,
+    OFFICE_SEAL_JOURNAL_HEADERS,
+    OFFICE_SEAL_REMINDER_UNSUBSCRIBE_HEADERS,
+    OfficeSealJournalService,
+)
 
 
 def _column_letter(index: int) -> str:
@@ -70,9 +75,11 @@ def main() -> None:
     )
     journal.ensure_sheet()
     journal.ensure_exception_sheet()
+    journal.ensure_reminder_unsubscribe_sheet()
     print(f"employee office column: {office_column_status}")
     print(f"journal headers: {', '.join(OFFICE_SEAL_JOURNAL_HEADERS)}")
     print(f"office exception headers: {', '.join(OFFICE_SEAL_EXCEPTION_HEADERS)}")
+    print(f"office reminder unsubscribe headers: {', '.join(OFFICE_SEAL_REMINDER_UNSUBSCRIBE_HEADERS)}")
 
 
 if __name__ == "__main__":

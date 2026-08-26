@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 OFFICE_SEAL_JOURNAL_HEADERS = ["Дата", "Время", "ID_сотрудника", "Кабинет", "Ссылка_на_фото"]
 OFFICE_SEAL_EXCEPTION_HEADERS = ["Кабинет", "Дата_начала", "Дата_окончания", "Причина", "Активно", "Комментарий"]
+OFFICE_SEAL_REMINDER_UNSUBSCRIBE_HEADERS = ["User_ID", "Дата_отписки"]
 PHOTO_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -188,6 +189,42 @@ class OfficeSealJournalService:
             return row
         return None
 
+    def list_reminder_unsubscribed_user_ids(self) -> set[str]:
+        if not self.is_configured():
+            return set()
+        self.ensure_reminder_unsubscribe_sheet()
+        values = (
+            self._service()
+            .spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range="Отписки_напоминаний_кабинетов!A:B")
+            .execute()
+            .get("values", [])
+        )
+        return {str(row[0]).strip() for row in values[1:] if row and str(row[0]).strip()}
+
+    def add_reminder_unsubscribe(self, *, user_id: str, date: str) -> bool:
+        user_id = str(user_id or "").strip()
+        if not user_id or not self.is_configured():
+            return False
+        with self._lock:
+            if user_id in self.list_reminder_unsubscribed_user_ids():
+                return True
+            (
+                self._service()
+                .spreadsheets()
+                .values()
+                .append(
+                    spreadsheetId=self.spreadsheet_id,
+                    range="Отписки_напоминаний_кабинетов!A:B",
+                    valueInputOption="USER_ENTERED",
+                    insertDataOption="INSERT_ROWS",
+                    body={"values": [[user_id, date]]},
+                )
+                .execute()
+            )
+            return True
+
     @staticmethod
     def _normalize_office(value: str) -> str:
         return re.sub(r"\s+", " ", str(value or "").strip()).lower()
@@ -258,6 +295,41 @@ class OfficeSealJournalService:
                     range="Исключения_кабинетов!A1:F1",
                     valueInputOption="USER_ENTERED",
                     body={"values": [OFFICE_SEAL_EXCEPTION_HEADERS]},
+                )
+                .execute()
+            )
+
+    def ensure_reminder_unsubscribe_sheet(self) -> None:
+        metadata = self._service().spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+        sheets = metadata.get("sheets", [])
+        if not any(item.get("properties", {}).get("title") == "Отписки_напоминаний_кабинетов" for item in sheets):
+            (
+                self._service()
+                .spreadsheets()
+                .batchUpdate(
+                    spreadsheetId=self.spreadsheet_id,
+                    body={"requests": [{"addSheet": {"properties": {"title": "Отписки_напоминаний_кабинетов"}}}]},
+                )
+                .execute()
+            )
+        values = (
+            self._service()
+            .spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range="Отписки_напоминаний_кабинетов!A1:B1")
+            .execute()
+            .get("values", [])
+        )
+        if not values or values[0][:2] != OFFICE_SEAL_REMINDER_UNSUBSCRIBE_HEADERS:
+            (
+                self._service()
+                .spreadsheets()
+                .values()
+                .update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range="Отписки_напоминаний_кабинетов!A1:B1",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [OFFICE_SEAL_REMINDER_UNSUBSCRIBE_HEADERS]},
                 )
                 .execute()
             )
@@ -483,16 +555,22 @@ class OfficeSealingService:
         current = self._now(now)
         if not self._is_workday(current):
             return 0
+        unsubscribed_user_ids = self.journal_service.list_reminder_unsubscribed_user_ids()
         employees = [
             employee
             for employee in self._all_active_employees()
-            if employee.office and employee.gender == gender
+            if employee.office and employee.gender == gender and str(employee.user_id).strip() not in unsubscribed_user_ids
         ]
         return self._send_to_employees(employees, "Напоминание: пожалуйста, не забудь закрыть дверь и опломбировать кабинет.")
 
     @staticmethod
     def acknowledge_reminder() -> str:
         return "Принято, спасибо."
+
+    def unsubscribe_reminder(self, user_id: str, now: datetime | None = None) -> str:
+        if self.journal_service.add_reminder_unsubscribe(user_id=user_id, date=self._now(now).date().isoformat()):
+            return "Вы отписались от напоминаний."
+        return "Не удалось отписать от напоминаний. Попробуйте позже."
 
     def send_auto_summaries(self, now: datetime | None = None) -> int:
         manager_ids = self._manager_user_ids()
@@ -531,7 +609,10 @@ class OfficeSealingService:
             if not user_id or user_id in seen_user_ids:
                 continue
             seen_user_ids.add(user_id)
-            buttons = [MaxOutboundButton(title="Спасибо за напоминание", action="office_seal.reminder_ack")]
+            buttons = [
+                MaxOutboundButton(title="Спасибо за напоминание", action="office_seal.reminder_ack"),
+                MaxOutboundButton(title="Отписаться от рассылки", action="office_seal.reminder_unsubscribe"),
+            ]
             response = self._send_user_message(user_id, text, buttons, context="office_seal_reminder")
             if response:
                 self._remember_user_message(user_id, response)

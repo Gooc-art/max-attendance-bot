@@ -20,6 +20,7 @@ class BotAction:
     MENU_MY_OFFICE = "menu.my_office"
     MENU_WEATHER = "menu.weather"
     OFFICE_SEAL_REMINDER_ACK = "office_seal.reminder_ack"
+    OFFICE_SEAL_REMINDER_UNSUBSCRIBE = "office_seal.reminder_unsubscribe"
 
     MENU_EMPLOYEES = "menu.employees"
     MENU_APPROVALS = "menu.approvals"

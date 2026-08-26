@@ -274,6 +274,11 @@ class MaxWebhookRouter:
             self._send_outbound(payload, response.outbound)
             self._touch_user_activity(payload, event, role="", started=False)
             return response
+        if self._is_office_seal_reminder_unsubscribe(action, user_text):
+            response = self._unsubscribe_office_seal_reminder(Role.EMPLOYEE.value, event["user_id"])
+            self._send_outbound(payload, response.outbound)
+            self._touch_user_activity(payload, event, role="", started=False)
+            return response
         fast_response = self._fast_cached_menu_response(payload, event, action, user_text)
         if fast_response is not None:
             return fast_response
@@ -582,6 +587,11 @@ class MaxWebhookRouter:
 
         if action == BotAction.OFFICE_SEAL_REMINDER_ACK or user_text == "Спасибо за напоминание":
             response = self._acknowledge_office_seal_reminder(role)
+            self._send_outbound(payload, response.outbound)
+            return response
+
+        if action == BotAction.OFFICE_SEAL_REMINDER_UNSUBSCRIBE or user_text == "Отписаться от рассылки":
+            response = self._unsubscribe_office_seal_reminder(role, event["user_id"])
             self._send_outbound(payload, response.outbound)
             return response
 
@@ -1395,9 +1405,25 @@ class MaxWebhookRouter:
             active_flow=None,
         )
 
+    def _unsubscribe_office_seal_reminder(self, role: str, user_id: str) -> MaxWebhookResponse:
+        return MaxWebhookResponse(
+            ok=True,
+            role=role,
+            menu=get_menu_for_role(role),
+            outbound=MaxOutboundMessage(
+                text=self.office_sealing_service.unsubscribe_reminder(user_id),
+                buttons=[],
+            ),
+            active_flow=None,
+        )
+
     @staticmethod
     def _is_office_seal_reminder_ack(action: str, user_text: str) -> bool:
         return action == BotAction.OFFICE_SEAL_REMINDER_ACK or user_text == "Спасибо за напоминание"
+
+    @staticmethod
+    def _is_office_seal_reminder_unsubscribe(action: str, user_text: str) -> bool:
+        return action == BotAction.OFFICE_SEAL_REMINDER_UNSUBSCRIBE or user_text == "Отписаться от рассылки"
 
     def _touch_user_activity(self, payload: MaxUpdate, event: dict, role: str, started: bool) -> None:
         kwargs = {
@@ -5673,7 +5699,7 @@ class MaxWebhookRouter:
                 if marker_key and not self.runtime_marker_repository.claim(marker_key, "outgoing", lease_seconds=120):
                     return
                 try:
-                    if callback_action == BotAction.OFFICE_SEAL_REMINDER_ACK:
+                    if callback_action in {BotAction.OFFICE_SEAL_REMINDER_ACK, BotAction.OFFICE_SEAL_REMINDER_UNSUBSCRIBE}:
                         if inbound.message and inbound.message.body.mid:
                             message_ids = [inbound.message.body.mid]
                         else:

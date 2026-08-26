@@ -69,6 +69,7 @@ class _Journal:
     def __init__(self) -> None:
         self.rows = []
         self.exceptions = []
+        self.unsubscribed_user_ids = set()
 
     def has_entry(self, *, date: str, employee_id: str) -> bool:
         return any(row.date == date and row.employee_id == employee_id for row in self.rows)
@@ -98,6 +99,15 @@ class _Journal:
                 continue
             return row
         return None
+
+    def list_reminder_unsubscribed_user_ids(self):
+        return set(self.unsubscribed_user_ids)
+
+    def add_reminder_unsubscribe(self, *, user_id: str, date: str) -> bool:
+        if not user_id:
+            return False
+        self.unsubscribed_user_ids.add(str(user_id))
+        return True
 
 
 class OfficeSealingServiceTests(unittest.TestCase):
@@ -269,7 +279,29 @@ class OfficeSealingServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.sent_messages[0]["buttons"][0].title, "Спасибо за напоминание")
         self.assertEqual(self.sent_messages[0]["buttons"][0].action, "office_seal.reminder_ack")
+        self.assertEqual(self.sent_messages[0]["buttons"][1].title, "Отписаться от рассылки")
+        self.assertEqual(self.sent_messages[0]["buttons"][1].action, "office_seal.reminder_unsubscribe")
         self.assertEqual(len(journal.rows), 0)
+
+    def test_gender_reminders_skip_unsubscribed_users(self) -> None:
+        service, journal = self._service()
+        journal.unsubscribed_user_ids.add("1001")
+
+        sent = service.send_reminders_for_gender(
+            "female",
+            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
+        )
+
+        self.assertEqual(sent, 0)
+        self.assertEqual(self.sent_messages, [])
+
+    def test_unsubscribe_reminder_persists_user(self) -> None:
+        service, journal = self._service()
+
+        text = service.unsubscribe_reminder("1001", now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")))
+
+        self.assertEqual(text, "Вы отписались от напоминаний.")
+        self.assertEqual(journal.unsubscribed_user_ids, {"1001"})
 
     def test_gender_reminders_remember_sent_message_for_ack_cleanup(self) -> None:
         cursor = SimpleNamespace(saved=[])

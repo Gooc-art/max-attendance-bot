@@ -552,16 +552,7 @@ class OfficeSealingService:
         return self.send_reminders_for_gender("male", now=now)
 
     def send_reminders_for_gender(self, gender: str, now: datetime | None = None) -> int:
-        current = self._now(now)
-        if not self._is_workday(current):
-            return 0
-        unsubscribed_user_ids = self.journal_service.list_reminder_unsubscribed_user_ids()
-        employees = [
-            employee
-            for employee in self._all_active_employees()
-            if employee.office and employee.gender == gender and str(employee.user_id).strip() not in unsubscribed_user_ids
-        ]
-        return self._send_to_employees(employees, "Напоминание: пожалуйста, не забудь закрыть дверь и опломбировать кабинет.")
+        return 0
 
     @staticmethod
     def acknowledge_reminder() -> str:

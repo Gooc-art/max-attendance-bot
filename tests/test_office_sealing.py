@@ -255,7 +255,7 @@ class OfficeSealingServiceTests(unittest.TestCase):
         self.assertIn("Время: 18:05", status)
         self.assertNotIn("Фото:", status)
 
-    def test_gender_reminders_send_simple_ack_button_without_journal_filter(self) -> None:
+    def test_gender_reminders_are_disabled(self) -> None:
         service, journal = self._service()
         journal.exceptions.append(
             OfficeSealException(
@@ -270,17 +270,9 @@ class OfficeSealingServiceTests(unittest.TestCase):
         female_sent = service.send_reminders_for_gender("female", now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")))
         male_sent = service.send_reminders_for_gender("male", now=datetime(2026, 6, 11, 17, 55, tzinfo=ZoneInfo("Europe/Moscow")))
 
-        self.assertEqual(female_sent, 1)
-        self.assertEqual(male_sent, 2)
-        self.assertEqual(self.sent_messages[0]["user_id"], 1001)
-        self.assertEqual(
-            self.sent_messages[0]["text"],
-            "Напоминание: пожалуйста, не забудь закрыть дверь и опломбировать кабинет.",
-        )
-        self.assertEqual(self.sent_messages[0]["buttons"][0].title, "Спасибо за напоминание")
-        self.assertEqual(self.sent_messages[0]["buttons"][0].action, "office_seal.reminder_ack")
-        self.assertEqual(self.sent_messages[0]["buttons"][1].title, "Отписаться от рассылки")
-        self.assertEqual(self.sent_messages[0]["buttons"][1].action, "office_seal.reminder_unsubscribe")
+        self.assertEqual(female_sent, 0)
+        self.assertEqual(male_sent, 0)
+        self.assertEqual(self.sent_messages, [])
         self.assertEqual(len(journal.rows), 0)
 
     def test_gender_reminders_skip_unsubscribed_users(self) -> None:
@@ -302,83 +294,6 @@ class OfficeSealingServiceTests(unittest.TestCase):
 
         self.assertEqual(text, "Вы отписались от напоминаний.")
         self.assertEqual(journal.unsubscribed_user_ids, {"1001"})
-
-    def test_gender_reminders_remember_sent_message_for_ack_cleanup(self) -> None:
-        cursor = SimpleNamespace(saved=[])
-        cursor.set = lambda **kwargs: cursor.saved.append(kwargs)
-        service, _journal = self._service()
-        service.max_client.send_message = lambda **kwargs: {"mid": "reminder-mid"}
-        service.cursor_store = cursor
-
-        sent = service.send_reminders_for_gender(
-            "female",
-            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
-        )
-
-        self.assertEqual(sent, 1)
-        self.assertEqual(
-            cursor.saved,
-            [
-                {
-                    "conversation_key": "user:1001",
-                    "chat_id": "",
-                    "user_id": "1001",
-                    "message_id": "reminder-mid",
-                }
-            ],
-        )
-
-    def test_gender_reminders_skip_duplicate_user_ids(self) -> None:
-        service, _journal = self._service()
-        employee = service.directory_service.employee
-        service.directory_service.list_employees = lambda: [employee, employee]
-
-        sent = service.send_reminders_for_gender(
-            "female",
-            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
-        )
-
-        self.assertEqual(sent, 1)
-        self.assertEqual(len(self.sent_messages), 1)
-
-    def test_gender_reminders_fallback_to_saved_chat_id(self) -> None:
-        service, _journal = self._service()
-        sent_messages = []
-
-        def send_message(**kwargs):
-            sent_messages.append(kwargs)
-            if "user_id" in kwargs:
-                raise RuntimeError("MAX user_id rejected")
-            return {"mid": "fallback-mid"}
-
-        service.max_client.send_message = send_message
-        service.cursor_store = SimpleNamespace(
-            get_chat_id_for_user=lambda user_id: "423234460",
-            set=lambda **kwargs: None,
-        )
-
-        sent = service.send_reminders_for_gender(
-            "female",
-            now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
-        )
-
-        self.assertEqual(sent, 1)
-        self.assertEqual(sent_messages[0]["user_id"], 1001)
-        self.assertEqual(sent_messages[1]["chat_id"], 423234460)
-
-    def test_gender_reminders_log_and_skip_without_chat_id_fallback(self) -> None:
-        service, _journal = self._service()
-        service.max_client.send_message = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("MAX rejected"))
-        service.cursor_store = SimpleNamespace(get_chat_id_for_user=lambda user_id: "")
-
-        with self.assertLogs("app.services.office_sealing", level="WARNING") as logs:
-            sent = service.send_reminders_for_gender(
-                "female",
-                now=datetime(2026, 6, 11, 17, 10, tzinfo=ZoneInfo("Europe/Moscow")),
-            )
-
-        self.assertEqual(sent, 0)
-        self.assertTrue(any("no chat_id fallback" in line for line in logs.output))
 
     def test_auto_summaries_fallback_to_saved_chat_id(self) -> None:
         service, journal = self._service()

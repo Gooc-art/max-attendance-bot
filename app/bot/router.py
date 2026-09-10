@@ -6324,7 +6324,7 @@ class MaxWebhookRouter:
         chat_id = ""
         if inbound.chat_id:
             chat_id = str(inbound.chat_id)
-        elif inbound.update_type != "message_callback" and inbound.message and inbound.message.recipient and inbound.message.recipient.chat_id:
+        elif inbound.message and inbound.message.recipient and inbound.message.recipient.chat_id:
             chat_id = str(inbound.message.recipient.chat_id)
 
         user_id = ""

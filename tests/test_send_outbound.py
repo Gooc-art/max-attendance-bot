@@ -1012,9 +1012,16 @@ class SendOutboundTests(unittest.TestCase):
         )
         router.max_client.send_message.assert_not_called()
         router._queue_delete_message_ids.assert_not_called()
-        router.bot_message_cursor_store.set.assert_called_once_with(
+        self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
+        router.bot_message_cursor_store.set.assert_any_call(
+            conversation_key="chat:987",
+            chat_id="987",
+            user_id="456",
+            message_id="bot-card",
+        )
+        router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="user:456",
-            chat_id="",
+            chat_id="987",
             user_id="456",
             message_id="bot-card",
         )
@@ -1172,7 +1179,7 @@ class SendOutboundTests(unittest.TestCase):
         router.max_client.send_message.assert_not_called()
         router.bot_message_cursor_store.set.assert_not_called()
 
-    def test_callback_without_top_chat_id_ignores_embedded_recipient_chat(self) -> None:
+    def test_callback_without_top_chat_id_uses_embedded_recipient_chat(self) -> None:
         router = self._build_router()
 
         inbound = MaxUpdate(
@@ -1210,9 +1217,16 @@ class SendOutboundTests(unittest.TestCase):
         )
         router.max_client.send_message.assert_not_called()
         router.max_client.delete_message.assert_not_called()
-        router.bot_message_cursor_store.set.assert_called_once_with(
+        self.assertEqual(router.bot_message_cursor_store.set.call_count, 2)
+        router.bot_message_cursor_store.set.assert_any_call(
+            conversation_key="chat:987",
+            chat_id="987",
+            user_id="456",
+            message_id="m1",
+        )
+        router.bot_message_cursor_store.set.assert_any_call(
             conversation_key="user:456",
-            chat_id="",
+            chat_id="987",
             user_id="456",
             message_id="m1",
         )
